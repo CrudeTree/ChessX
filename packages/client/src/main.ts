@@ -23,6 +23,7 @@ const net = new Net();
 const gameView = new GameView();
 let you: Color | null = null;
 let room: RoomInfo | null = null;
+let solo = false;
 let lastPly = -1;
 let viewReady = false;
 
@@ -38,6 +39,11 @@ function playerName(): string {
 $('create').onclick = () => {
   lobbyError.textContent = '';
   net.send({ type: 'createRoom', name: playerName() });
+};
+
+$('solo').onclick = () => {
+  lobbyError.textContent = '';
+  net.send({ type: 'createSolo', name: playerName() });
 };
 
 $('join').onclick = () => {
@@ -66,8 +72,10 @@ $('leave').onclick = () => {
 function showLobby(): void {
   you = null;
   room = null;
+  solo = false;
   lastPly = -1;
   logEl.innerHTML = '';
+  if (viewReady) gameView.reset();
   game.classList.add('hidden');
   lobby.classList.remove('hidden');
 }
@@ -86,18 +94,26 @@ async function showGame(): Promise<void> {
 // Side panel
 
 function names(): Record<Color, string> {
+  if (solo) return { white: 'White', black: 'Black' };
   return {
     white: room?.players.white?.name ?? 'White',
     black: room?.players.black?.name ?? 'Black',
   };
 }
 
+/** Which colour each side-panel block shows. In practice mode: bottom = white, top = black. */
+function panelColors(): { me: Color; opp: Color } {
+  if (solo || !you) return { me: 'white', opp: 'black' };
+  return { me: you, opp: you === 'white' ? 'black' : 'white' };
+}
+
 function renderRoom(): void {
   if (!room || !you) return;
-  roomCode.textContent = room.code;
-  const opp: Color = you === 'white' ? 'black' : 'white';
+  roomCode.textContent = solo ? 'PRACTICE' : room.code;
+  $('room-hint').textContent = solo ? 'You control both sides. The hand shown is always the side to move.' : 'Send this to a friend. They enter it under "Join".';
+  const { me, opp } = panelColors();
   for (const [id, color] of [
-    ['me', you],
+    ['me', me],
     ['opp', opp],
   ] as const) {
     const el = $(id);
@@ -105,7 +121,8 @@ function renderRoom(): void {
     el.classList.remove('white', 'black', 'offline');
     el.classList.add(color);
     if (seat && !seat.connected) el.classList.add('offline');
-    el.querySelector('.pname')!.textContent = seat ? seat.name + (color === you ? ' (you)' : '') : 'Waiting for opponent…';
+    const label = solo ? (color === 'white' ? 'White' : 'Black') : seat ? seat.name + (color === you ? ' (you)' : '') : 'Waiting for opponent…';
+    el.querySelector('.pname')!.textContent = label;
   }
   if (!room.players[opp]) {
     statusEl.textContent = 'Waiting for an opponent to join. Share the invite code!';
@@ -121,20 +138,28 @@ function renderStatus(view: PlayerView): void {
     const s = view.status;
     const winner = 'winner' in s ? s.winner : null;
     statusEl.textContent =
-      s.kind === 'stalemate' ? 'Stalemate — draw.' : winner === view.you ? 'You win!' : 'You lose.';
+      s.kind === 'stalemate' ? 'Stalemate — draw.'
+      : solo ? `${winner === 'white' ? 'White' : 'Black'} wins!`
+      : winner === view.you ? 'You win!' : 'You lose.';
     return;
   }
   if (mine) statusEl.classList.add('mine');
   if (view.inCheck) statusEl.classList.add('check');
   const turnNo = view.players[view.turn].turnsTaken;
   const drawIn = view.rules.drawEvery - (turnNo % view.rules.drawEvery);
-  statusEl.textContent = mine
-    ? `Your turn (${turnNo}). Move a piece or play a card.${view.inCheck ? ' You are in CHECK!' : ''}`
-    : `Opponent's turn (${turnNo}).${view.inCheck ? ' They are in check.' : ''}`;
-  statusEl.title = `Next draw in ${drawIn === view.rules.drawEvery ? 0 : drawIn} of your turns`;
+  if (solo) {
+    const side = view.turn === 'white' ? 'White' : 'Black';
+    statusEl.textContent = `${side} to move (turn ${turnNo}). Move a piece or play a card.${view.inCheck ? ` ${side} is in CHECK!` : ''}`;
+  } else {
+    statusEl.textContent = mine
+      ? `Your turn (${turnNo}). Move a piece or play a card.${view.inCheck ? ' You are in CHECK!' : ''}`
+      : `Opponent's turn (${turnNo}).${view.inCheck ? ' They are in check.' : ''}`;
+  }
+  statusEl.title = `Next draw in ${drawIn === view.rules.drawEvery ? 0 : drawIn} turns`;
 
+  const { me } = panelColors();
   for (const color of ['white', 'black'] as Color[]) {
-    const el = $(color === view.you ? 'me' : 'opp');
+    const el = $(color === me ? 'me' : 'opp');
     el.querySelector('.hand')!.textContent = `Hand: ${view.players[color].handCount}`;
     el.querySelector('.deck')!.textContent = `Deck: ${view.players[color].deckCount}`;
   }
@@ -174,8 +199,10 @@ net.onMessage = async (msg: ServerMessage) => {
     case 'seated':
       you = msg.color;
       room = msg.room;
+      solo = !!msg.solo;
       saveSession({ code: msg.code, token: msg.token });
       await showGame();
+      gameView.hotseat = solo;
       renderRoom();
       return;
     case 'room':

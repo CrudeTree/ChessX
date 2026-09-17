@@ -119,6 +119,11 @@ button.primary {
   border-color: var(--accent);
 }
 
+button.secondary {
+  width: 100%;
+  margin-top: 8px;
+}
+
 button.danger {
   border-color: var(--danger);
   color: var(--danger);

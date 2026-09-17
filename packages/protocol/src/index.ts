@@ -10,6 +10,8 @@ export interface RoomInfo {
 /** Messages the browser sends to the server. */
 export type ClientMessage =
   | { type: 'createRoom'; name: string; deck?: string[] }
+  /** Practice room: one connection controls both sides. */
+  | { type: 'createSolo'; name: string; deck?: string[] }
   | { type: 'joinRoom'; code: string; name: string; deck?: string[] }
   /** Rejoin an existing seat after a refresh/disconnect. */
   | { type: 'rejoin'; code: string; token: string }
@@ -20,7 +22,7 @@ export type ClientMessage =
 export type ServerMessage =
   | { type: 'welcome'; version: number }
   /** You now occupy a seat. Keep `token` to rejoin. */
-  | { type: 'seated'; code: string; color: Color; token: string; room: RoomInfo }
+  | { type: 'seated'; code: string; color: Color; token: string; room: RoomInfo; solo?: boolean }
   | { type: 'room'; room: RoomInfo }
   | { type: 'state'; view: PlayerView }
   | { type: 'error'; message: string }

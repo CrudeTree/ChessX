@@ -47,6 +47,8 @@ interface Selection {
 export class GameView {
   readonly app = new Application();
   onAction: (a: Action) => void = () => {};
+  /** Practice mode: one player controls both sides, board stays white-at-bottom. */
+  hotseat = false;
 
   private tweens!: Tweens;
   private boardLayer = new Container();
@@ -109,14 +111,30 @@ export class GameView {
     });
   }
 
+  /** Forget the current game (called when leaving a room). */
+  reset(): void {
+    this.cancelDrag();
+    this.selection = null;
+    for (const s of this.sprites.values()) s.destroy();
+    for (const v of this.voids.values()) v.destroy();
+    this.sprites.clear();
+    this.voids.clear();
+    for (const layer of [this.highlightLayer, this.lastMoveLayer, this.fxLayer, this.banner]) layer.removeChildren();
+    for (const old of this.handLayer.removeChildren()) old.destroy();
+    this.view = null;
+  }
+
   // -------------------------------------------------------------------------
   // Sync with server state
 
   sync(view: PlayerView): void {
     const first = this.view === null;
     this.view = view;
-    this.flipped = view.you === 'black';
-    if (first) this.drawBoard();
+    const flipped = !this.hotseat && view.you === 'black';
+    if (first || flipped !== this.flipped) {
+      this.flipped = flipped;
+      this.drawBoard();
+    }
 
     this.cancelDrag();
     this.selection = null;
@@ -360,7 +378,7 @@ export class GameView {
     this.banner.removeChildren();
     const view = this.view;
     if (!view || view.status.kind === 'playing') return;
-    const text = describeStatus(view.status, view.you);
+    const text = this.hotseat ? describeStatusNeutral(view.status) : describeStatus(view.status, view.you);
     const bg = new Graphics().roundRect(BOARD_X + 40, BOARD_Y + BOARD_SIZE / 2 - 44, BOARD_SIZE - 80, 88, 14).fill({ color: 0x000000, alpha: 0.82 }).stroke({ width: 3, color: COLORS.select });
     const t = new Text({ text, style: { fontFamily: UI_FONT, fontSize: 30, fontWeight: '800', fill: 0xffffff, align: 'center' } });
     t.anchor.set(0.5);
@@ -582,6 +600,22 @@ export class GameView {
     } else {
       d.sprite.destroy();
     }
+  }
+}
+
+export function describeStatusNeutral(status: PlayerView['status']): string {
+  const w = 'winner' in status ? (status.winner === 'white' ? 'White' : 'Black') : '';
+  switch (status.kind) {
+    case 'playing':
+      return '';
+    case 'stalemate':
+      return 'Stalemate';
+    case 'checkmate':
+      return `Checkmate — ${w} wins!`;
+    case 'kingCaptured':
+      return `King captured — ${w} wins!`;
+    case 'resigned':
+      return `${w} wins by resignation`;
   }
 }
 

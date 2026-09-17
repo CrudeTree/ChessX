@@ -36,11 +36,14 @@ export class Room {
   readonly code: string;
   private seats: Record<Color, Seat | null> = { white: null, black: null };
   private state: GameState | null = null;
+  /** Practice room: a single connection plays both colours. */
+  readonly solo: boolean;
   /** Timestamp of the last activity, used to garbage-collect dead rooms. */
   lastActivity = Date.now();
 
-  constructor(code: string) {
+  constructor(code: string, solo = false) {
     this.code = code;
+    this.solo = solo;
   }
 
   get isFull(): boolean {
@@ -85,18 +88,36 @@ export class Room {
     return { color, token };
   }
 
+  /** Practice mode: one connection takes both seats and the game starts immediately. */
+  seatSolo(name: string, deck: string[] | undefined, transport: Transport): { color: Color; token: string } {
+    this.touch();
+    const chosenDeck = deck && deck.length ? deck : starterDeck();
+    const problems = validateDeck(chosenDeck);
+    if (problems.length) throw new Error(problems.join(' '));
+    const token = randomBytes(16).toString('hex');
+    const label = name.slice(0, 24) || 'Player';
+    this.seats.white = { name: label, token, deck: chosenDeck, transport };
+    this.seats.black = { name: label, token, deck: chosenDeck.slice(), transport };
+    this.state = createGame({ decks: { white: chosenDeck, black: chosenDeck } });
+    this.broadcastRoom();
+    this.broadcastState();
+    return { color: 'white', token };
+  }
+
   rejoin(token: string, transport: Transport): Color {
     this.touch();
+    let found: Color | null = null;
     for (const color of ['white', 'black'] as Color[]) {
       const s = this.seats[color];
       if (s && s.token === token) {
         s.transport = transport;
-        this.broadcastRoom();
-        this.sendState(color);
-        return color;
+        found ??= color;
       }
     }
-    throw new Error('Invalid rejoin token.');
+    if (!found) throw new Error('Invalid rejoin token.');
+    this.broadcastRoom();
+    this.broadcastState();
+    return found;
   }
 
   disconnect(transport: Transport): void {
@@ -115,7 +136,7 @@ export class Room {
   act(transport: Transport, action: Action): void {
     this.touch();
     if (!this.state) throw new Error('Waiting for an opponent.');
-    const color = this.colorOf(transport);
+    const color = this.solo && this.colorOf(transport) ? this.state.turn : this.colorOf(transport);
     if (!color) throw new Error('You are not seated in this room.');
     if (this.state.turn !== color && action.type !== 'resign') throw new Error('It is not your turn.');
     if (action.type === 'resign' && this.state.turn !== color) {
@@ -145,17 +166,25 @@ export class Room {
 
   private broadcastRoom(): void {
     const msg: ServerMessage = { type: 'room', room: this.info() };
-    this.seats.white?.transport?.send(msg);
-    this.seats.black?.transport?.send(msg);
+    for (const t of this.transports()) t.send(msg);
   }
 
   private broadcastState(): void {
-    this.sendState('white');
-    this.sendState('black');
+    if (!this.state) return;
+    if (this.solo) {
+      // One connection, one view: always from the perspective of the side to move.
+      for (const t of this.transports()) t.send({ type: 'state', view: viewFor(this.state, this.state.turn) });
+      return;
+    }
+    for (const color of ['white', 'black'] as Color[]) {
+      this.seats[color]?.transport?.send({ type: 'state', view: viewFor(this.state, color) });
+    }
   }
 
-  private sendState(color: Color): void {
-    if (!this.state) return;
-    this.seats[color]?.transport?.send({ type: 'state', view: viewFor(this.state, color) });
+  private transports(): Set<Transport> {
+    const set = new Set<Transport>();
+    if (this.seats.white?.transport) set.add(this.seats.white.transport);
+    if (this.seats.black?.transport) set.add(this.seats.black.transport);
+    return set;
   }
 }

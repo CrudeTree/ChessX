@@ -76,6 +76,18 @@ function handleMessage(t: SocketTransport, msg: ClientMessage): void {
       console.log(`[room ${code}] created by ${msg.name}`);
       return;
     }
+    case 'createSolo': {
+      leaveCurrent(t);
+      let code = randomCode();
+      while (rooms.has(code)) code = randomCode();
+      const room = new Room(code, true);
+      rooms.set(code, room);
+      const { color, token } = room.seatSolo(msg.name, msg.deck, t);
+      t.room = room;
+      t.send({ type: 'seated', code, color, token, room: room.info(), solo: true });
+      console.log(`[room ${code}] practice room created by ${msg.name}`);
+      return;
+    }
     case 'joinRoom': {
       leaveCurrent(t);
       const room = rooms.get(msg.code.trim().toUpperCase());
@@ -93,7 +105,7 @@ function handleMessage(t: SocketTransport, msg: ClientMessage): void {
       if (!room) return t.error('That game no longer exists.');
       const color = room.rejoin(msg.token, t);
       t.room = room;
-      t.send({ type: 'seated', code: room.code, color, token: msg.token, room: room.info() });
+      t.send({ type: 'seated', code: room.code, color, token: msg.token, room: room.info(), solo: room.solo || undefined });
       return;
     }
     case 'action': {
