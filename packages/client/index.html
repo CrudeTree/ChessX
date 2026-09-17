@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ChessX</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="lobby" class="screen">
+      <div class="panel">
+        <h1>Chess<span>X</span></h1>
+        <p class="tagline">Chess, but every piece has HP and your deck decides the war.</p>
+        <label>
+          Your name
+          <input id="name" maxlength="24" placeholder="Player" autocomplete="off" />
+        </label>
+        <button id="create" class="primary">Create game</button>
+        <div class="or">or join with a code</div>
+        <div class="row">
+          <input id="code" maxlength="5" placeholder="CODE" autocomplete="off" />
+          <button id="join">Join</button>
+        </div>
+        <p id="lobby-error" class="error"></p>
+        <p id="conn" class="conn">connecting…</p>
+      </div>
+    </div>
+
+    <div id="game" class="screen hidden">
+      <div id="board-mount"></div>
+      <aside id="side">
+        <div class="side-block">
+          <div class="label">Invite code</div>
+          <div id="room-code" class="code">-----</div>
+          <div class="hint">Send this to a friend. They enter it under "Join".</div>
+        </div>
+        <div class="side-block players">
+          <div id="opp" class="player">
+            <div class="who"><span class="dot"></span><span class="pname">Waiting for opponent…</span></div>
+            <div class="counts"><span class="hand">Hand: –</span> <span class="deck">Deck: –</span></div>
+          </div>
+          <div id="status" class="status">Waiting for an opponent to join.</div>
+          <div id="me" class="player">
+            <div class="who"><span class="dot"></span><span class="pname">You</span></div>
+            <div class="counts"><span class="hand">Hand: –</span> <span class="deck">Deck: –</span></div>
+          </div>
+        </div>
+        <div class="side-block grow">
+          <div class="label">Log</div>
+          <div id="log"></div>
+        </div>
+        <div class="side-block actions">
+          <button id="resign" class="danger">Resign</button>
+          <button id="leave">Leave</button>
+        </div>
+      </aside>
+    </div>
+
+    <div id="toast" class="hidden"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

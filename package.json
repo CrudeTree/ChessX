@@ -1,0 +1,23 @@
+{
+  "name": "chessx",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,magenta \"npm run dev -w @chessx/server\" \"npm run dev -w @chessx/client\"",
+    "test": "npm run test -w @chessx/engine",
+    "typecheck": "tsc -p packages/engine && tsc -p packages/protocol && tsc -p packages/server && tsc -p packages/client",
+    "build": "npm run build -w @chessx/client",
+    "start": "npm run start -w @chessx/server"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "concurrently": "^9.1.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

@@ -1,0 +1,601 @@
+import type { Action, Color, GameEvent, PlayerView, Square } from '@chessx/engine';
+import { Application, Container, Graphics, Text, type FederatedPointerEvent } from 'pixi.js';
+import { CardSprite } from './CardSprite.js';
+import {
+  BOARD_SIZE,
+  BOARD_X,
+  BOARD_Y,
+  CANVAS_H,
+  CANVAS_W,
+  CARD_H,
+  CARD_W,
+  COLORS,
+  HAND_Y,
+  SQ,
+  UI_FONT,
+  isOverBoard,
+  squareToXY,
+  xyToSquare,
+} from './layout.js';
+import { PieceSprite } from './PieceSprite.js';
+import { Tweens, easeInOutQuad, easeOutBack } from './tween.js';
+
+type MoveAction = Extract<Action, { type: 'move' }>;
+type CardAction = Extract<Action, { type: 'playCard' }>;
+
+interface Targets {
+  /** Square -> action to send when dropped there. */
+  bySquare: Map<Square, Action>;
+  /** Action for untargeted cards, playable by dropping anywhere on the board. */
+  anywhere: Action | null;
+}
+
+type Drag =
+  | { kind: 'piece'; sprite: PieceSprite; from: Square; targets: Targets; startX: number; startY: number; moved: boolean }
+  | { kind: 'card'; sprite: CardSprite; homeX: number; homeY: number; targets: Targets; startX: number; startY: number; moved: boolean };
+
+interface Selection {
+  square: Square;
+  targets: Targets;
+}
+
+/**
+ * Renders the board + hand with PixiJS and turns pointer input into engine
+ * Actions. It never decides legality itself: everything it offers the player
+ * comes from `view.legalActions` sent by the server.
+ */
+export class GameView {
+  readonly app = new Application();
+  onAction: (a: Action) => void = () => {};
+
+  private tweens!: Tweens;
+  private boardLayer = new Container();
+  private lastMoveLayer = new Container();
+  private voidLayer = new Container();
+  private highlightLayer = new Container();
+  private pieceLayer = new Container();
+  private fxLayer = new Container();
+  private handLayer = new Container();
+  private dragLayer = new Container();
+  private banner = new Container();
+
+  private sprites = new Map<string, PieceSprite>();
+  private voids = new Map<string, Graphics>();
+  private view: PlayerView | null = null;
+  private flipped = false;
+  private drag: Drag | null = null;
+  private selection: Selection | null = null;
+  private pulse = 0;
+
+  async init(mount: HTMLElement): Promise<void> {
+    await this.app.init({
+      width: CANVAS_W,
+      height: CANVAS_H,
+      backgroundAlpha: 0,
+      antialias: true,
+      resolution: Math.min(2, window.devicePixelRatio || 1),
+      autoDensity: true,
+    });
+    mount.appendChild(this.app.canvas);
+    this.tweens = new Tweens(this.app.ticker);
+
+    this.app.stage.addChild(
+      this.boardLayer,
+      this.lastMoveLayer,
+      this.voidLayer,
+      this.highlightLayer,
+      this.pieceLayer,
+      this.fxLayer,
+      this.handLayer,
+      this.dragLayer,
+      this.banner,
+    );
+    this.drawBoard();
+
+    this.app.stage.eventMode = 'static';
+    this.app.stage.hitArea = this.app.screen;
+    this.app.stage.on('pointermove', (e) => this.onPointerMove(e));
+    this.app.stage.on('pointerup', (e) => this.onPointerUp(e));
+    this.app.stage.on('pointerupoutside', (e) => this.onPointerUp(e));
+    this.app.stage.on('pointerdown', (e) => this.onStagePointerDown(e));
+
+    this.app.ticker.add((tk) => {
+      this.pulse += tk.deltaMS / 1000;
+      const a = 0.55 + 0.25 * Math.sin(this.pulse * 3);
+      for (const v of this.voids.values()) {
+        v.alpha = a;
+        v.rotation += tk.deltaMS / 2500;
+      }
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Sync with server state
+
+  sync(view: PlayerView): void {
+    const first = this.view === null;
+    this.view = view;
+    this.flipped = view.you === 'black';
+    if (first) this.drawBoard();
+
+    this.cancelDrag();
+    this.selection = null;
+    this.highlightLayer.removeChildren();
+
+    // Pieces: tween existing, pop new, fade removed.
+    const seen = new Set<string>();
+    for (const piece of Object.values(view.pieces)) {
+      seen.add(piece.id);
+      const { x, y } = squareToXY(piece.square, this.flipped);
+      let sprite = this.sprites.get(piece.id);
+      if (!sprite) {
+        sprite = new PieceSprite(piece);
+        sprite.position.set(x, y);
+        sprite.on('pointerdown', (e) => this.onPiecePointerDown(e, sprite!));
+        this.pieceLayer.addChild(sprite);
+        this.sprites.set(piece.id, sprite);
+        if (!first) {
+          sprite.scale.set(0);
+          const s = sprite;
+          this.tweens.run(320, (t) => !s.destroyed && s.scale.set(t), { ease: easeOutBack });
+        }
+      } else {
+        sprite.update(piece);
+        if (sprite.x !== x || sprite.y !== y) {
+          const s = sprite;
+          const sx = s.x;
+          const sy = s.y;
+          s.zIndex = 10;
+          this.tweens.run(
+            first ? 0 : 220,
+            (t) => !s.destroyed && s.position.set(sx + (x - sx) * t, sy + (y - sy) * t),
+            { ease: easeInOutQuad, done: () => !s.destroyed && (s.zIndex = 0) },
+          );
+        }
+      }
+      this.syncVoid(piece.id, !!piece.summon, x, y);
+    }
+    for (const [id, sprite] of this.sprites) {
+      if (seen.has(id)) continue;
+      this.sprites.delete(id);
+      this.syncVoid(id, false, 0, 0);
+      sprite.eventMode = 'none';
+      this.tweens.run(260, (t) => {
+        sprite.alpha = 1 - t;
+        sprite.scale.set(1 - 0.4 * t);
+      }, { done: () => sprite.destroy() });
+    }
+    this.pieceLayer.sortableChildren = true;
+
+    this.playEvents(view.events);
+    this.drawLastMove(view.events);
+    this.renderHand();
+    this.renderBanner();
+  }
+
+  private syncVoid(pieceId: string, active: boolean, x: number, y: number): void {
+    const existing = this.voids.get(pieceId);
+    if (active && !existing) {
+      const g = new Graphics();
+      g.circle(0, 0, 31).fill(COLORS.void);
+      g.circle(0, 0, 31).stroke({ width: 3, color: COLORS.summon, alpha: 0.9 });
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        g.moveTo(Math.cos(a) * 20, Math.sin(a) * 20).lineTo(Math.cos(a) * 29, Math.sin(a) * 29).stroke({ width: 2, color: COLORS.summon, alpha: 0.6 });
+      }
+      g.position.set(x, y);
+      g.scale.set(0);
+      this.voidLayer.addChild(g);
+      this.voids.set(pieceId, g);
+      this.tweens.run(400, (t) => g.scale.set(t), { ease: easeOutBack });
+    } else if (!active && existing) {
+      this.voids.delete(pieceId);
+      this.tweens.run(300, (t) => existing.scale.set(1 - t), { done: () => existing.destroy() });
+    } else if (existing) {
+      existing.position.set(x, y);
+    }
+  }
+
+  private playEvents(events: GameEvent[]): void {
+    for (const ev of events) {
+      switch (ev.type) {
+        case 'attacked': {
+          const attacker = this.sprites.get(ev.attackerId);
+          const repelled = events.some((e) => e.type === 'repelled' && e.pieceId === ev.attackerId);
+          if (attacker && repelled) {
+            const home = squareToXY(ev.from, this.flipped);
+            const target = squareToXY(ev.to, this.flipped);
+            attacker.zIndex = 10;
+            this.tweens.run(340, (t) => {
+              if (attacker.destroyed || this.drag?.sprite === attacker) return;
+              const k = Math.sin(t * Math.PI) * 0.6;
+              attacker.position.set(home.x + (target.x - home.x) * k, home.y + (target.y - home.y) * k);
+            }, { ease: easeInOutQuad, done: () => !attacker.destroyed && (attacker.zIndex = 0) });
+          }
+          break;
+        }
+        case 'damaged': {
+          const { x, y } = squareToXY(ev.square, this.flipped);
+          this.flash(x, y, COLORS.attack, 180);
+          this.floatText(x, y, `-${ev.amount}`, COLORS.attack, 220);
+          break;
+        }
+        case 'destroyed':
+        case 'kingCaptured': {
+          const { x, y } = squareToXY(ev.square, this.flipped);
+          this.burst(x, y, COLORS.attack);
+          break;
+        }
+        case 'summoned': {
+          const { x, y } = squareToXY(ev.square, this.flipped);
+          this.burst(x, y, COLORS.summon, 1.6);
+          break;
+        }
+        case 'statsChanged': {
+          const { x, y } = squareToXY(ev.square, this.flipped);
+          this.flash(x, y, COLORS.select);
+          break;
+        }
+        case 'summonStarted': {
+          const { x, y } = squareToXY(ev.square, this.flipped);
+          this.flash(x, y, COLORS.summon);
+          break;
+        }
+        default:
+          break;
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Drawing
+
+  private drawBoard(): void {
+    this.boardLayer.removeChildren();
+    const g = new Graphics();
+    g.roundRect(BOARD_X - 10, BOARD_Y - 10, BOARD_SIZE + 20, BOARD_SIZE + 20, 12).fill(COLORS.edge);
+    for (let sf = 0; sf < 8; sf++) {
+      for (let sr = 0; sr < 8; sr++) {
+        const light = (sf + sr) % 2 === 0;
+        g.rect(BOARD_X + sf * SQ, BOARD_Y + sr * SQ, SQ, SQ).fill(light ? COLORS.light : COLORS.dark);
+      }
+    }
+    this.boardLayer.addChild(g);
+    for (let i = 0; i < 8; i++) {
+      const file = this.flipped ? 7 - i : i;
+      const rank = this.flipped ? i : 7 - i;
+      const fl = new Text({ text: 'abcdefgh'[file]!, style: { fontFamily: UI_FONT, fontSize: 10, fill: 0xffffff, fontWeight: '600' } });
+      fl.alpha = 0.55;
+      fl.position.set(BOARD_X + i * SQ + SQ - 10, BOARD_Y + BOARD_SIZE - 13);
+      const rk = new Text({ text: `${rank + 1}`, style: { fontFamily: UI_FONT, fontSize: 10, fill: 0xffffff, fontWeight: '600' } });
+      rk.alpha = 0.55;
+      rk.position.set(BOARD_X + 3, BOARD_Y + i * SQ + 2);
+      this.boardLayer.addChild(fl, rk);
+    }
+  }
+
+  private drawLastMove(events: GameEvent[]): void {
+    this.lastMoveLayer.removeChildren();
+    const g = new Graphics();
+    for (const ev of events) {
+      if (ev.type === 'moved' || ev.type === 'attacked') {
+        for (const s of [ev.from, ev.to]) {
+          const { x, y } = squareToXY(s, this.flipped);
+          g.rect(x - SQ / 2, y - SQ / 2, SQ, SQ).fill({ color: COLORS.lastMove, alpha: 0.28 });
+        }
+      }
+      if (ev.type === 'cardPlayed' && ev.target !== undefined) {
+        const { x, y } = squareToXY(ev.target, this.flipped);
+        g.rect(x - SQ / 2, y - SQ / 2, SQ, SQ).fill({ color: COLORS.card, alpha: 0.3 });
+      }
+    }
+    this.lastMoveLayer.addChild(g);
+  }
+
+  private drawHighlights(targets: Targets, origin?: Square): void {
+    this.highlightLayer.removeChildren();
+    const g = new Graphics();
+    if (origin !== undefined) {
+      const { x, y } = squareToXY(origin, this.flipped);
+      g.rect(x - SQ / 2, y - SQ / 2, SQ, SQ).fill({ color: COLORS.select, alpha: 0.45 });
+    }
+    if (targets.anywhere) {
+      g.rect(BOARD_X, BOARD_Y, BOARD_SIZE, BOARD_SIZE).fill({ color: COLORS.card, alpha: 0.18 });
+      g.rect(BOARD_X, BOARD_Y, BOARD_SIZE, BOARD_SIZE).stroke({ width: 4, color: COLORS.card, alpha: 0.9 });
+    }
+    for (const [square, action] of targets.bySquare) {
+      const { x, y } = squareToXY(square, this.flipped);
+      if (action.type === 'playCard') {
+        g.rect(x - SQ / 2 + 3, y - SQ / 2 + 3, SQ - 6, SQ - 6).fill({ color: COLORS.card, alpha: 0.35 });
+        g.rect(x - SQ / 2 + 3, y - SQ / 2 + 3, SQ - 6, SQ - 6).stroke({ width: 3, color: COLORS.card, alpha: 0.95 });
+      } else if (this.view?.board[square]) {
+        g.circle(x, y, SQ / 2 - 5).stroke({ width: 5, color: COLORS.attack, alpha: 0.85 });
+      } else {
+        g.circle(x, y, 10).fill({ color: COLORS.move, alpha: 0.85 });
+      }
+    }
+    this.highlightLayer.addChild(g);
+  }
+
+  private renderHand(): void {
+    for (const old of this.handLayer.removeChildren()) old.destroy();
+    const view = this.view;
+    if (!view) return;
+    const hand = view.players[view.you].hand ?? [];
+    const playable = new Set(view.legalActions.filter((a): a is CardAction => a.type === 'playCard').map((a) => a.cardInstanceId));
+    const n = hand.length;
+    if (n === 0) return;
+    const spacing = n <= 1 ? 0 : Math.min(CARD_W + 6, (CANVAS_W - 40 - CARD_W) / (n - 1));
+    const startX = CANVAS_W / 2 - ((n - 1) * spacing) / 2;
+    hand.forEach((inst, i) => {
+      const sprite = new CardSprite(inst, playable.has(inst.instanceId));
+      const hx = startX + i * spacing;
+      const hy = HAND_Y + CARD_H / 2;
+      sprite.position.set(hx, hy);
+      sprite.on('pointerover', () => {
+        if (this.drag) return;
+        sprite.zIndex = 20;
+        this.tweens.run(120, (t) => {
+          if (sprite.destroyed || this.drag?.sprite === sprite) return;
+          sprite.y = hy - 14 * t;
+          sprite.scale.set(1 + 0.06 * t);
+        });
+      });
+      sprite.on('pointerout', () => {
+        if (this.drag) return;
+        sprite.zIndex = 0;
+        this.tweens.run(120, (t) => {
+          if (sprite.destroyed || this.drag?.sprite === sprite) return;
+          sprite.y = hy - 14 * (1 - t);
+          sprite.scale.set(1 + 0.06 * (1 - t));
+        });
+      });
+      sprite.on('pointerdown', (e) => this.onCardPointerDown(e, sprite, hx, hy));
+      this.handLayer.addChild(sprite);
+    });
+    this.handLayer.sortableChildren = true;
+  }
+
+  private renderBanner(): void {
+    this.banner.removeChildren();
+    const view = this.view;
+    if (!view || view.status.kind === 'playing') return;
+    const text = describeStatus(view.status, view.you);
+    const bg = new Graphics().roundRect(BOARD_X + 40, BOARD_Y + BOARD_SIZE / 2 - 44, BOARD_SIZE - 80, 88, 14).fill({ color: 0x000000, alpha: 0.82 }).stroke({ width: 3, color: COLORS.select });
+    const t = new Text({ text, style: { fontFamily: UI_FONT, fontSize: 30, fontWeight: '800', fill: 0xffffff, align: 'center' } });
+    t.anchor.set(0.5);
+    t.position.set(BOARD_X + BOARD_SIZE / 2, BOARD_Y + BOARD_SIZE / 2);
+    this.banner.addChild(bg, t);
+    this.banner.alpha = 0;
+    this.tweens.run(500, (a) => (this.banner.alpha = a), { delay: 400 });
+  }
+
+  // -------------------------------------------------------------------------
+  // Effects
+
+  private flash(x: number, y: number, color: number, duration = 260): void {
+    const g = new Graphics().rect(x - SQ / 2, y - SQ / 2, SQ, SQ).fill(color);
+    this.fxLayer.addChild(g);
+    this.tweens.run(duration, (t) => (g.alpha = 0.7 * (1 - t)), { done: () => g.destroy() });
+  }
+
+  private burst(x: number, y: number, color: number, size = 1): void {
+    const ring = new Graphics().circle(0, 0, 20).stroke({ width: 5, color });
+    ring.position.set(x, y);
+    this.fxLayer.addChild(ring);
+    this.tweens.run(420, (t) => {
+      ring.scale.set(0.4 + 1.6 * size * t);
+      ring.alpha = 1 - t;
+    }, { done: () => ring.destroy() });
+    for (let i = 0; i < 8; i++) {
+      const p = new Graphics().circle(0, 0, 3.5).fill(color);
+      const a = (i / 8) * Math.PI * 2 + Math.random() * 0.4;
+      const d = (26 + Math.random() * 18) * size;
+      p.position.set(x, y);
+      this.fxLayer.addChild(p);
+      this.tweens.run(380 + Math.random() * 120, (t) => {
+        p.position.set(x + Math.cos(a) * d * t, y + Math.sin(a) * d * t);
+        p.alpha = 1 - t;
+      }, { done: () => p.destroy() });
+    }
+  }
+
+  private floatText(x: number, y: number, text: string, color: number, delay = 0): void {
+    const t = new Text({ text, style: { fontFamily: UI_FONT, fontSize: 22, fontWeight: '900', fill: color, stroke: { color: 0x000000, width: 4 } } });
+    t.anchor.set(0.5);
+    t.position.set(x, y - 10);
+    this.fxLayer.addChild(t);
+    this.tweens.run(700, (k) => {
+      t.y = y - 10 - 34 * k;
+      t.alpha = 1 - k * k;
+    }, { delay, done: () => t.destroy() });
+  }
+
+  // -------------------------------------------------------------------------
+  // Input
+
+  private get myTurn(): boolean {
+    return !!this.view && this.view.status.kind === 'playing' && this.view.turn === this.view.you;
+  }
+
+  private moveTargetsFrom(square: Square): Targets {
+    const bySquare = new Map<Square, Action>();
+    if (!this.view) return { bySquare, anywhere: null };
+    for (const a of this.view.legalActions) {
+      if (a.type !== 'move' || a.from !== square) continue;
+      const existing = bySquare.get(a.to) as MoveAction | undefined;
+      // Several promotion options share a square; default to queen.
+      if (!existing || a.promotion === 'queen') bySquare.set(a.to, a);
+    }
+    return { bySquare, anywhere: null };
+  }
+
+  private cardTargets(instanceId: string): Targets {
+    const bySquare = new Map<Square, Action>();
+    let anywhere: Action | null = null;
+    if (!this.view) return { bySquare, anywhere };
+    for (const a of this.view.legalActions) {
+      if (a.type !== 'playCard' || a.cardInstanceId !== instanceId) continue;
+      if (a.target === undefined) anywhere = a;
+      else bySquare.set(a.target, a);
+    }
+    return { bySquare, anywhere };
+  }
+
+  private onPiecePointerDown(e: FederatedPointerEvent, sprite: PieceSprite): void {
+    if (!this.view || this.drag) return;
+    const piece = this.view.pieces[sprite.pieceId];
+    if (!piece) return;
+
+    // Clicking a highlighted target square (with a piece on it) while something is selected.
+    if (this.selection && this.tryActOnSquare(piece.square)) return;
+
+    if (!this.myTurn || piece.owner !== this.view.you) return;
+    const targets = this.moveTargetsFrom(piece.square);
+    if (targets.bySquare.size === 0) return;
+
+    e.stopPropagation();
+    this.drag = { kind: 'piece', sprite, from: piece.square, targets, startX: e.global.x, startY: e.global.y, moved: false };
+    sprite.zIndex = 50;
+    sprite.cursor = 'grabbing';
+    this.pieceLayer.removeChild(sprite);
+    this.dragLayer.addChild(sprite);
+    this.drawHighlights(targets, piece.square);
+  }
+
+  private onCardPointerDown(e: FederatedPointerEvent, sprite: CardSprite, homeX: number, homeY: number): void {
+    if (!this.view || this.drag || !sprite.playable || !this.myTurn) return;
+    const targets = this.cardTargets(sprite.instanceId);
+    if (targets.bySquare.size === 0 && !targets.anywhere) return;
+    e.stopPropagation();
+    this.selection = null;
+    this.drag = { kind: 'card', sprite, homeX, homeY, targets, startX: e.global.x, startY: e.global.y, moved: false };
+    sprite.zIndex = 50;
+    sprite.scale.set(1.08);
+    this.handLayer.removeChild(sprite);
+    this.dragLayer.addChild(sprite);
+    sprite.position.set(e.global.x, e.global.y);
+    this.drawHighlights(targets);
+  }
+
+  private onStagePointerDown(e: FederatedPointerEvent): void {
+    if (this.drag) return;
+    const square = xyToSquare(e.global.x, e.global.y, this.flipped);
+    if (square === null) {
+      this.clearSelection();
+      return;
+    }
+    if (this.tryActOnSquare(square)) return;
+    this.clearSelection();
+  }
+
+  private onPointerMove(e: FederatedPointerEvent): void {
+    const d = this.drag;
+    if (!d) return;
+    if (Math.hypot(e.global.x - d.startX, e.global.y - d.startY) > 4) d.moved = true;
+    d.sprite.position.set(e.global.x, e.global.y);
+  }
+
+  private onPointerUp(e: FederatedPointerEvent): void {
+    const d = this.drag;
+    if (!d) return;
+    this.drag = null;
+    const square = xyToSquare(e.global.x, e.global.y, this.flipped);
+
+    if (d.kind === 'piece') {
+      const action = square !== null && square !== d.from ? d.targets.bySquare.get(square) : undefined;
+      this.dragLayer.removeChild(d.sprite);
+      this.pieceLayer.addChild(d.sprite);
+      d.sprite.zIndex = 0;
+      d.sprite.cursor = 'grab';
+      const home = squareToXY(d.from, this.flipped);
+      if (action) {
+        // Snap to destination immediately; the server's state will confirm.
+        const dest = squareToXY(square!, this.flipped);
+        d.sprite.position.set(dest.x, dest.y);
+        this.highlightLayer.removeChildren();
+        this.onAction(action);
+      } else {
+        d.sprite.position.set(home.x, home.y);
+        if (!d.moved) {
+          // A simple click: keep the piece selected so the player can click a target.
+          this.selection = { square: d.from, targets: d.targets };
+          this.drawHighlights(d.targets, d.from);
+        } else {
+          this.highlightLayer.removeChildren();
+        }
+      }
+      return;
+    }
+
+    // Card
+    let action: Action | undefined;
+    if (square !== null) action = d.targets.bySquare.get(square);
+    if (!action && d.targets.anywhere && isOverBoard(e.global.x, e.global.y)) action = d.targets.anywhere;
+    this.highlightLayer.removeChildren();
+    if (action) {
+      this.dragLayer.removeChild(d.sprite);
+      d.sprite.destroy();
+      if (square !== null) {
+        const { x, y } = squareToXY(square, this.flipped);
+        this.burst(x, y, COLORS.card, 0.8);
+      }
+      this.onAction(action);
+    } else {
+      this.dragLayer.removeChild(d.sprite);
+      this.handLayer.addChild(d.sprite);
+      d.sprite.zIndex = 0;
+      const sx = d.sprite.x;
+      const sy = d.sprite.y;
+      this.tweens.run(180, (t) => {
+        d.sprite.position.set(sx + (d.homeX - sx) * t, sy + (d.homeY - sy) * t);
+        d.sprite.scale.set(1.08 - 0.08 * t);
+      });
+    }
+  }
+
+  private tryActOnSquare(square: Square): boolean {
+    const sel = this.selection;
+    if (!sel) return false;
+    const action = sel.targets.bySquare.get(square);
+    if (!action) return false;
+    this.selection = null;
+    this.highlightLayer.removeChildren();
+    this.onAction(action);
+    return true;
+  }
+
+  private clearSelection(): void {
+    this.selection = null;
+    this.highlightLayer.removeChildren();
+  }
+
+  private cancelDrag(): void {
+    const d = this.drag;
+    if (!d) return;
+    this.drag = null;
+    this.dragLayer.removeChild(d.sprite);
+    if (d.kind === 'piece') {
+      this.pieceLayer.addChild(d.sprite);
+      const home = squareToXY(d.from, this.flipped);
+      d.sprite.position.set(home.x, home.y);
+    } else {
+      d.sprite.destroy();
+    }
+  }
+}
+
+export function describeStatus(status: PlayerView['status'], you: Color): string {
+  switch (status.kind) {
+    case 'playing':
+      return '';
+    case 'stalemate':
+      return 'Stalemate';
+    case 'checkmate':
+      return status.winner === you ? 'Checkmate — you win!' : 'Checkmate — you lose';
+    case 'kingCaptured':
+      return status.winner === you ? 'King captured — you win!' : 'Your King was captured';
+    case 'resigned':
+      return status.winner === you ? 'Opponent resigned — you win!' : 'You resigned';
+  }
+}

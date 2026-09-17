@@ -1,0 +1,396 @@
+import { getCardDef } from './cards/registry.js';
+import type { CardInstance, Effect, SummonCardDef, TargetRule } from './cards/types.js';
+import { isInCheck, lastRank, pseudoMoves, type MoveCandidate } from './movement.js';
+import { getPieceDef } from './pieces.js';
+import { cloneState, drawCards, pieceAt, piecesOf, type GameState } from './state.js';
+import {
+  opposite,
+  rankOf,
+  squareName,
+  type Action,
+  type Color,
+  type Piece,
+  type PromotionKind,
+  type Square,
+} from './types.js';
+
+export class IllegalActionError extends Error {}
+
+const PROMOTIONS: PromotionKind[] = ['queen', 'rook', 'bishop', 'knight'];
+
+// ---------------------------------------------------------------------------
+// Public API
+
+/**
+ * Every legal action for `color` (defaults to side to move). An action is
+ * legal if it is well-formed and does not leave the acting player's king in
+ * check afterwards. This single rule covers "must respond to check", and
+ * also lets a spell (e.g. one that kills the checking piece) count as a
+ * valid response while a useless card does not.
+ */
+export function legalActions(state: GameState, color: Color = state.turn): Action[] {
+  if (state.status.kind !== 'playing') return [];
+  const out: Action[] = [];
+  for (const cand of candidateActions(state, color)) {
+    if (leavesKingSafe(state, cand, color)) out.push(cand);
+  }
+  return out;
+}
+
+export function legalMoves(state: GameState, color: Color = state.turn): Extract<Action, { type: 'move' }>[] {
+  return legalActions(state, color).filter((a): a is Extract<Action, { type: 'move' }> => a.type === 'move');
+}
+
+/**
+ * Apply an action for the side to move and return the new state. Throws
+ * IllegalActionError if the action is not legal. The input is not mutated.
+ */
+export function applyAction(state: GameState, action: Action): GameState {
+  if (state.status.kind !== 'playing') throw new IllegalActionError('Game is over.');
+  const next = cloneState(state);
+  next.events = [];
+  const color = next.turn;
+
+  if (action.type === 'resign') {
+    next.status = { kind: 'resigned', winner: opposite(color) };
+    next.events.push({ type: 'gameOver', status: next.status });
+    return next;
+  }
+
+  performAction(next, action, color); // throws a descriptive IllegalActionError if malformed
+  if (!kingSafe(next, color)) {
+    throw new IllegalActionError(
+      isInCheck(state, color) ? 'You must get your King out of check.' : 'That would leave your King in check.',
+    );
+  }
+
+  if (next.status.kind === 'playing') endTurn(next);
+  else next.events.push({ type: 'gameOver', status: next.status });
+  return next;
+}
+
+// ---------------------------------------------------------------------------
+// Candidate generation
+
+function candidateActions(state: GameState, color: Color): Action[] {
+  const out: Action[] = [];
+  for (const piece of piecesOf(state, color)) {
+    for (const cand of pseudoMoves(state, piece)) {
+      if (cand.promotion) {
+        for (const promotion of PROMOTIONS) out.push({ type: 'move', from: cand.from, to: cand.to, promotion });
+      } else {
+        out.push({ type: 'move', from: cand.from, to: cand.to });
+      }
+    }
+  }
+  for (const inst of state.players[color].hand) {
+    for (const target of cardTargets(state, inst, color)) {
+      out.push({ type: 'playCard', cardInstanceId: inst.instanceId, target });
+    }
+  }
+  return out;
+}
+
+/** Squares a card may target (or [undefined] for untargeted cards). Empty if unplayable. */
+export function cardTargets(state: GameState, inst: CardInstance, color: Color): (Square | undefined)[] {
+  const card = getCardDef(inst.cardId);
+  if (card.type === 'summon') {
+    const needTier = card.sacrificeTier ?? card.tier - 1;
+    return piecesOf(state, color)
+      .filter((p) => p.kind !== 'king' && !p.summon && getPieceDef(p.kind).tier === needTier)
+      .map((p) => p.square);
+  }
+  if (card.target === 'none') return [undefined];
+  return Object.values(state.pieces)
+    .filter((p) => matchesTarget(p, card.target, color, card.allowKing ?? false))
+    .map((p) => p.square);
+}
+
+function matchesTarget(p: Piece, rule: TargetRule, color: Color, allowKing: boolean): boolean {
+  if (p.kind === 'king' && !allowKing) return false;
+  switch (rule) {
+    case 'none':
+      return false;
+    case 'ownPiece':
+      return p.owner === color;
+    case 'enemyPiece':
+      return p.owner !== color;
+    case 'anyPiece':
+      return true;
+    case 'ownSummoning':
+      return p.owner === color && !!p.summon;
+  }
+}
+
+function leavesKingSafe(state: GameState, action: Action, color: Color): boolean {
+  if (action.type === 'resign') return true;
+  const sim = cloneState(state);
+  try {
+    performAction(sim, action, color);
+  } catch (e) {
+    if (e instanceof IllegalActionError) return false;
+    throw e;
+  }
+  return kingSafe(sim, color);
+}
+
+/** After `color` has acted: did they capture the enemy king, or at least leave their own king out of check? */
+function kingSafe(after: GameState, color: Color): boolean {
+  if (after.status.kind === 'kingCaptured') return after.status.winner === color;
+  return !isInCheck(after, color);
+}
+
+// ---------------------------------------------------------------------------
+// Performing actions (mutates the given state, no end-of-turn processing)
+
+function performAction(state: GameState, action: Action, color: Color): void {
+  switch (action.type) {
+    case 'move':
+      performMove(state, action, color);
+      break;
+    case 'playCard':
+      performCard(state, action, color);
+      break;
+    case 'resign':
+      break;
+  }
+}
+
+function performMove(state: GameState, action: Extract<Action, { type: 'move' }>, color: Color): void {
+  const piece = pieceAt(state, action.from);
+  if (!piece) throw new IllegalActionError(`No piece on ${squareName(action.from)}.`);
+  if (piece.owner !== color) throw new IllegalActionError('That is not your piece.');
+  if (piece.summon) throw new IllegalActionError('A piece being sacrificed cannot move.');
+  const cand = pseudoMoves(state, piece).find((c) => c.to === action.to);
+  if (!cand) throw new IllegalActionError(`${getPieceDef(piece.kind).name} cannot move to ${squareName(action.to)}.`);
+  if (action.promotion && !cand.promotion) throw new IllegalActionError('Promotion not available for this move.');
+
+  piece.hasMoved = true;
+  state.enPassant = null;
+
+  switch (cand.kind) {
+    case 'move': {
+      movePiece(state, piece, cand.to);
+      if (piece.kind === 'pawn' && Math.abs(cand.to - cand.from) === 16) {
+        state.enPassant = (cand.from + cand.to) / 2;
+      }
+      if (cand.promotion) promote(state, piece, action.promotion ?? 'queen');
+      break;
+    }
+    case 'castle': {
+      const rook = pieceAt(state, cand.rookFrom!)!;
+      movePiece(state, piece, cand.to, true);
+      movePiece(state, rook, cand.rookTo!, true);
+      rook.hasMoved = true;
+      break;
+    }
+    case 'attack':
+    case 'enPassant': {
+      const target = pieceAt(state, cand.captureSquare ?? cand.to)!;
+      attack(state, piece, target, cand);
+      break;
+    }
+  }
+}
+
+/**
+ * Combat. Damage = max(0, ATK - DEF). If the defender's HP drops to 0 it is
+ * destroyed and the attacker takes its square; otherwise the attacker stays
+ * where it was. The King is the exception: any hit captures it outright.
+ */
+function attack(state: GameState, attacker: Piece, target: Piece, cand: MoveCandidate): void {
+  if (target.kind === 'king') {
+    state.events.push({ type: 'kingCaptured', owner: target.owner, square: target.square });
+    removePiece(state, target);
+    movePiece(state, attacker, cand.to);
+    state.status = { kind: 'kingCaptured', winner: attacker.owner };
+    return;
+  }
+
+  const damage = Math.max(0, attacker.atk - target.def);
+  state.events.push({
+    type: 'attacked',
+    attackerId: attacker.id,
+    targetId: target.id,
+    from: attacker.square,
+    to: target.square,
+    damage,
+  });
+  target.hp -= damage;
+  state.events.push({ type: 'damaged', pieceId: target.id, square: target.square, amount: damage, hp: Math.max(0, target.hp) });
+
+  if (target.hp <= 0) {
+    destroyPiece(state, target);
+    movePiece(state, attacker, cand.to);
+    if (cand.promotion) promote(state, attacker, 'queen');
+  } else {
+    state.events.push({ type: 'repelled', pieceId: attacker.id, square: attacker.square });
+  }
+}
+
+function movePiece(state: GameState, piece: Piece, to: Square, castle = false): void {
+  const from = piece.square;
+  state.board[from] = null;
+  state.board[to] = piece.id;
+  piece.square = to;
+  state.events.push({ type: 'moved', pieceId: piece.id, from, to, castle: castle || undefined });
+}
+
+function promote(state: GameState, pawn: Piece, to: PromotionKind): void {
+  if (rankOf(pawn.square) !== lastRank(pawn.owner)) return;
+  pawn.kind = to;
+  state.events.push({ type: 'promoted', pieceId: pawn.id, square: pawn.square, to });
+}
+
+function removePiece(state: GameState, piece: Piece): void {
+  state.board[piece.square] = null;
+  delete state.pieces[piece.id];
+}
+
+/** Destroy a piece. If it was being sacrificed, the pending summon fails and its card is destroyed. */
+function destroyPiece(state: GameState, piece: Piece): void {
+  state.events.push({ type: 'destroyed', pieceId: piece.id, kind: piece.kind, owner: piece.owner, square: piece.square });
+  if (piece.summon) {
+    state.players[piece.owner].graveyard.push({ instanceId: piece.summon.cardInstanceId, cardId: piece.summon.cardId });
+    state.events.push({ type: 'summonFailed', color: piece.owner, cardId: piece.summon.cardId, square: piece.square });
+  }
+  removePiece(state, piece);
+}
+
+// ---------------------------------------------------------------------------
+// Cards
+
+function performCard(state: GameState, action: Extract<Action, { type: 'playCard' }>, color: Color): void {
+  const player = state.players[color];
+  const idx = player.hand.findIndex((c) => c.instanceId === action.cardInstanceId);
+  if (idx < 0) throw new IllegalActionError('That card is not in your hand.');
+  const inst = player.hand[idx]!;
+  const card = getCardDef(inst.cardId);
+
+  const validTargets = cardTargets(state, inst, color);
+  if (!validTargets.includes(action.target)) {
+    throw new IllegalActionError(
+      action.target === undefined ? `${card.name} needs a target.` : `${card.name} cannot target ${squareName(action.target)}.`,
+    );
+  }
+
+  player.hand.splice(idx, 1);
+  state.enPassant = null; // en passant is only available on the very next action, whatever it is
+  state.events.push({ type: 'cardPlayed', color, cardId: card.id, target: action.target });
+
+  if (card.type === 'summon') {
+    beginSummon(state, card, inst, pieceAt(state, action.target!)!);
+  } else {
+    const target = action.target === undefined ? undefined : pieceAt(state, action.target);
+    for (const effect of card.effects) applyEffect(state, effect, color, target);
+    player.graveyard.push(inst);
+  }
+}
+
+function beginSummon(state: GameState, card: SummonCardDef, inst: CardInstance, sacrifice: Piece): void {
+  sacrifice.summon = { cardInstanceId: inst.instanceId, cardId: card.id, turnsRemaining: card.summonTurns };
+  state.events.push({ type: 'summonStarted', color: sacrifice.owner, cardId: card.id, square: sacrifice.square, turns: card.summonTurns });
+}
+
+function resolveSummon(state: GameState, sacrifice: Piece): void {
+  const pending = sacrifice.summon!;
+  const card = getCardDef(pending.cardId) as SummonCardDef;
+  const owner = sacrifice.owner;
+  const square = sacrifice.square;
+  removePiece(state, sacrifice);
+
+  const def = card.piece;
+  const summoned: Piece = {
+    id: `p${state.nextId++}`,
+    kind: def.kind,
+    owner,
+    square,
+    atk: def.atk,
+    def: def.def,
+    hp: def.hp,
+    maxHp: def.hp,
+    hasMoved: true,
+  };
+  state.pieces[summoned.id] = summoned;
+  state.board[square] = summoned.id;
+  state.players[owner].graveyard.push({ instanceId: pending.cardInstanceId, cardId: pending.cardId });
+  state.events.push({ type: 'summoned', color: owner, cardId: card.id, pieceId: summoned.id, square });
+}
+
+function applyEffect(state: GameState, effect: Effect, color: Color, target: Piece | undefined): void {
+  switch (effect.kind) {
+    case 'modifyStats': {
+      if (!target) return;
+      target.atk = Math.max(0, target.atk + (effect.atk ?? 0));
+      target.def = Math.max(0, target.def + (effect.def ?? 0));
+      if (target.kind !== 'king' && effect.hp) {
+        target.maxHp = Math.max(1, target.maxHp + effect.hp);
+        target.hp = Math.min(target.maxHp, Math.max(1, target.hp + effect.hp));
+      }
+      emitStats(state, target);
+      return;
+    }
+    case 'damage': {
+      if (!target || target.kind === 'king') return;
+      target.hp -= effect.amount;
+      state.events.push({ type: 'damaged', pieceId: target.id, square: target.square, amount: effect.amount, hp: Math.max(0, target.hp) });
+      if (target.hp <= 0) destroyPiece(state, target);
+      return;
+    }
+    case 'heal': {
+      if (!target || target.kind === 'king') return;
+      target.hp = Math.min(target.maxHp, target.hp + effect.amount);
+      emitStats(state, target);
+      return;
+    }
+    case 'draw': {
+      drawCards(state, color, effect.count);
+      return;
+    }
+    case 'hastenSummon': {
+      if (!target?.summon) return;
+      target.summon.turnsRemaining -= effect.turns;
+      if (target.summon.turnsRemaining <= 0) resolveSummon(state, target);
+      else state.events.push({ type: 'summonTick', square: target.square, turnsRemaining: target.summon.turnsRemaining });
+      return;
+    }
+  }
+}
+
+function emitStats(state: GameState, p: Piece): void {
+  state.events.push({ type: 'statsChanged', pieceId: p.id, square: p.square, atk: p.atk, def: p.def, hp: p.hp, maxHp: p.maxHp });
+}
+
+// ---------------------------------------------------------------------------
+// Turn flow
+
+/**
+ * Hand the turn over. At the start of the new player's turn:
+ *  1. their pending summon timers tick down (resolving at 0),
+ *  2. they draw a card on every `drawEvery`th turn,
+ *  3. check / checkmate / stalemate is evaluated.
+ */
+function endTurn(state: GameState): void {
+  state.turn = opposite(state.turn);
+  state.ply++;
+  const color = state.turn;
+  const player = state.players[color];
+  player.turnsTaken++;
+
+  for (const piece of piecesOf(state, color)) {
+    if (!piece.summon) continue;
+    piece.summon.turnsRemaining--;
+    if (piece.summon.turnsRemaining <= 0) resolveSummon(state, piece);
+    else state.events.push({ type: 'summonTick', square: piece.square, turnsRemaining: piece.summon.turnsRemaining });
+  }
+
+  if (player.turnsTaken % state.rules.drawEvery === 0) drawCards(state, color, 1);
+
+  const inCheck = isInCheck(state, color);
+  if (inCheck) state.events.push({ type: 'check', color });
+
+  if (legalActions(state, color).length === 0) {
+    state.status = inCheck ? { kind: 'checkmate', winner: opposite(color) } : { kind: 'stalemate' };
+    state.events.push({ type: 'gameOver', status: state.status });
+  }
+}
