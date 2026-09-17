@@ -163,7 +163,7 @@ export class GameView {
   }
 
   isLocked(piece: Piece): boolean {
-    return !!this.view && !canAct(this.view, piece);
+    return !canAct(piece);
   }
 
   // -------------------------------------------------------------------------

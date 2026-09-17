@@ -170,8 +170,8 @@ function performAction(state: GameState, action: Action, color: Color): void {
 }
 
 /**
- * Switching stance is the whole turn. Entering Defense also locks the piece
- * through the owner's next turn; returning to Attack simply spends the turn.
+ * Switching stance is the whole turn. A piece in Defense mode cannot move or
+ * attack until it is switched back to Attack mode (which also costs a turn).
  */
 function performStance(state: GameState, action: Extract<Action, { type: 'setStance' }>, color: Color): void {
   const piece = pieceAt(state, action.square);
@@ -182,8 +182,6 @@ function performStance(state: GameState, action: Extract<Action, { type: 'setSta
 
   piece.stance = action.stance;
   state.enPassant = null;
-  if (action.stance === 'defense') piece.lockedUntilTurn = state.players[color].turnsTaken + 1;
-  else delete piece.lockedUntilTurn;
   state.events.push({ type: 'stanceChanged', pieceId: piece.id, square: piece.square, stance: piece.stance });
 }
 

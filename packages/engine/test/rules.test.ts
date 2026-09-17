@@ -284,46 +284,46 @@ describe('cards', () => {
 });
 
 describe('stance', () => {
-  it('switching to Defense uses the turn and locks the piece through the next turn', () => {
+  it('switching to Defense uses the turn; the piece stays frozen until switched back', () => {
     let g = newGame();
     g = applyAction(g, { type: 'setStance', square: s('e2'), stance: 'defense' });
     expect(g.turn).toBe('black');
     expect(pieceAt(g, s('e2'))!.stance).toBe('defense');
     g = move(g, 'a7', 'a6');
-    // White's next turn: the pawn is locked.
     expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(false);
     g = move(g, 'a2', 'a3');
     g = move(g, 'a6', 'a5');
-    // The turn after: free again (and still in Defense mode).
-    expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(true);
+    g = move(g, 'b2', 'b3');
+    g = move(g, 'a5', 'a4');
+    // Many turns later: still frozen while in Defense mode.
+    expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(false);
     expect(pieceAt(g, s('e2'))!.stance).toBe('defense');
   });
 
-  it('switching back to Attack uses the turn but does not lock', () => {
+  it('switching back to Attack uses the turn, then the piece may act again', () => {
     let g = newGame();
     g = applyAction(g, { type: 'setStance', square: s('e2'), stance: 'defense' });
     g = move(g, 'a7', 'a6');
     g = applyAction(g, { type: 'setStance', square: s('e2'), stance: 'attack' });
-    expect(g.turn).toBe('black');
+    expect(g.turn).toBe('black'); // the switch consumed white's turn
     g = move(g, 'a6', 'a5');
     expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(true);
   });
 
-  it('a locked piece does not give check, and does once the lock expires', () => {
+  it('a piece in Defense mode does not give check; switching back to Attack restores the threat', () => {
     let g = newGame();
     g = move(g, 'e2', 'e4');
     g = move(g, 'f7', 'f6');
-    g = move(g, 'd1', 'h5'); // queen gives check on h5-e8 diagonal
+    g = move(g, 'd1', 'h5'); // queen gives check on the h5-e8 diagonal
     expect(isInCheck(g, 'black')).toBe(true);
     g = move(g, 'g7', 'g6'); // block
-    // White turn 3: lock the queen by putting her in Defense (locked through white turn 4).
     g = applyAction(g, { type: 'setStance', square: s('h5'), stance: 'defense' });
-    // Black may step the blocker away: the queen cannot attack on white's coming turn.
+    // Black may step the blocker away: a Defense-mode queen cannot attack.
     g = move(g, 'g6', 'g5');
     expect(isInCheck(g, 'black')).toBe(false);
     expect(legalMoves(g).some((m) => m.from === s('h5'))).toBe(false);
-    // White turn 4 passes; on black's turn the queen's *next* turn (5) is unlocked, so this is check.
-    g = move(g, 'a2', 'a3');
+    // White switches her back to Attack (uses the turn) -> black is in check and must respond.
+    g = applyAction(g, { type: 'setStance', square: s('h5'), stance: 'attack' });
     expect(isInCheck(g, 'black')).toBe(true);
     expect(() => move(g, 'a7', 'a6')).toThrow(IllegalActionError);
   });

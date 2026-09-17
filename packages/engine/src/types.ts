@@ -60,8 +60,8 @@ export interface PendingSummon {
 
 /**
  * Attack mode is the default. In Defense mode a piece's DEF acts as a shield
- * that absorbs damage before HP. Switching stance costs the turn, and entering
- * Defense locks the piece (no moving or attacking) through the owner's next turn.
+ * that absorbs damage before HP, but the piece cannot move or attack at all.
+ * Switching stance in either direction costs the owner's turn.
  */
 export type Stance = 'attack' | 'defense';
 
@@ -79,8 +79,6 @@ export interface Piece {
   maxHp: number;
   hasMoved: boolean;
   stance: Stance;
-  /** The piece cannot move or attack on any of its owner's turns numbered <= this. */
-  lockedUntilTurn?: number;
   summon?: PendingSummon;
 }
 

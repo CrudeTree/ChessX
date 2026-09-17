@@ -44,7 +44,7 @@ The server is authoritative: the client only ever offers the player actions from
 
 Example: DEF 3 / HP 1 in Defense mode, hit by ATK 4 → shield wiped out, 1 damage reaches HP, piece destroyed. Depleted DEF does not regenerate on its own.
 
-**Stance.** Every piece starts in Attack mode. Switching stance (via the button under the zoomed card) *is* your turn. Entering Defense mode locks the piece: it cannot move or attack for the rest of that turn and your whole next turn, and therefore does not give check during that time. Switching back to Attack mode just uses the turn. Kings and pieces being sacrificed cannot change stance.
+**Stance.** Every piece starts in Attack mode. Switching stance (via the button under the zoomed card) *is* your turn. A piece in Defense mode cannot move or attack at all (so it never gives check) until you switch it back to Attack mode, which also costs a turn; it can act again from the turn after that. Kings and pieces being sacrificed cannot change stance.
 
 **Inspecting.** Click any piece (yours or the opponent's) to see its full card on the left: stats, stance, movement, lock/summon status.
 

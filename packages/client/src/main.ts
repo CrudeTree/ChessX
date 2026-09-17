@@ -121,8 +121,6 @@ function renderInspect(piece: Piece | null): void {
   const card = isBasic ? undefined : summonCardFor(piece.kind);
   const isKing = piece.kind === 'king';
   const ownerName = solo ? (piece.owner === 'white' ? 'White' : 'Black') : names()[piece.owner];
-  const locked = gameView.isLocked(piece);
-  const turnsTaken = currentView?.players[piece.owner].turnsTaken ?? 0;
 
   const typeLine = isKing
     ? 'Royal piece'
@@ -134,13 +132,10 @@ function renderInspect(piece: Piece | null): void {
   if (piece.summon) {
     const c = summonCardFor(piece.summon.cardId) ?? allCards().find((x) => x.id === piece.summon!.cardId);
     status.push(`Being sacrificed: ${c?.name ?? 'summon'} arrives in ${piece.summon.turnsRemaining} turn${piece.summon.turnsRemaining === 1 ? '' : 's'}.`);
-  } else if (locked && piece.lockedUntilTurn !== undefined) {
-    // Turns the owner still has to sit through (counting the current one if it is theirs).
-    const nextActingTurn = piece.owner === currentView?.turn ? turnsTaken : turnsTaken + 1;
-    const turnsLeft = Math.max(1, piece.lockedUntilTurn - nextActingTurn + 1);
-    status.push(`Locked: cannot move or attack for ${turnsLeft} more of ${ownerName}'s turn${turnsLeft === 1 ? '' : 's'}.`);
+  } else if (piece.stance === 'defense') {
+    status.push('Cannot move or attack while in Defense mode. Switching back to Attack mode uses a turn.');
+    if (piece.maxDef === 0) status.push('No DEF to shield with — raise DEF (e.g. Shield Wall) to make Defense mode count.');
   }
-  if (piece.stance === 'defense' && piece.maxDef === 0 && !isKing) status.push('No DEF to shield with — Defense mode has no effect until DEF is raised.');
 
   zoomEl.className = `zoom ${card ? 'summon' : 'basic'} owner-${piece.owner}`;
   zoomEl.innerHTML = `
@@ -169,8 +164,8 @@ function renderInspect(piece: Piece | null): void {
   stanceBtn.disabled = !action;
   if (action) {
     stanceHint.textContent = toDefense
-      ? 'Uses your turn. The piece is locked until after your next turn.'
-      : 'Uses your turn.';
+      ? 'Uses your turn. The piece cannot move or attack until switched back.'
+      : 'Uses your turn. The piece can move again from your next turn.';
   } else if (isKing) {
     stanceHint.textContent = 'The King cannot change stance.';
   } else if (piece.summon) {
