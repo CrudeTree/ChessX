@@ -58,17 +58,29 @@ export interface PendingSummon {
   turnsRemaining: number;
 }
 
+/**
+ * Attack mode is the default. In Defense mode a piece's DEF acts as a shield
+ * that absorbs damage before HP. Switching stance costs the turn, and entering
+ * Defense locks the piece (no moving or attacking) through the owner's next turn.
+ */
+export type Stance = 'attack' | 'defense';
+
 export interface Piece {
   id: string;
   kind: string;
   owner: Color;
   square: Square;
   atk: number;
+  /** Current shield. Only absorbs damage while in Defense mode. */
   def: number;
+  maxDef: number;
   /** Kings ignore HP: any piece landing on the king captures it. */
   hp: number;
   maxHp: number;
   hasMoved: boolean;
+  stance: Stance;
+  /** The piece cannot move or attack on any of its owner's turns numbered <= this. */
+  lockedUntilTurn?: number;
   summon?: PendingSummon;
 }
 
@@ -77,6 +89,7 @@ export type PromotionKind = 'queen' | 'rook' | 'bishop' | 'knight';
 export type Action =
   | { type: 'move'; from: Square; to: Square; promotion?: PromotionKind }
   | { type: 'playCard'; cardInstanceId: string; target?: Square }
+  | { type: 'setStance'; square: Square; stance: Stance }
   | { type: 'resign' };
 
 export type GameStatus =
@@ -90,7 +103,9 @@ export type GameStatus =
 export type GameEvent =
   | { type: 'moved'; pieceId: string; from: Square; to: Square; castle?: boolean }
   | { type: 'attacked'; attackerId: string; targetId: string; from: Square; to: Square; damage: number }
-  | { type: 'damaged'; pieceId: string; square: Square; amount: number; hp: number }
+  /** `shield` is how much of the hit the defender's DEF absorbed. */
+  | { type: 'damaged'; pieceId: string; square: Square; amount: number; shield: number; hp: number; def: number }
+  | { type: 'stanceChanged'; pieceId: string; square: Square; stance: Stance }
   | { type: 'repelled'; pieceId: string; square: Square }
   | { type: 'destroyed'; pieceId: string; kind: string; owner: Color; square: Square }
   | { type: 'kingCaptured'; owner: Color; square: Square }

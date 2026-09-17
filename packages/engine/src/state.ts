@@ -120,9 +120,11 @@ export function addPiece(state: GameState, kind: string, owner: Color, square: S
     square,
     atk: def.atk,
     def: def.def,
+    maxDef: def.def,
     hp: def.hp,
     maxHp: def.hp,
     hasMoved,
+    stance: 'attack',
   };
   state.pieces[piece.id] = piece;
   state.board[square] = piece.id;

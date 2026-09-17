@@ -24,9 +24,26 @@ export const pawnStartRank = (color: Color): number => (color === 'white' ? 1 : 
  * the king in check). With `attacksOnly`, returns the squares this piece
  * threatens: pawn diagonals regardless of occupancy, no pushes, no castling.
  */
+/**
+ * Can this piece move/attack on the turn it would next act? For the side to
+ * move that is the current turn; for the other side it is their upcoming
+ * turn. This makes "locked through your next turn" work for both move
+ * legality and check detection.
+ */
+export function canAct(
+  state: { turn: Color; players: Record<Color, { turnsTaken: number }> },
+  piece: Piece,
+): boolean {
+  if (piece.summon) return false; // pieces being sacrificed cannot move or attack
+  if (piece.lockedUntilTurn === undefined) return true;
+  const owner = state.players[piece.owner];
+  const actingTurn = piece.owner === state.turn ? owner.turnsTaken : owner.turnsTaken + 1;
+  return actingTurn > piece.lockedUntilTurn;
+}
+
 export function pseudoMoves(state: GameState, piece: Piece, attacksOnly = false): MoveCandidate[] {
   const out: MoveCandidate[] = [];
-  if (piece.summon) return out; // pieces being sacrificed cannot move or attack
+  if (!canAct(state, piece)) return out;
 
   const def = getPieceDef(piece.kind);
   const mv = def.movement;

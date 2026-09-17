@@ -1,4 +1,4 @@
-import type { Action, Color, GameEvent, PlayerView, Square } from '@chessx/engine';
+import { canAct, type Action, type Color, type GameEvent, type Piece, type PlayerView, type Square } from '@chessx/engine';
 import { Application, Container, Graphics, Text, type FederatedPointerEvent } from 'pixi.js';
 import { CardSprite } from './CardSprite.js';
 import {
@@ -47,12 +47,15 @@ interface Selection {
 export class GameView {
   readonly app = new Application();
   onAction: (a: Action) => void = () => {};
+  /** Fired whenever the inspected piece changes or its data refreshes (null = nothing inspected). */
+  onInspect: (piece: Piece | null) => void = () => {};
   /** Practice mode: one player controls both sides, board stays white-at-bottom. */
   hotseat = false;
 
   private tweens!: Tweens;
   private boardLayer = new Container();
   private lastMoveLayer = new Container();
+  private inspectLayer = new Container();
   private voidLayer = new Container();
   private highlightLayer = new Container();
   private pieceLayer = new Container();
@@ -67,6 +70,7 @@ export class GameView {
   private flipped = false;
   private drag: Drag | null = null;
   private selection: Selection | null = null;
+  private inspected: string | null = null;
   private pulse = 0;
 
   async init(mount: HTMLElement): Promise<void> {
@@ -84,6 +88,7 @@ export class GameView {
     this.app.stage.addChild(
       this.boardLayer,
       this.lastMoveLayer,
+      this.inspectLayer,
       this.voidLayer,
       this.highlightLayer,
       this.pieceLayer,
@@ -119,9 +124,46 @@ export class GameView {
     for (const v of this.voids.values()) v.destroy();
     this.sprites.clear();
     this.voids.clear();
-    for (const layer of [this.highlightLayer, this.lastMoveLayer, this.fxLayer, this.banner]) layer.removeChildren();
+    for (const layer of [this.highlightLayer, this.lastMoveLayer, this.inspectLayer, this.fxLayer, this.banner]) layer.removeChildren();
     for (const old of this.handLayer.removeChildren()) old.destroy();
     this.view = null;
+    this.setInspected(null);
+  }
+
+  // -------------------------------------------------------------------------
+  // Inspection (zoomed card in the side panel)
+
+  private setInspected(pieceId: string | null): void {
+    this.inspected = pieceId;
+    this.inspectLayer.removeChildren();
+    const piece = pieceId && this.view ? this.view.pieces[pieceId] : undefined;
+    if (piece) {
+      const { x, y } = squareToXY(piece.square, this.flipped);
+      const g = new Graphics().roundRect(x - SQ / 2 + 2, y - SQ / 2 + 2, SQ - 4, SQ - 4, 6).stroke({ width: 3, color: COLORS.select, alpha: 0.9 });
+      this.inspectLayer.addChild(g);
+    }
+    this.onInspect(piece ?? null);
+  }
+
+  /** The legal stance-change for a piece, if any (only exists on its owner's turn). */
+  stanceActionFor(pieceId: string): Extract<Action, { type: 'setStance' }> | null {
+    const piece = this.view?.pieces[pieceId];
+    if (!piece || !this.view) return null;
+    for (const a of this.view.legalActions) {
+      if (a.type === 'setStance' && a.square === piece.square) return a;
+    }
+    return null;
+  }
+
+  /** Toggle the inspected piece's stance (uses the turn). */
+  toggleInspectedStance(): void {
+    if (!this.inspected) return;
+    const action = this.stanceActionFor(this.inspected);
+    if (action) this.onAction(action);
+  }
+
+  isLocked(piece: Piece): boolean {
+    return !!this.view && !canAct(this.view, piece);
   }
 
   // -------------------------------------------------------------------------
@@ -148,6 +190,7 @@ export class GameView {
       let sprite = this.sprites.get(piece.id);
       if (!sprite) {
         sprite = new PieceSprite(piece);
+        sprite.update(piece, this.isLocked(piece));
         sprite.position.set(x, y);
         sprite.on('pointerdown', (e) => this.onPiecePointerDown(e, sprite!));
         this.pieceLayer.addChild(sprite);
@@ -158,7 +201,7 @@ export class GameView {
           this.tweens.run(320, (t) => !s.destroyed && s.scale.set(t), { ease: easeOutBack });
         }
       } else {
-        sprite.update(piece);
+        sprite.update(piece, this.isLocked(piece));
         if (sprite.x !== x || sprite.y !== y) {
           const s = sprite;
           const sx = s.x;
@@ -189,6 +232,8 @@ export class GameView {
     this.drawLastMove(view.events);
     this.renderHand();
     this.renderBanner();
+    // Refresh the inspected piece (it may have moved, changed stats, or died).
+    this.setInspected(this.inspected && view.pieces[this.inspected] ? this.inspected : null);
   }
 
   private syncVoid(pieceId: string, active: boolean, x: number, y: number): void {
@@ -234,8 +279,21 @@ export class GameView {
         }
         case 'damaged': {
           const { x, y } = squareToXY(ev.square, this.flipped);
-          this.flash(x, y, COLORS.attack, 180);
-          this.floatText(x, y, `-${ev.amount}`, COLORS.attack, 220);
+          const hpHit = ev.amount - ev.shield;
+          if (ev.shield > 0) {
+            this.flash(x, y, COLORS.def, 200);
+            this.floatText(x - 14, y, `-${ev.shield}`, COLORS.def, 220);
+          }
+          if (hpHit > 0 || ev.shield === 0) {
+            this.flash(x, y, COLORS.attack, 180);
+            this.floatText(x + (ev.shield > 0 ? 14 : 0), y, `-${hpHit}`, COLORS.attack, 220);
+          }
+          break;
+        }
+        case 'stanceChanged': {
+          const { x, y } = squareToXY(ev.square, this.flipped);
+          this.flash(x, y, ev.stance === 'defense' ? COLORS.def : COLORS.attack, 300);
+          this.burst(x, y, ev.stance === 'defense' ? COLORS.def : COLORS.attack, 0.9);
           break;
         }
         case 'destroyed':
@@ -468,11 +526,19 @@ export class GameView {
     // Clicking a highlighted target square (with a piece on it) while something is selected.
     if (this.selection && this.tryActOnSquare(piece.square)) return;
 
-    if (!this.myTurn || piece.owner !== this.view.you) return;
-    const targets = this.moveTargetsFrom(piece.square);
-    if (targets.bySquare.size === 0) return;
-
     e.stopPropagation();
+    this.setInspected(piece.id);
+
+    if (!this.myTurn || piece.owner !== this.view.you) {
+      this.clearSelection();
+      return;
+    }
+    const targets = this.moveTargetsFrom(piece.square);
+    if (targets.bySquare.size === 0) {
+      this.clearSelection();
+      return;
+    }
+
     this.drag = { kind: 'piece', sprite, from: piece.square, targets, startX: e.global.x, startY: e.global.y, moved: false };
     sprite.zIndex = 50;
     sprite.cursor = 'grabbing';
@@ -505,6 +571,7 @@ export class GameView {
     }
     if (this.tryActOnSquare(square)) return;
     this.clearSelection();
+    if (!this.view?.board[square]) this.setInspected(null);
   }
 
   private onPointerMove(e: FederatedPointerEvent): void {

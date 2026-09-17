@@ -1,4 +1,4 @@
-import type { Color, PlayerView } from '@chessx/engine';
+import { allCards, getPieceDef, STANDARD_PIECES, type Color, type Piece, type PlayerView, type SummonCardDef } from '@chessx/engine';
 import type { RoomInfo, ServerMessage } from '@chessx/protocol';
 import { GameView } from './game/GameView.js';
 import { describeEvents } from './log.js';
@@ -16,6 +16,10 @@ const roomCode = $('room-code');
 const statusEl = $('status');
 const logEl = $('log');
 const toast = $('toast');
+const zoomEl = $('zoom');
+const stanceBtn = $<HTMLButtonElement>('stance');
+const stanceHint = $('stance-hint');
+let currentView: PlayerView | null = null;
 
 nameInput.value = localStorage.getItem('chessx.name') ?? '';
 
@@ -74,6 +78,7 @@ function showLobby(): void {
   room = null;
   solo = false;
   lastPly = -1;
+  currentView = null;
   logEl.innerHTML = '';
   if (viewReady) gameView.reset();
   game.classList.add('hidden');
@@ -87,6 +92,95 @@ async function showGame(): Promise<void> {
     viewReady = true;
     await gameView.init($('board-mount'));
     gameView.onAction = (action) => net.send({ type: 'action', action });
+    gameView.onInspect = (piece) => renderInspect(piece);
+    stanceBtn.onclick = () => gameView.toggleInspectedStance();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Inspect panel: zoomed card for the clicked piece + stance toggle
+
+const summonCardFor = (kind: string): SummonCardDef | undefined =>
+  allCards().find((c): c is SummonCardDef => c.type === 'summon' && c.piece.kind === kind);
+
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+
+function renderInspect(piece: Piece | null): void {
+  if (!piece) {
+    zoomEl.className = 'zoom empty';
+    zoomEl.innerHTML = '<div class="zoom-empty">Click any piece to see its card.</div>';
+    stanceBtn.disabled = true;
+    stanceBtn.className = '';
+    stanceBtn.textContent = 'Switch to Defense mode';
+    stanceHint.textContent = '';
+    return;
+  }
+
+  const def = getPieceDef(piece.kind);
+  const isBasic = piece.kind in STANDARD_PIECES;
+  const card = isBasic ? undefined : summonCardFor(piece.kind);
+  const isKing = piece.kind === 'king';
+  const ownerName = solo ? (piece.owner === 'white' ? 'White' : 'Black') : names()[piece.owner];
+  const locked = gameView.isLocked(piece);
+  const turnsTaken = currentView?.players[piece.owner].turnsTaken ?? 0;
+
+  const typeLine = isKing
+    ? 'Royal piece'
+    : card
+      ? `Tier ${def.tier} creature · summoned by ${card.name}`
+      : `Tier ${def.tier} · basic piece`;
+
+  const status: string[] = [];
+  if (piece.summon) {
+    const c = summonCardFor(piece.summon.cardId) ?? allCards().find((x) => x.id === piece.summon!.cardId);
+    status.push(`Being sacrificed: ${c?.name ?? 'summon'} arrives in ${piece.summon.turnsRemaining} turn${piece.summon.turnsRemaining === 1 ? '' : 's'}.`);
+  } else if (locked && piece.lockedUntilTurn !== undefined) {
+    // Turns the owner still has to sit through (counting the current one if it is theirs).
+    const nextActingTurn = piece.owner === currentView?.turn ? turnsTaken : turnsTaken + 1;
+    const turnsLeft = Math.max(1, piece.lockedUntilTurn - nextActingTurn + 1);
+    status.push(`Locked: cannot move or attack for ${turnsLeft} more of ${ownerName}'s turn${turnsLeft === 1 ? '' : 's'}.`);
+  }
+  if (piece.stance === 'defense' && piece.maxDef === 0 && !isKing) status.push('No DEF to shield with — Defense mode has no effect until DEF is raised.');
+
+  zoomEl.className = `zoom ${card ? 'summon' : 'basic'} owner-${piece.owner}`;
+  zoomEl.innerHTML = `
+    <div class="zoom-head">
+      <div class="zoom-name">${esc(def.name)}</div>
+      <div class="zoom-owner">${esc(ownerName)}</div>
+    </div>
+    <div class="zoom-type">${esc(typeLine)}</div>
+    <div class="zoom-art"><span class="glyph ${isBasic ? 'chess' : 'emoji'} ${piece.owner}">${def.glyph}</span></div>
+    <div class="zoom-stats">
+      <div class="stat atk">ATK<b>${piece.atk}</b></div>
+      <div class="stat def">DEF<b>${piece.maxDef === 0 ? '—' : `${piece.def}/${piece.maxDef}`}</b></div>
+      <div class="stat hp">HP<b>${isKing ? '—' : `${piece.hp}/${piece.maxHp}`}</b></div>
+    </div>
+    ${isKing ? '' : `<div class="zoom-stance ${piece.stance}">${piece.stance === 'defense' ? '🛡 Defense mode — DEF shields HP' : '⚔ Attack mode'}</div>`}
+    <div class="zoom-text">${esc(card?.text ?? def.description ?? '')}</div>
+    <div class="zoom-status">${status.map(esc).join('<br>')}</div>
+  `;
+  zoomEl.classList.add('fresh');
+  setTimeout(() => zoomEl.classList.remove('fresh'), 180);
+
+  const action = gameView.stanceActionFor(piece.id);
+  const toDefense = piece.stance === 'attack';
+  stanceBtn.textContent = toDefense ? 'Switch to Defense mode' : 'Switch to Attack mode';
+  stanceBtn.className = toDefense ? 'to-defense' : 'to-attack';
+  stanceBtn.disabled = !action;
+  if (action) {
+    stanceHint.textContent = toDefense
+      ? 'Uses your turn. The piece is locked until after your next turn.'
+      : 'Uses your turn.';
+  } else if (isKing) {
+    stanceHint.textContent = 'The King cannot change stance.';
+  } else if (piece.summon) {
+    stanceHint.textContent = 'A piece being sacrificed cannot change stance.';
+  } else if (currentView && currentView.turn !== piece.owner) {
+    stanceHint.textContent = solo ? `It is not ${ownerName}'s turn.` : 'Not your piece or not your turn.';
+  } else if (currentView && currentView.status.kind !== 'playing') {
+    stanceHint.textContent = 'The game is over.';
+  } else {
+    stanceHint.textContent = currentView?.inCheck ? 'You must answer the check first.' : '';
   }
 }
 
@@ -211,6 +305,7 @@ net.onMessage = async (msg: ServerMessage) => {
       return;
     case 'state':
       if (!viewReady) await showGame();
+      currentView = msg.view;
       gameView.sync(msg.view);
       renderStatus(msg.view);
       appendLog(msg.view);

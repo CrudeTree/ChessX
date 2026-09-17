@@ -13,10 +13,12 @@ export class PieceSprite extends Container {
   pieceId: string;
   square: number;
   private ring = new Graphics();
+  private stanceMark = new Graphics();
   private glyph: Text;
   private badges = new Container();
   private timer = new Container();
   private timerText: Text;
+  private lock: Text;
 
   constructor(piece: Piece) {
     super();
@@ -25,6 +27,7 @@ export class PieceSprite extends Container {
     const def = getPieceDef(piece.kind);
     const standard = isStandard(piece.kind);
 
+    this.addChild(this.stanceMark);
     this.addChild(this.ring);
     this.glyph = new Text({
       text: def.glyph,
@@ -49,15 +52,29 @@ export class PieceSprite extends Container {
     this.timer.position.set(SQ / 2 - 14, -SQ / 2 + 14);
     this.addChild(this.timer);
 
+    this.lock = new Text({ text: '🔒', style: { fontFamily: EMOJI_FONT, fontSize: 14 } });
+    this.lock.anchor.set(0.5);
+    this.lock.position.set(-SQ / 2 + 13, -SQ / 2 + 13);
+    this.addChild(this.lock);
+
     this.eventMode = 'static';
-    this.update(piece);
+    this.update(piece, false);
   }
 
-  update(piece: Piece): void {
+  update(piece: Piece, locked: boolean): void {
     this.square = piece.square;
     const def = getPieceDef(piece.kind);
     const standard = isStandard(piece.kind);
     if (this.glyph.text !== def.glyph) this.glyph.text = def.glyph; // promotion
+
+    // Defense mode: a blue shield frame around the square.
+    this.stanceMark.clear();
+    if (piece.stance === 'defense') {
+      this.stanceMark
+        .roundRect(-SQ / 2 + 4, -SQ / 2 + 4, SQ - 8, SQ - 8, 10)
+        .fill({ color: COLORS.def, alpha: 0.18 })
+        .stroke({ width: 3, color: COLORS.def, alpha: 0.95 });
+    }
 
     // Owner ring for summoned creatures (emoji have no colour of their own).
     this.ring.clear();
@@ -72,10 +89,10 @@ export class PieceSprite extends Container {
     const isKing = piece.kind === 'king';
     const showAtk = piece.atk !== 1 || !standard;
     const showHp = !isKing && (piece.maxHp !== 1 || !standard);
-    const showDef = piece.def !== 0;
+    const showDef = piece.maxDef > 0;
     const items: { color: number; text: string }[] = [];
     if (showAtk) items.push({ color: COLORS.atk, text: `${piece.atk}` });
-    if (showDef) items.push({ color: COLORS.def, text: `${piece.def}` });
+    if (showDef) items.push({ color: COLORS.def, text: piece.def === piece.maxDef ? `${piece.def}` : `${piece.def}/${piece.maxDef}` });
     if (showHp) items.push({ color: COLORS.hp, text: piece.hp === piece.maxHp ? `${piece.hp}` : `${piece.hp}/${piece.maxHp}` });
     const gap = 22;
     const startX = -((items.length - 1) * gap) / 2;
@@ -97,7 +114,10 @@ export class PieceSprite extends Container {
       this.glyph.alpha = 0.7;
     } else {
       this.timer.visible = false;
-      this.glyph.alpha = 1;
+      this.glyph.alpha = locked ? 0.8 : 1;
     }
+
+    // Stance lock (not shown for sacrifices, which already have the timer).
+    this.lock.visible = locked && !piece.summon;
   }
 }

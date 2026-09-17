@@ -38,8 +38,18 @@ export function describeEvents(view: PlayerView, names: Record<'white' | 'black'
         const targetKind = destroyedKinds.get(e.targetId);
         const killed = !!targetKind;
         const target = pieceName(e.targetId, targetKind);
+        const hit = view.events.find((x) => x.type === 'damaged' && x.pieceId === e.targetId);
+        const shield = hit && hit.type === 'damaged' && hit.shield > 0 ? ` (shield absorbs ${hit.shield})` : '';
         lines.push({
-          text: `${names[owner ?? 'white']}: ${pieceName(e.attackerId)} ${squareName(e.from)} attacks ${target} on ${squareName(e.to)} for ${e.damage} — ${killed ? 'destroyed!' : 'it survives'}`,
+          text: `${names[owner ?? 'white']}: ${pieceName(e.attackerId)} ${squareName(e.from)} attacks ${target} on ${squareName(e.to)} for ${e.damage}${shield} — ${killed ? 'destroyed!' : 'it survives'}`,
+          color: owner,
+        });
+        break;
+      }
+      case 'stanceChanged': {
+        const owner = ownerOf(e.pieceId);
+        lines.push({
+          text: `${names[owner ?? 'white']}: ${pieceName(e.pieceId)} ${squareName(e.square)} switches to ${e.stance === 'defense' ? 'Defense' : 'Attack'} mode`,
           color: owner,
         });
         break;

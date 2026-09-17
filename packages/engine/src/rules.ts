@@ -88,7 +88,17 @@ function candidateActions(state: GameState, color: Color): Action[] {
       out.push({ type: 'playCard', cardInstanceId: inst.instanceId, target });
     }
   }
+  for (const piece of piecesOf(state, color)) {
+    if (canChangeStance(piece)) {
+      out.push({ type: 'setStance', square: piece.square, stance: piece.stance === 'attack' ? 'defense' : 'attack' });
+    }
+  }
   return out;
+}
+
+/** Kings have no HP so Defense mode is meaningless for them; sacrifices are frozen. */
+export function canChangeStance(piece: Piece): boolean {
+  return piece.kind !== 'king' && !piece.summon;
 }
 
 /** Squares a card may target (or [undefined] for untargeted cards). Empty if unplayable. */
@@ -151,9 +161,30 @@ function performAction(state: GameState, action: Action, color: Color): void {
     case 'playCard':
       performCard(state, action, color);
       break;
+    case 'setStance':
+      performStance(state, action, color);
+      break;
     case 'resign':
       break;
   }
+}
+
+/**
+ * Switching stance is the whole turn. Entering Defense also locks the piece
+ * through the owner's next turn; returning to Attack simply spends the turn.
+ */
+function performStance(state: GameState, action: Extract<Action, { type: 'setStance' }>, color: Color): void {
+  const piece = pieceAt(state, action.square);
+  if (!piece) throw new IllegalActionError(`No piece on ${squareName(action.square)}.`);
+  if (piece.owner !== color) throw new IllegalActionError('That is not your piece.');
+  if (!canChangeStance(piece)) throw new IllegalActionError(`${getPieceDef(piece.kind).name} cannot change stance.`);
+  if (piece.stance === action.stance) throw new IllegalActionError(`Already in ${action.stance} mode.`);
+
+  piece.stance = action.stance;
+  state.enPassant = null;
+  if (action.stance === 'defense') piece.lockedUntilTurn = state.players[color].turnsTaken + 1;
+  else delete piece.lockedUntilTurn;
+  state.events.push({ type: 'stanceChanged', pieceId: piece.id, square: piece.square, stance: piece.stance });
 }
 
 function performMove(state: GameState, action: Extract<Action, { type: 'move' }>, color: Color): void {
@@ -194,9 +225,10 @@ function performMove(state: GameState, action: Extract<Action, { type: 'move' }>
 }
 
 /**
- * Combat. Damage = max(0, ATK - DEF). If the defender's HP drops to 0 it is
- * destroyed and the attacker takes its square; otherwise the attacker stays
- * where it was. The King is the exception: any hit captures it outright.
+ * Combat. The attacker deals its ATK. If the defender is in Defense mode its
+ * DEF shield absorbs damage first, then HP takes the rest. If HP drops to 0
+ * the defender is destroyed and the attacker takes its square; otherwise the
+ * attacker stays where it was. The King is the exception: any hit captures it.
  */
 function attack(state: GameState, attacker: Piece, target: Piece, cand: MoveCandidate): void {
   if (target.kind === 'king') {
@@ -207,25 +239,43 @@ function attack(state: GameState, attacker: Piece, target: Piece, cand: MoveCand
     return;
   }
 
-  const damage = Math.max(0, attacker.atk - target.def);
   state.events.push({
     type: 'attacked',
     attackerId: attacker.id,
     targetId: target.id,
     from: attacker.square,
     to: target.square,
-    damage,
+    damage: attacker.atk,
   });
-  target.hp -= damage;
-  state.events.push({ type: 'damaged', pieceId: target.id, square: target.square, amount: damage, hp: Math.max(0, target.hp) });
+  const destroyed = dealDamage(state, target, attacker.atk);
 
-  if (target.hp <= 0) {
-    destroyPiece(state, target);
+  if (destroyed) {
     movePiece(state, attacker, cand.to);
     if (cand.promotion) promote(state, attacker, 'queen');
   } else {
     state.events.push({ type: 'repelled', pieceId: attacker.id, square: attacker.square });
   }
+}
+
+/** Apply `amount` damage (shield first if in Defense mode). Returns true if the piece was destroyed. */
+function dealDamage(state: GameState, target: Piece, amount: number): boolean {
+  const shield = target.stance === 'defense' ? Math.min(target.def, amount) : 0;
+  target.def -= shield;
+  target.hp -= amount - shield;
+  state.events.push({
+    type: 'damaged',
+    pieceId: target.id,
+    square: target.square,
+    amount,
+    shield,
+    hp: Math.max(0, target.hp),
+    def: target.def,
+  });
+  if (target.hp <= 0) {
+    destroyPiece(state, target);
+    return true;
+  }
+  return false;
 }
 
 function movePiece(state: GameState, piece: Piece, to: Square, castle = false): void {
@@ -307,9 +357,11 @@ function resolveSummon(state: GameState, sacrifice: Piece): void {
     square,
     atk: def.atk,
     def: def.def,
+    maxDef: def.def,
     hp: def.hp,
     maxHp: def.hp,
     hasMoved: true,
+    stance: 'attack',
   };
   state.pieces[summoned.id] = summoned;
   state.board[square] = summoned.id;
@@ -322,7 +374,10 @@ function applyEffect(state: GameState, effect: Effect, color: Color, target: Pie
     case 'modifyStats': {
       if (!target) return;
       target.atk = Math.max(0, target.atk + (effect.atk ?? 0));
-      target.def = Math.max(0, target.def + (effect.def ?? 0));
+      if (effect.def) {
+        target.maxDef = Math.max(0, target.maxDef + effect.def);
+        target.def = Math.min(target.maxDef, Math.max(0, target.def + effect.def));
+      }
       if (target.kind !== 'king' && effect.hp) {
         target.maxHp = Math.max(1, target.maxHp + effect.hp);
         target.hp = Math.min(target.maxHp, Math.max(1, target.hp + effect.hp));
@@ -332,9 +387,7 @@ function applyEffect(state: GameState, effect: Effect, color: Color, target: Pie
     }
     case 'damage': {
       if (!target || target.kind === 'king') return;
-      target.hp -= effect.amount;
-      state.events.push({ type: 'damaged', pieceId: target.id, square: target.square, amount: effect.amount, hp: Math.max(0, target.hp) });
-      if (target.hp <= 0) destroyPiece(state, target);
+      dealDamage(state, target, effect.amount);
       return;
     }
     case 'heal': {

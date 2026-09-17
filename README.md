@@ -40,7 +40,13 @@ The server is authoritative: the client only ever offers the player actions from
 
 **A turn** is *either* one chess move *or* one card played. Not both.
 
-**Combat.** Moving onto an enemy piece attacks it for `max(0, ATK − DEF)` damage. If the defender's HP hits 0 it is destroyed and the attacker takes its square. If the defender survives, it stays and the attacker returns to its original square (the turn is still used). **Kings ignore HP**: any piece reaching the king's square captures it.
+**Combat.** Moving onto an enemy piece attacks it for the attacker's full ATK. If the defender is in **Defense mode**, its DEF acts as a shield that absorbs damage first; whatever is left comes off HP. In Attack mode DEF does nothing. If HP hits 0 the defender is destroyed and the attacker takes its square. If the defender survives, it stays and the attacker returns to its original square (the turn is still used). **Kings ignore HP**: any piece reaching the king's square captures it.
+
+Example: DEF 3 / HP 1 in Defense mode, hit by ATK 4 → shield wiped out, 1 damage reaches HP, piece destroyed. Depleted DEF does not regenerate on its own.
+
+**Stance.** Every piece starts in Attack mode. Switching stance (via the button under the zoomed card) *is* your turn. Entering Defense mode locks the piece: it cannot move or attack for the rest of that turn and your whole next turn, and therefore does not give check during that time. Switching back to Attack mode just uses the turn. Kings and pieces being sacrificed cannot change stance.
+
+**Inspecting.** Click any piece (yours or the opponent's) to see its full card on the left: stats, stance, movement, lock/summon status.
 
 **Check and checkmate.** Standard. An action is legal only if your king is not attackable afterwards. Because pieces can survive attacks, "capturing" the checking piece does not resolve check unless the capture actually destroys it. A card is playable in check only if its effect actually ends the check (e.g. destroying the attacker). No legal actions while in check = checkmate; while not in check = stalemate.
 

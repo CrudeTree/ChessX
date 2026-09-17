@@ -37,6 +37,7 @@ export const STANDARD_PIECES: Record<string, PieceDef> = {
     tier: 1,
     movement: { pawn: true },
     ...BASE_STATS,
+    description: 'Moves one square forward (two from its starting square). Attacks diagonally forward. Promotes when it reaches the last rank.',
   },
   knight: {
     kind: 'knight',
@@ -45,6 +46,7 @@ export const STANDARD_PIECES: Record<string, PieceDef> = {
     tier: 2,
     movement: { leaps: KNIGHT_LEAPS },
     ...BASE_STATS,
+    description: 'Jumps in an L-shape: two squares one way, one square sideways. Ignores pieces in between.',
   },
   bishop: {
     kind: 'bishop',
@@ -53,6 +55,7 @@ export const STANDARD_PIECES: Record<string, PieceDef> = {
     tier: 2,
     movement: { slides: [{ dirs: DIAGONAL }] },
     ...BASE_STATS,
+    description: 'Slides any distance diagonally.',
   },
   rook: {
     kind: 'rook',
@@ -61,6 +64,7 @@ export const STANDARD_PIECES: Record<string, PieceDef> = {
     tier: 3,
     movement: { slides: [{ dirs: ORTHOGONAL }] },
     ...BASE_STATS,
+    description: 'Slides any distance horizontally or vertically. Can castle with the King.',
   },
   queen: {
     kind: 'queen',
@@ -69,6 +73,7 @@ export const STANDARD_PIECES: Record<string, PieceDef> = {
     tier: 4,
     movement: { slides: [{ dirs: ALL_DIRS }] },
     ...BASE_STATS,
+    description: 'Slides any distance in any direction.',
   },
   king: {
     kind: 'king',
@@ -77,6 +82,7 @@ export const STANDARD_PIECES: Record<string, PieceDef> = {
     tier: 0,
     movement: { leaps: ALL_DIRS },
     ...BASE_STATS,
+    description: 'Moves one square in any direction. Has no HP: any enemy piece reaching its square captures it. Cannot enter Defense mode.',
   },
 };
 

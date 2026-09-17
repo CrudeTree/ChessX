@@ -129,7 +129,7 @@ describe('combat with HP', () => {
     expect(g.events.some((e) => e.type === 'repelled')).toBe(true);
   });
 
-  it('DEF reduces damage', () => {
+  it('DEF only shields in Defense mode, and is depleted before HP', () => {
     let g = newGame();
     g = move(g, 'e2', 'e4');
     g = move(g, 'd7', 'd5');
@@ -137,8 +137,31 @@ describe('combat with HP', () => {
     pawn.hp = 2;
     pawn.maxHp = 2;
     pawn.def = 1;
+    pawn.maxDef = 1;
+    // Attack mode: DEF is ignored, HP takes the hit.
+    const attackMode = move(g, 'e4', 'd5');
+    expect(pieceAt(attackMode, s('d5'))!.hp).toBe(1);
+    expect(pieceAt(attackMode, s('d5'))!.def).toBe(1);
+    // Defense mode: the shield absorbs it, HP untouched.
+    pawn.stance = 'defense';
+    const defenseMode = move(g, 'e4', 'd5');
+    expect(pieceAt(defenseMode, s('d5'))!.hp).toBe(2);
+    expect(pieceAt(defenseMode, s('d5'))!.def).toBe(0);
+  });
+
+  it('a big hit wipes the shield and the HP behind it (DEF 3 / HP 1 vs ATK 4)', () => {
+    let g = newGame();
+    g = move(g, 'e2', 'e4');
+    g = move(g, 'd7', 'd5');
+    const pawn = pieceAt(g, s('d5'))!;
+    pawn.def = 3;
+    pawn.maxDef = 3;
+    pawn.stance = 'defense';
+    pieceAt(g, s('e4'))!.atk = 4;
     g = move(g, 'e4', 'd5');
-    expect(pieceAt(g, s('d5'))!.hp).toBe(2);
+    expect(pieceAt(g, s('d5'))!.owner).toBe('white');
+    const dmg = g.events.find((e) => e.type === 'damaged');
+    expect(dmg && dmg.type === 'damaged' && dmg.shield).toBe(3);
   });
 
   it('a piece that can survive a capture still gives check that must be answered', () => {
@@ -257,6 +280,58 @@ describe('cards', () => {
     expect(pieceAt(g, s('e2'))!.summon?.turnsRemaining).toBe(2);
     g = applyAction(g, { type: 'playCard', cardInstanceId: ritual, target: s('e2') });
     expect(pieceAt(g, s('e2'))!.kind).toBe('the_ox');
+  });
+});
+
+describe('stance', () => {
+  it('switching to Defense uses the turn and locks the piece through the next turn', () => {
+    let g = newGame();
+    g = applyAction(g, { type: 'setStance', square: s('e2'), stance: 'defense' });
+    expect(g.turn).toBe('black');
+    expect(pieceAt(g, s('e2'))!.stance).toBe('defense');
+    g = move(g, 'a7', 'a6');
+    // White's next turn: the pawn is locked.
+    expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(false);
+    g = move(g, 'a2', 'a3');
+    g = move(g, 'a6', 'a5');
+    // The turn after: free again (and still in Defense mode).
+    expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(true);
+    expect(pieceAt(g, s('e2'))!.stance).toBe('defense');
+  });
+
+  it('switching back to Attack uses the turn but does not lock', () => {
+    let g = newGame();
+    g = applyAction(g, { type: 'setStance', square: s('e2'), stance: 'defense' });
+    g = move(g, 'a7', 'a6');
+    g = applyAction(g, { type: 'setStance', square: s('e2'), stance: 'attack' });
+    expect(g.turn).toBe('black');
+    g = move(g, 'a6', 'a5');
+    expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(true);
+  });
+
+  it('a locked piece does not give check, and does once the lock expires', () => {
+    let g = newGame();
+    g = move(g, 'e2', 'e4');
+    g = move(g, 'f7', 'f6');
+    g = move(g, 'd1', 'h5'); // queen gives check on h5-e8 diagonal
+    expect(isInCheck(g, 'black')).toBe(true);
+    g = move(g, 'g7', 'g6'); // block
+    // White turn 3: lock the queen by putting her in Defense (locked through white turn 4).
+    g = applyAction(g, { type: 'setStance', square: s('h5'), stance: 'defense' });
+    // Black may step the blocker away: the queen cannot attack on white's coming turn.
+    g = move(g, 'g6', 'g5');
+    expect(isInCheck(g, 'black')).toBe(false);
+    expect(legalMoves(g).some((m) => m.from === s('h5'))).toBe(false);
+    // White turn 4 passes; on black's turn the queen's *next* turn (5) is unlocked, so this is check.
+    g = move(g, 'a2', 'a3');
+    expect(isInCheck(g, 'black')).toBe(true);
+    expect(() => move(g, 'a7', 'a6')).toThrow(IllegalActionError);
+  });
+
+  it('kings and sacrifices cannot change stance', () => {
+    const g = newGame();
+    expect(() => applyAction(g, { type: 'setStance', square: s('e1'), stance: 'defense' })).toThrow(IllegalActionError);
+    expect(legalActions(g).some((a) => a.type === 'setStance' && a.square === s('e1'))).toBe(false);
   });
 });
 
