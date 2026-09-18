@@ -27,7 +27,7 @@ import {
   type PiecePatch,
   type RulesPatch,
 } from '@chessx/engine';
-import type { DeveloperInfo } from '@chessx/protocol';
+import type { DeveloperInfo, PlayerInfo } from '@chessx/protocol';
 import { searchUsers } from './friends.js';
 import { pickImageFile, prepareImage } from './imageprep.js';
 import { movementMap } from './inspect.js';
@@ -42,7 +42,8 @@ type Selection =
   | { kind: 'piece'; id: string }
   | { kind: 'rules'; id: 'rules' }
   | { kind: 'custom'; id: string }
-  | { kind: 'developers'; id: 'developers' };
+  | { kind: 'developers'; id: 'developers' }
+  | { kind: 'players'; id: 'players' };
 
 function defaultEffect(kind: Effect['kind']): Effect {
   switch (kind) {
@@ -165,7 +166,10 @@ export class BalanceEditor {
     };
     section('Game');
     item({ kind: 'rules', id: 'rules' }, 'Game rules', 'starting mana, hand size, draws', !!(this.draft.rules && Object.keys(this.draft.rules).length));
-    if (this.isOwner()) item({ kind: 'developers', id: 'developers' }, 'Developers', 'who else may use this editor', false);
+    if (this.isOwner()) {
+      item({ kind: 'players', id: 'players' }, 'Players', 'accounts, activity, games', false);
+      item({ kind: 'developers', id: 'developers' }, 'Developers', 'who else may use this editor', false);
+    }
     section('Chess pieces');
     for (const kind of STANDARD_KINDS) {
       const p = basePieceDef(kind);
@@ -228,6 +232,7 @@ export class BalanceEditor {
     if (!this.selected) return;
     if (this.selected.kind === 'rules') this.renderRulesForm(form);
     else if (this.selected.kind === 'developers') void this.renderDevelopers(form);
+    else if (this.selected.kind === 'players') void this.renderPlayers(form);
     else if (this.selected.kind === 'piece') this.renderPieceForm(form, this.selected.id);
     else if (this.selected.kind === 'custom') {
       const card = this.draft.customCards?.find((c) => c.id === this.selected!.id);
@@ -303,6 +308,94 @@ export class BalanceEditor {
     col.append(row, knock);
     wrap.append(preview, col);
     return wrap;
+  }
+
+  // ---- players (owner only)
+
+  private async renderPlayers(form: HTMLElement): Promise<void> {
+    this.header(form, 'Players', 'Every account on the site. Refreshes each time you open this page.', '<span class="glyph">👥</span>', false, () => {});
+    const statsEl = document.createElement('div');
+    statsEl.className = 'pstats';
+    statsEl.textContent = 'Loading…';
+    form.appendChild(statsEl);
+    const tableWrap = document.createElement('div');
+    tableWrap.className = 'ptable-wrap';
+    form.appendChild(tableWrap);
+    const hint = document.createElement('p');
+    hint.className = 'hint';
+    hint.textContent = 'For page views, visitor counts and countries, use the Cloudflare dashboard for playchessx.com (Analytics & Logs) — the site runs through Cloudflare, so that is already being recorded.';
+    form.appendChild(hint);
+
+    let data: Awaited<ReturnType<typeof balanceApi.players>>;
+    try {
+      data = await balanceApi.players();
+    } catch (e) {
+      statsEl.textContent = e instanceof ApiError ? e.message : 'Could not load players.';
+      return;
+    }
+    const s = data.stats;
+    const stat = (n: number | string, label: string) => `<div class="pstat"><b>${n}</b><span>${label}</span></div>`;
+    statsEl.innerHTML =
+      stat(s.accounts, 'accounts') +
+      stat(s.newThisWeek, 'new this week') +
+      stat(s.activeToday, 'active in 24h') +
+      stat(s.onlineNow, 'online now') +
+      stat(s.gamesPlaying, 'games in progress') +
+      stat(s.gamesFinished, 'games finished');
+
+    const fmtDate = (ms: number) => new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    const ago = (ms: number | null, online: boolean) => {
+      if (online) return '<span class="ok">online</span>';
+      if (!ms) return '<span class="muted">—</span>';
+      const d = Date.now() - ms;
+      const m = Math.floor(d / 60000);
+      if (m < 1) return 'just now';
+      if (m < 60) return `${m} min ago`;
+      const h = Math.floor(m / 60);
+      if (h < 24) return `${h} h ago`;
+      const days = Math.floor(h / 24);
+      return days === 1 ? 'yesterday' : `${days} days ago`;
+    };
+    let sortKey: keyof PlayerInfo = 'createdAt';
+    let desc = true;
+    const render = () => {
+      const rows = [...data.players].sort((a, b) => {
+        const av = a[sortKey] ?? 0;
+        const bv = b[sortKey] ?? 0;
+        const c = typeof av === 'string' && typeof bv === 'string' ? av.localeCompare(bv) : Number(av) - Number(bv);
+        return desc ? -c : c;
+      });
+      const th = (key: keyof PlayerInfo, label: string) =>
+        `<th data-key="${key}" class="${sortKey === key ? (desc ? 'desc' : 'asc') : ''}">${label}</th>`;
+      tableWrap.innerHTML = `<table class="ptable"><thead><tr>
+        ${th('name', 'Player')}${th('signIn', 'Sign-in')}${th('createdAt', 'Joined')}${th('lastSeenAt', 'Last seen')}${th('level', 'Level')}${th('gamesPlayed', 'Games')}${th('wins', 'Wins')}${th('gamesInProgress', 'In progress')}
+      </tr></thead><tbody>${rows
+        .map(
+          (p) => `<tr>
+          <td><b>${esc(p.name)}</b>${p.owner ? ' <span class="tag">owner</span>' : p.developer ? ' <span class="tag">dev</span>' : ''}<br><span class="muted">${esc(p.email ?? '')}</span></td>
+          <td>${p.signIn}</td>
+          <td>${fmtDate(p.createdAt)}</td>
+          <td>${ago(p.lastSeenAt, p.online)}</td>
+          <td>${p.level} <span class="muted">(${p.xp} xp)</span></td>
+          <td>${p.gamesPlayed}</td>
+          <td>${p.wins}</td>
+          <td>${p.gamesInProgress}</td>
+        </tr>`,
+        )
+        .join('')}</tbody></table>`;
+      for (const h of tableWrap.querySelectorAll<HTMLElement>('th')) {
+        h.onclick = () => {
+          const key = h.dataset.key as keyof PlayerInfo;
+          if (sortKey === key) desc = !desc;
+          else {
+            sortKey = key;
+            desc = key !== 'name' && key !== 'signIn';
+          }
+          render();
+        };
+      }
+    };
+    render();
   }
 
   // ---- developers (owner only)

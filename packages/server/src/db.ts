@@ -28,6 +28,8 @@ export interface UserRow {
   wins: number;
   /** Short shareable code friends can add you by. */
   friend_code: string | null;
+  /** Last time this account opened a connection to the game (ms since epoch); null before the column existed. */
+  last_seen_at: number | null;
 }
 
 export interface FriendRow {
@@ -185,6 +187,7 @@ export class Db {
     this.addColumn('games', 'black_deck_json', 'TEXT');
     this.addColumn('games', 'rewarded', 'INTEGER NOT NULL DEFAULT 0');
     this.addColumn('users', 'friend_code', 'TEXT');
+    this.addColumn('users', 'last_seen_at', 'INTEGER');
     this.db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_friend_code ON users(friend_code)');
   }
 
@@ -195,8 +198,8 @@ export class Db {
 
   // ------------------------------------------------------------------ users
 
-  createUser(u: Omit<UserRow, 'id' | 'created_at' | 'xp' | 'games_played' | 'wins' | 'friend_code'>): UserRow {
-    const row: UserRow = { ...u, id: newId(), created_at: Date.now(), xp: 0, games_played: 0, wins: 0, friend_code: null };
+  createUser(u: Omit<UserRow, 'id' | 'created_at' | 'xp' | 'games_played' | 'wins' | 'friend_code' | 'last_seen_at'>): UserRow {
+    const row: UserRow = { ...u, id: newId(), created_at: Date.now(), xp: 0, games_played: 0, wins: 0, friend_code: null, last_seen_at: null };
     this.db
       .prepare(
         `INSERT INTO users (id, email, name, password_hash, google_id, facebook_id, avatar_url, created_at, xp, games_played, wins)
@@ -230,6 +233,44 @@ export class Db {
 
   userByFriendCode(code: string): UserRow | undefined {
     return this.db.prepare('SELECT * FROM users WHERE friend_code = ?').get(code.toUpperCase()) as UserRow | undefined;
+  }
+
+  touchLastSeen(userId: string, now = Date.now()): void {
+    this.db.prepare('UPDATE users SET last_seen_at = ? WHERE id = ?').run(now, userId);
+  }
+
+  /** Every account, newest first (for the owner's Players panel). */
+  allUsers(): UserRow[] {
+    return this.db.prepare('SELECT * FROM users ORDER BY created_at DESC, rowid DESC').all() as unknown as UserRow[];
+  }
+
+  /** How many real (non-practice) games each user is in, by status: `{ userId: { playing, finished } }`. */
+  gameCountsByUser(): Map<string, { playing: number; finished: number }> {
+    const rows = this.db
+      .prepare(
+        `SELECT u AS user_id, SUM(CASE WHEN status_kind = 'playing' THEN 1 ELSE 0 END) AS playing,
+                SUM(CASE WHEN status_kind NOT IN ('playing', 'waiting') THEN 1 ELSE 0 END) AS finished
+         FROM (SELECT white_user_id AS u, status_kind FROM games WHERE solo = 0 AND white_user_id IS NOT NULL
+               UNION ALL
+               SELECT black_user_id AS u, status_kind FROM games WHERE solo = 0 AND black_user_id IS NOT NULL)
+         GROUP BY u`,
+      )
+      .all() as unknown as { user_id: string; playing: number; finished: number }[];
+    return new Map(rows.map((r) => [r.user_id, { playing: r.playing, finished: r.finished }]));
+  }
+
+  /** Site-wide totals for the Players panel. */
+  siteStats(now = Date.now()): { accounts: number; newThisWeek: number; activeToday: number; gamesPlaying: number; gamesFinished: number; gamesTotal: number } {
+    const one = <T>(sql: string, ...args: (number | string)[]) => this.db.prepare(sql).get(...args) as T;
+    const day = 24 * 3600_000;
+    return {
+      accounts: one<{ n: number }>('SELECT COUNT(*) AS n FROM users').n,
+      newThisWeek: one<{ n: number }>('SELECT COUNT(*) AS n FROM users WHERE created_at >= ?', now - 7 * day).n,
+      activeToday: one<{ n: number }>('SELECT COUNT(*) AS n FROM users WHERE last_seen_at >= ?', now - day).n,
+      gamesPlaying: one<{ n: number }>("SELECT COUNT(*) AS n FROM games WHERE solo = 0 AND status_kind = 'playing'").n,
+      gamesFinished: one<{ n: number }>("SELECT COUNT(*) AS n FROM games WHERE solo = 0 AND status_kind NOT IN ('playing', 'waiting')").n,
+      gamesTotal: one<{ n: number }>('SELECT COUNT(*) AS n FROM games WHERE solo = 0').n,
+    };
   }
 
   /** The earliest-registered account with exactly this name (case-insensitive). */

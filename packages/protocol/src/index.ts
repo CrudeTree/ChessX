@@ -26,6 +26,35 @@ export interface DeveloperInfo {
   email: string | null;
 }
 
+/** One account as shown in the owner's Players panel. */
+export interface PlayerInfo {
+  id: string;
+  name: string;
+  email: string | null;
+  /** How they sign in. */
+  signIn: 'email' | 'google' | 'facebook' | 'unknown';
+  createdAt: number;
+  lastSeenAt: number | null;
+  online: boolean;
+  level: number;
+  xp: number;
+  gamesPlayed: number;
+  wins: number;
+  gamesInProgress: number;
+  developer: boolean;
+  owner: boolean;
+}
+
+export interface SiteStats {
+  accounts: number;
+  newThisWeek: number;
+  activeToday: number;
+  onlineNow: number;
+  gamesPlaying: number;
+  gamesFinished: number;
+  gamesTotal: number;
+}
+
 export interface AuthProviders {
   google: boolean;
   facebook: boolean;

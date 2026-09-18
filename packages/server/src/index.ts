@@ -4,7 +4,7 @@
 //  - everything else: the built client (production)
 
 import { currentBalance } from '@chessx/engine';
-import { PROTOCOL_VERSION, decode, encode, type ClientMessage, type ServerMessage } from '@chessx/protocol';
+import { PROTOCOL_VERSION, decode, encode, levelFor, type ClientMessage, type PlayerInfo, type ServerMessage, type SiteStats } from '@chessx/protocol';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { dirname, extname, join, normalize } from 'node:path';
@@ -203,6 +203,33 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 
     // ---- balance (card/piece numbers). Reading is public: every client needs it to render cards.
     if (req.method === 'GET' && path === '/api/balance') return json(res, 200, { balance: currentBalance() });
+    // ---- players (owner only): every account and site-wide totals
+    if (req.method === 'GET' && path === '/api/admin/players') {
+      const user = auth.userFromRequest(req);
+      if (!user) return json(res, 401, { error: 'Not signed in.' });
+      if (!admin.isOwner(user)) return json(res, 403, { error: 'Only the owner can see players.' });
+      const devs = new Set(admin.developerIds());
+      const counts = db.gameCountsByUser();
+      const players: PlayerInfo[] = db.allUsers().map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        signIn: u.google_id ? 'google' : u.facebook_id ? 'facebook' : u.password_hash ? 'email' : 'unknown',
+        createdAt: u.created_at,
+        lastSeenAt: u.last_seen_at,
+        online: (socketsByUser.get(u.id)?.size ?? 0) > 0,
+        level: levelFor(u.xp),
+        xp: u.xp,
+        gamesPlayed: u.games_played,
+        wins: u.wins,
+        gamesInProgress: counts.get(u.id)?.playing ?? 0,
+        developer: devs.has(u.id),
+        owner: admin.isOwner(u),
+      }));
+      const stats: SiteStats = { ...db.siteStats(), onlineNow: [...socketsByUser.values()].filter((s) => s.size > 0).length };
+      return json(res, 200, { stats, players });
+    }
+
     // ---- developers (owner only): who else may use the card editor
     if (path === '/api/admin/developers') {
       const user = auth.userFromRequest(req);
@@ -515,6 +542,7 @@ httpServer.on('upgrade', (req, socket, head) => {
     if (!set) socketsByUser.set(user.id, (set = new Set()));
     const cameOnline = set.size === 0;
     set.add(t);
+    db.touchLastSeen(user.id);
     t.send({ type: 'welcome', version: PROTOCOL_VERSION, user: toUserInfo(user), balance: currentBalance() });
     if (cameOnline) pushPresenceToFriends(user.id);
 

@@ -1,5 +1,17 @@
 import type { Balance } from '@chessx/engine';
-import { decode, encode, type AuthProviders, type ClientMessage, type DeckInfo, type DeveloperInfo, type Profile, type ServerMessage, type UserInfo } from '@chessx/protocol';
+import {
+  decode,
+  encode,
+  type AuthProviders,
+  type ClientMessage,
+  type DeckInfo,
+  type DeveloperInfo,
+  type PlayerInfo,
+  type Profile,
+  type ServerMessage,
+  type SiteStats,
+  type UserInfo,
+} from '@chessx/protocol';
 
 // ---------------------------------------------------------------------------
 // HTTP: accounts
@@ -42,6 +54,8 @@ export const balanceApi = {
   save: (balance: Balance) => api<{ balance: Balance }>('/api/balance', { method: 'PUT', body: JSON.stringify({ balance }) }).then((r) => r.balance),
   /** Upload a PNG data: URL; returns its public path. */
   upload: (image: string) => api<{ url: string }>('/api/admin/upload', { method: 'POST', body: JSON.stringify({ image }) }).then((r) => r.url),
+  /** Owner only: every account plus site totals. */
+  players: () => api<{ stats: SiteStats; players: PlayerInfo[] }>('/api/admin/players'),
   /** Owner only: who else may use the editor. */
   developers: () => api<{ developers: DeveloperInfo[] }>('/api/admin/developers').then((r) => r.developers),
   setDeveloper: (userId: string, grant: boolean) =>

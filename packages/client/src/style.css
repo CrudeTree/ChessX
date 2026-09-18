@@ -1269,6 +1269,90 @@ button.danger {
   min-width: 180px;
 }
 
+/* Players panel */
+.pstats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.pstat {
+  background: var(--panel);
+  border: 1px solid #2f2f44;
+  border-radius: 12px;
+  padding: 10px 16px;
+  min-width: 110px;
+  display: flex;
+  flex-direction: column;
+}
+
+.pstat b {
+  font-size: 22px;
+  color: var(--accent);
+}
+
+.pstat span {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.ptable-wrap {
+  overflow-x: auto;
+  background: var(--panel);
+  border: 1px solid #2f2f44;
+  border-radius: 12px;
+}
+
+.ptable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.ptable th,
+.ptable td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid #262636;
+  white-space: nowrap;
+}
+
+.ptable th {
+  cursor: pointer;
+  user-select: none;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.ptable th.desc::after {
+  content: ' ▾';
+}
+
+.ptable th.asc::after {
+  content: ' ▴';
+}
+
+.ptable tr:last-child td {
+  border-bottom: none;
+}
+
+.ptable .tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(212, 162, 76, 0.15);
+  color: var(--accent);
+  vertical-align: middle;
+}
+
+.ptable .ok {
+  color: #9ef0bd;
+}
+
 .devlist {
   display: flex;
   flex-direction: column;

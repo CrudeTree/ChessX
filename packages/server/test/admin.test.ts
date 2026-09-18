@@ -89,6 +89,21 @@ describe('admin', () => {
     expect(db.collectionFor(alice.id).length).toBeGreaterThan(0); // the rest is untouched
   });
 
+  it('site stats and last-seen bookkeeping', () => {
+    const { db, mk } = setup();
+    const a = mk('Alice');
+    mk('Bob');
+    let s = db.siteStats();
+    expect(s.accounts).toBe(2);
+    expect(s.newThisWeek).toBe(2);
+    expect(s.activeToday).toBe(0);
+    db.touchLastSeen(a.id);
+    s = db.siteStats();
+    expect(s.activeToday).toBe(1);
+    expect(db.allUsers().map((u) => u.name)).toEqual(['Bob', 'Alice']); // newest first
+    expect(db.userById(a.id)!.last_seen_at).toBeGreaterThan(0);
+  });
+
   it('stores PNG uploads by content hash and rejects anything else', () => {
     const { admin } = setup();
     // Smallest valid-looking PNG header + junk body.
