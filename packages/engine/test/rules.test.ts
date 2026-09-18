@@ -368,14 +368,16 @@ describe('combat with HP', () => {
     g = move(g, 'e4', 'd5');
     g = move(g, 'e7', 'e6');
     g = move(g, 'd5', 'e6');
-    g = move(g, 'a7', 'a6');
+    g = move(g, 'g8', 'h6'); // knight to h6, where it could capture on f7
     const pawn = pieceAt(g, s('e6'))!;
     pawn.hp = 5;
     pawn.maxHp = 5;
     g = move(g, 'e6', 'f7');
     expect(isInCheck(g, 'black')).toBe(true);
-    // Kxf7 would only deal 1 damage and leave the king in check, so it is not legal.
-    expect(legalMoves(g).some((m) => m.from === s('e8') && m.to === s('f7'))).toBe(false);
+    // Nxf7 would only deal 1 damage and leave the king in check, so it is not legal...
+    expect(legalMoves(g).some((m) => m.from === s('h6') && m.to === s('f7'))).toBe(false);
+    // ...but the King's royal strike destroys the pawn outright, so Kxf7 is.
+    expect(legalMoves(g).some((m) => m.from === s('e8') && m.to === s('f7'))).toBe(true);
     // Every legal move resolves the check; ending the turn is not offered.
     for (const m of legalMoves(g)) expect(isInCheck(applyAction(g, m), 'black')).toBe(false);
     expect(has(legalActions(g), 'endTurn')).toBe(false);
