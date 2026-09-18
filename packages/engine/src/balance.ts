@@ -7,6 +7,7 @@
 import { allCards, baseCardDef, setCardDef } from './cards/registry.js';
 import type { CardDef, Effect } from './cards/types.js';
 import { basePieceDef, getPieceDef, setPieceDef, STANDARD_KINDS } from './pieces.js';
+import { BASE_RULES, DEFAULT_RULES } from './state.js';
 import type { MovementSpec, PieceDef } from './types.js';
 
 export interface PiecePatch {
@@ -32,11 +33,19 @@ export interface CardPatch {
   text?: string;
 }
 
+/** Game-wide numbers (apply to games created after the change). */
+export interface RulesPatch {
+  startingMana?: number;
+  openingHand?: number;
+  drawEvery?: number;
+}
+
 export interface Balance {
   /** Patches keyed by card id. */
   cards: Record<string, CardPatch>;
   /** Patches for the six standard chess pieces, keyed by kind. */
   pieces: Record<string, PiecePatch>;
+  rules?: RulesPatch;
 }
 
 export const EMPTY_BALANCE: Balance = { cards: {}, pieces: {} };
@@ -94,9 +103,11 @@ export function patchedCard(id: string, patch: CardPatch | undefined): CardDef {
  * pieces with no patch return to their shipped definitions.
  */
 export function applyBalance(balance: Balance): void {
-  current = { cards: { ...balance.cards }, pieces: { ...balance.pieces } };
+  current = { cards: { ...balance.cards }, pieces: { ...balance.pieces }, ...(balance.rules && Object.keys(balance.rules).length ? { rules: { ...balance.rules } } : {}) };
   for (const base of allCards()) setCardDef(patchedCard(base.id, current.cards[base.id]));
   for (const kind of STANDARD_KINDS) setPieceDef(patchPiece(basePieceDef(kind), current.pieces[kind]));
+  // New games pick these up; games in progress keep the rules they started with.
+  Object.assign(DEFAULT_RULES, BASE_RULES, current.rules ?? {});
 }
 
 // ---------------------------------------------------------------------------
@@ -194,6 +205,10 @@ export function validateBalance(b: unknown): string[] {
     }
     validatePiece(patch, basePieceDef(kind).name, problems, kind === 'king');
   }
+  const r = bal.rules ?? {};
+  if (r.startingMana !== undefined && !isInt(r.startingMana, 0, 9999)) problems.push('Rules: starting mana must be 0–9999.');
+  if (r.openingHand !== undefined && !isInt(r.openingHand, 0, 15)) problems.push('Rules: opening hand must be 0–15 cards.');
+  if (r.drawEvery !== undefined && !isInt(r.drawEvery, 1, 20)) problems.push('Rules: draw every 1–20 turns.');
   return problems;
 }
 

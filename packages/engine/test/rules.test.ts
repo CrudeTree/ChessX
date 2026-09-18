@@ -649,6 +649,18 @@ describe('balance patches', () => {
     expect(viewFor(realGame(), 'white').players.white.manaIncome).toBe(32);
   });
 
+  it('rule patches change what new games start with', () => {
+    applyBalance({ cards: {}, pieces: {}, rules: { startingMana: 300, openingHand: 5 } });
+    const g = createGame({ decks: { white: starterDeck(), black: starterDeck() }, seed: 1 });
+    expect(g.players.white.mana).toBe(300);
+    expect(g.players.black.hand).toHaveLength(5);
+    expect(g.rules.drawEvery).toBe(5); // untouched rule still follows the code
+    applyBalance(EMPTY_BALANCE);
+    expect(realGame().players.white.mana).toBe(0);
+    expect(realGame().players.white.hand).toHaveLength(7);
+    expect(validateBalance({ cards: {}, pieces: {}, rules: { startingMana: -1 } })).toEqual([expect.stringMatching(/starting mana/)]);
+  });
+
   it('rejects nonsense', () => {
     expect(validateBalance({ cards: { nope: { cost: 1 } }, pieces: {} })).toEqual([expect.stringMatching(/Unknown card/)]);
     expect(validateBalance({ cards: { hex: { cost: -5 } }, pieces: {} })).toEqual([expect.stringMatching(/cost/)]);

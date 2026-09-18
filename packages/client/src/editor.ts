@@ -6,6 +6,7 @@
 import {
   allCards,
   applyBalance,
+  BASE_RULES,
   baseCardDef,
   basePieceDef,
   cloneMovement,
@@ -21,6 +22,7 @@ import {
   type Effect,
   type MovementSpec,
   type PiecePatch,
+  type RulesPatch,
 } from '@chessx/engine';
 import { movementMap } from './inspect.js';
 import { ApiError, balanceApi } from './net.js';
@@ -29,7 +31,7 @@ const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
-type Selection = { kind: 'card'; id: string } | { kind: 'piece'; id: string };
+type Selection = { kind: 'card'; id: string } | { kind: 'piece'; id: string } | { kind: 'rules'; id: 'rules' };
 
 const DIRS8: ReadonlyArray<readonly [number, number, string]> = [
   [-1, 1, '↖'], [0, 1, '↑'], [1, 1, '↗'],
@@ -48,7 +50,7 @@ export class BalanceEditor {
     $('editor-back').onclick = () => this.leave();
     $('editor-save').onclick = () => void this.save();
     $('editor-reset-all').onclick = () => {
-      if (!confirm('Reset every card and piece to the values in the code? (You still need to press Save.)')) return;
+      if (!confirm('Reset every card, piece and rule to the values in the code? (You still need to press Save.)')) return;
       this.draft = { cards: {}, pieces: {} };
       this.refresh();
     };
@@ -128,6 +130,8 @@ export class BalanceEditor {
       };
       el.appendChild(b);
     };
+    section('Game');
+    item({ kind: 'rules', id: 'rules' }, 'Game rules', 'starting mana, hand size, draws', !!(this.draft.rules && Object.keys(this.draft.rules).length));
     section('Chess pieces');
     for (const kind of STANDARD_KINDS) {
       const p = basePieceDef(kind);
@@ -150,8 +154,36 @@ export class BalanceEditor {
     const form = $('editor-form');
     form.innerHTML = '';
     if (!this.selected) return;
-    if (this.selected.kind === 'piece') this.renderPieceForm(form, this.selected.id);
+    if (this.selected.kind === 'rules') this.renderRulesForm(form);
+    else if (this.selected.kind === 'piece') this.renderPieceForm(form, this.selected.id);
     else this.renderCardForm(form, this.selected.id);
+  }
+
+  // ---- game rules
+
+  private renderRulesForm(form: HTMLElement): void {
+    const patch: RulesPatch = this.draft.rules ?? {};
+    const clean = () => {
+      if (Object.keys(patch).length) this.draft.rules = patch;
+      else delete this.draft.rules;
+    };
+    const setR = <K extends keyof RulesPatch>(k: K) => (v: RulesPatch[K] | undefined) => {
+      if (v === undefined) delete patch[k];
+      else patch[k] = v;
+      clean();
+    };
+    this.header(form, 'Game rules', 'Numbers every new game starts with', '<span class="glyph">⚙</span>', !!this.draft.rules, () => delete this.draft.rules);
+    const g = this.group(form, 'Mana');
+    g.appendChild(this.numField('Starting mana', patch.startingMana, BASE_RULES.startingMana, setR('startingMana'), 'each player begins with this much'));
+    const cards = this.group(form, 'Cards');
+    cards.append(
+      this.numField('Opening hand', patch.openingHand, BASE_RULES.openingHand, setR('openingHand'), 'cards drawn at the start'),
+      this.numField('Draw every N turns', patch.drawEvery, BASE_RULES.drawEvery, setR('drawEvery'), 'the deck timer fills every Nth turn'),
+    );
+    const note = document.createElement('p');
+    note.className = 'hint';
+    note.textContent = 'Rule changes apply to games created after you save. Games already in progress keep the rules they started with.';
+    form.appendChild(note);
   }
 
   /** A labelled integer input with its code default and a reset button. */

@@ -40,7 +40,7 @@ export class Admin {
         const parsed = JSON.parse(raw) as Balance;
         const problems = validateBalance(parsed);
         if (problems.length) console.warn('[admin] saved balance has problems, applying anyway:', problems.join(' '));
-        balance = { cards: parsed.cards ?? {}, pieces: parsed.pieces ?? {} };
+        balance = { cards: parsed.cards ?? {}, pieces: parsed.pieces ?? {}, ...(parsed.rules ? { rules: parsed.rules } : {}) };
       } catch (e) {
         console.error('[admin] could not parse saved balance; using shipped values', e);
       }
@@ -60,6 +60,7 @@ export class Admin {
     const balance: Balance = { cards: {}, pieces: {} };
     for (const [id, p] of Object.entries(b.cards ?? {})) if (p && Object.keys(p).length) balance.cards[id] = p;
     for (const [k, p] of Object.entries(b.pieces ?? {})) if (p && Object.keys(p).length) balance.pieces[k] = p;
+    if (b.rules && Object.keys(b.rules).length) balance.rules = b.rules;
     this.db.setKv(BALANCE_KEY, JSON.stringify(balance));
     applyBalance(balance);
     return currentBalance();

@@ -16,14 +16,18 @@ export interface RuleConstants {
   startingMana: number;
 }
 
-export const DEFAULT_RULES: RuleConstants = {
+/** Rules as shipped in code. */
+export const BASE_RULES: Readonly<RuleConstants> = Object.freeze({
   deckMin: 25,
   deckMax: 40,
   openingHand: 7,
   drawEvery: 5,
   maxCopies: 3,
   startingMana: 0,
-};
+});
+
+/** Rules new games are created with: BASE_RULES plus any admin balance patch (see balance.ts). */
+export const DEFAULT_RULES: RuleConstants = { ...BASE_RULES };
 
 export interface PlayerState {
   color: Color;
