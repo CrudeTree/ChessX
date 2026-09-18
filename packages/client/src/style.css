@@ -1895,6 +1895,34 @@ button,
     transform: none;
   }
 
+  /* Grab-handle so the sheets read as dismissible. */
+  #inspect::before,
+  #side::before,
+  #chat::before {
+    content: '';
+    display: block;
+    width: 44px;
+    height: 4px;
+    border-radius: 2px;
+    background: #4a4a5c;
+    margin: -4px auto 10px;
+  }
+
+  /* Peek: compact card for a tapped piece; the board above stays interactive. */
+  #inspect.peek {
+    max-height: 44vh;
+    box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.5);
+  }
+
+  #inspect.peek .zoom-text,
+  #inspect.peek .map-legend {
+    font-size: 12px;
+  }
+
+  #inspect.peek .minimap {
+    width: 150px;
+  }
+
   #side {
     gap: 10px;
     max-height: 72vh;
@@ -1924,12 +1952,20 @@ button,
     opacity: 1;
   }
 
+  /* Inside a scrolling sheet nothing may shrink, or the mini-map collapses. */
+  .zoom,
+  .zoom > *,
+  #inspect > * {
+    flex-shrink: 0;
+  }
+
   .zoom {
     min-height: 0;
   }
 
   .minimap {
-    max-width: 240px;
+    width: 240px;
+    max-width: 100%;
     margin: 0 auto;
   }
 

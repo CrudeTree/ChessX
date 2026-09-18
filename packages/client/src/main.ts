@@ -477,10 +477,16 @@ const mOpp = $('m-opp');
 const mMe = $('m-me');
 let openSheet: string | null = null;
 
-function setSheet(id: string | null): void {
+/**
+ * Show one bottom sheet (or none). `peek` is the compact, undimmed variant used
+ * when a piece is tapped: the board stays live and any tap on it dismisses.
+ */
+function setSheet(id: string | null, opts: { peek?: boolean } = {}): void {
+  const peek = !!opts.peek && id === 'inspect';
   for (const s of ['inspect', 'side', 'chat']) $(s).classList.toggle('open', MOBILE && id === s);
+  $('inspect').classList.toggle('peek', MOBILE && peek);
   for (const b of document.querySelectorAll<HTMLButtonElement>('#mtabs button')) b.classList.toggle('active', b.dataset.sheet === id);
-  $('sheet-backdrop').classList.toggle('hidden', !MOBILE || id === null);
+  $('sheet-backdrop').classList.toggle('hidden', !MOBILE || id === null || peek);
   openSheet = id;
   if (id === 'chat') $('m-chat-badge').textContent = '';
 }
@@ -492,8 +498,13 @@ function setupMobileChrome(): void {
     b.onclick = () => setSheet(openSheet === b.dataset.sheet ? null : b.dataset.sheet!);
   }
   $('sheet-backdrop').onclick = () => setSheet(null);
-  // Tapping a hand card opens its full text; tapping a piece just selects it (the Card tab shows its name).
+  // Tapping a hand card opens its full text; tapping a piece peeks its card while keeping the board live.
   gameView.onCardTap = () => setSheet('inspect');
+  gameView.onPieceTap = () => setSheet('inspect', { peek: true });
+  // Any touch on the board dismisses a peek (the same touch still selects/moves as usual).
+  $('board-mount').addEventListener('pointerdown', () => {
+    if (openSheet === 'inspect' && $('inspect').classList.contains('peek')) setSheet(null);
+  }, { capture: true });
   const origInspect = gameView.onInspect;
   gameView.onInspect = (t) => {
     origInspect(t);

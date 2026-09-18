@@ -102,6 +102,8 @@ export class GameView {
   private handMaxScroll = 0;
   /** Fired on a tap (no drag) on a hand card. */
   onCardTap: (cardId: string) => void = () => {};
+  /** Fired on a tap (no drag) on a piece — after it has been inspected/selected. */
+  onPieceTap: (piece: Piece) => void = () => {};
   private pulse = 0;
   /** The current set of target-square highlights, faded in and out by the ticker. */
   private pulsingHighlights: Graphics | null = null;
@@ -695,11 +697,13 @@ export class GameView {
 
     if (!this.myTurn || piece.owner !== this.view.you) {
       this.clearSelection();
+      this.onPieceTap(piece); // cannot be dragged, so this is a tap
       return;
     }
     const targets = this.moveTargetsFrom(piece.square);
     if (targets.bySquare.size === 0) {
       this.clearSelection();
+      this.onPieceTap(piece);
       return;
     }
 
@@ -820,6 +824,8 @@ export class GameView {
           // A simple click: keep the piece selected so the player can click a target.
           this.selection = { square: d.from, targets: d.targets };
           this.drawHighlights(d.targets, d.from);
+          const piece = this.view?.pieces[d.sprite.pieceId];
+          if (piece) this.onPieceTap(piece);
         } else {
           this.highlightLayer.removeChildren();
         }
