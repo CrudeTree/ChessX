@@ -12,6 +12,7 @@ import {
   type UserInfo,
 } from '@chessx/protocol';
 import { Binder, cardElement } from './binder.js';
+import { FriendsPanel } from './friends.js';
 import { GameView } from './game/GameView.js';
 import { InspectPanel } from './inspect.js';
 import { describeEvents } from './log.js';
@@ -189,6 +190,8 @@ const binder = new Binder(() => {
   net.send({ type: 'listGames' });
 });
 binder.onProfileChanged = (p) => setProfile(p);
+
+const friends = new FriendsPanel((m) => net.send(m), () => chosenDeckSlot());
 
 $('open-binder').onclick = async () => {
   await refreshProfile();
@@ -577,11 +580,11 @@ function appendChat(messages: ChatMessage[]): void {
 }
 
 let toastTimer = 0;
-function showToast(message: string): void {
+function showToast(message: string, kind: 'error' | 'info' = 'error'): void {
   toast.textContent = message;
-  toast.classList.remove('hidden');
+  toast.className = kind;
   clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => toast.classList.add('hidden'), 2800);
+  toastTimer = window.setTimeout(() => toast.classList.add('hidden'), kind === 'info' ? 4500 : 2800);
 }
 
 // ---------------------------------------------------------------------------
@@ -603,8 +606,15 @@ net.onMessage = async (msg: ServerMessage) => {
       const reopen = currentGameId ?? openGameId();
       if (reopen) net.send({ type: 'openGame', gameId: reopen });
       else net.send({ type: 'listGames' });
+      net.send({ type: 'getSocial' });
       return;
     }
+    case 'social':
+      friends.update(msg.social);
+      return;
+    case 'notice':
+      showToast(msg.message, 'info');
+      return;
     case 'games':
       games = msg.games;
       renderHome();

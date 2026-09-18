@@ -42,7 +42,19 @@ Other scripts:
 
 ## Putting it online
 
-ChessX has a real server (websockets, accounts, a SQLite database), so unlike a static game it **cannot be hosted on GitHub Pages**. It needs a small always-on Node host with a persistent disk for the database. The repo ships ready-to-go configs for two:
+ChessX has a real server (websockets, accounts, a SQLite database), so unlike a static game it **cannot be hosted on GitHub Pages**. It needs a small always-on Node host with a persistent disk for the database.
+
+**Your own VPS / droplet** (recommended if you have one): everything is in `deploy/`.
+
+```bash
+git clone https://github.com/CrudeTree/ChessX.git /opt/chessx
+cp /opt/chessx/deploy/.env.example /opt/chessx/deploy/.env   # set PUBLIC_URL to your domain
+/opt/chessx/deploy/deploy.sh                                  # builds the image, starts the container
+```
+
+The container listens on `127.0.0.1:8080` only. Point your existing reverse proxy at it — `deploy/nginx.conf.example` (with the WebSocket headers) or `deploy/Caddyfile.example` — and add a DNS record for the domain. Re-run `deploy.sh` to update. The database lives in the `chessx_data` Docker volume.
+
+Managed hosts, if you'd rather not run it yourself:
 
 **Render** (simplest): dashboard → *New* → *Blueprint* → pick this repo; `render.yaml` sets up a Docker web service with a 1 GB persistent disk. Set `PUBLIC_URL` to the URL Render assigns (e.g. `https://chessx.onrender.com`). Needs the Starter plan (~$7/mo) because the free tier's disk is wiped whenever it spins down, which would erase everyone's games.
 
@@ -103,6 +115,10 @@ Example: DEF 3 / HP 1 in Defense mode, hit by ATK 4 → shield wiped out, 1 dama
 - Finishing a two-player match gives **20 XP**; winning gives **30 more**. Levels need 100, 200, 300… XP each. Practice games don't count.
 - Your **first finished match** (win or lose) unlocks a brand-new reward card. After that, every win by **checkmate** rolls a reward: a 50/50 between a reward card you don't own yet and a spare copy of a card you do.
 - The **Binder** shows your whole collection (new cards are flagged) and holds up to **3 named decks**. Click a card to add it, use −/+ in the deck list, rename, Save. A deck needs 25–40 cards, max 3 copies of anything, and only cards you own. Pick which deck to play with on the home page before creating, joining or practising.
+
+### Friends and challenges
+
+Find people by display name, email, or their 6-character **friend code** (shown on your home page), send a request, and once accepted you'll see them in the Friends panel with an online dot. **Challenge** a friend and a game is created with you seated; they get a notification and an Accept/Decline card on their home page. Accepting starts the game with their chosen deck — no invite codes needed. Declining (or withdrawing) removes the pending game.
 
 ### Cards
 

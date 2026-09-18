@@ -13,6 +13,7 @@ import { Auth, AuthError, configFromEnv, toUserInfo } from './auth.js';
 import { Db } from './db.js';
 import { GameError, GameManager, type LiveGame, type Transport } from './games.js';
 import { Progression, ProgressionError } from './progression.js';
+import { SocialError, SocialService } from './social.js';
 
 const PORT = Number(process.env.PORT ?? 8080);
 const here = dirname(fileURLToPath(import.meta.url));
@@ -26,6 +27,30 @@ setInterval(() => db.purgeExpiredSessions(), 60 * 60_000).unref();
 
 /** Open sockets per user, so home pages can be refreshed when one of their games changes. */
 const socketsByUser = new Map<string, Set<SocketTransport>>();
+const social = new SocialService(db);
+social.isOnline = (uid) => (socketsByUser.get(uid)?.size ?? 0) > 0;
+
+/** Push a fresh Friends panel to every tab a user has open. */
+function pushSocial(...userIds: string[]): void {
+  for (const uid of new Set(userIds)) {
+    const user = db.userById(uid);
+    if (!user) continue;
+    const payload = social.social(user);
+    for (const t of socketsByUser.get(uid) ?? []) t.send({ type: 'social', social: payload });
+  }
+}
+
+/** Presence changed: friends see the online dot flip. */
+function pushPresenceToFriends(userId: string): void {
+  const user = db.userById(userId);
+  if (!user) return;
+  pushSocial(...social.social(user).friends.map((f) => f.id));
+}
+
+function notify(userId: string, message: string): void {
+  for (const t of socketsByUser.get(userId) ?? []) t.send({ type: 'notice', message });
+}
+
 games.onChanged = (game) => {
   for (const uid of game.participants()) {
     for (const t of socketsByUser.get(uid) ?? []) {
@@ -154,6 +179,11 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
         return json(res, 200, { ok: true });
       }
     }
+    if (req.method === 'GET' && path === '/api/users/search') {
+      const user = auth.userFromRequest(req);
+      if (!user) return json(res, 401, { error: 'Not signed in.' });
+      return json(res, 200, { results: social.search(user, url.searchParams.get('q') ?? '') });
+    }
 
     for (const provider of ['google', 'facebook'] as const) {
       if (req.method === 'GET' && path === `/api/auth/${provider}`) return auth.beginOAuth(provider, res);
@@ -241,6 +271,73 @@ function handleMessage(t: SocketTransport, msg: ClientMessage): void {
       if (!t.game) return t.error('You are not in a game.');
       t.game.act(t, msg.action);
       return;
+
+    // ---- friends
+    case 'getSocial':
+      pushSocial(t.userId);
+      return;
+    case 'friendRequest': {
+      const me = db.userById(t.userId)!;
+      const other = social.request(me, msg.userId);
+      pushSocial(me.id, other.id);
+      notify(other.id, social.areFriends(me.id, other.id) ? `You and ${me.name} are now friends.` : `${me.name} wants to be your friend.`);
+      return;
+    }
+    case 'friendAccept': {
+      const me = db.userById(t.userId)!;
+      const other = social.accept(me, msg.userId);
+      pushSocial(me.id, other.id);
+      notify(other.id, `${me.name} accepted your friend request.`);
+      return;
+    }
+    case 'friendRemove': {
+      const other = social.remove(db.userById(t.userId)!, msg.userId);
+      pushSocial(t.userId, other.id);
+      return;
+    }
+
+    // ---- challenges
+    case 'challenge': {
+      const me = db.userById(t.userId)!;
+      const friend = db.userById(msg.friendId);
+      if (!friend || !social.areFriends(me.id, friend.id)) return t.error('You can only challenge friends.');
+      const deck = progression.deckForPlay(me.id, msg.deckSlot);
+      const game = games.create(me.id, false, deck);
+      social.createChallenge(me.id, friend.id, game.id);
+      open(t, game);
+      pushSocial(me.id, friend.id);
+      notify(friend.id, `${me.name} challenged you to a game!`);
+      console.log(`[game ${game.row.code}] ${me.name} challenged ${friend.name}`);
+      return;
+    }
+    case 'acceptChallenge': {
+      const c = social.pendingChallenge(msg.challengeId);
+      if (c.to_user !== t.userId) return t.error('That challenge is not for you.');
+      const game = games.get(c.game_id);
+      if (!game || game.state) {
+        social.resolveChallenge(c.id, 'declined');
+        pushSocial(t.userId, c.from_user);
+        return t.error('That game is no longer available.');
+      }
+      const deck = progression.deckForPlay(t.userId, msg.deckSlot);
+      game.join(t.userId, deck);
+      social.resolveChallenge(c.id, 'accepted');
+      open(t, game);
+      pushSocial(t.userId, c.from_user);
+      notify(c.from_user, `${db.userById(t.userId)?.name ?? 'Your friend'} accepted your challenge — game on!`);
+      return;
+    }
+    case 'declineChallenge': {
+      const c = social.pendingChallenge(msg.challengeId);
+      if (c.to_user !== t.userId && c.from_user !== t.userId) return t.error('Not your challenge.');
+      social.resolveChallenge(c.id, 'declined');
+      games.discardUnstarted(c.game_id);
+      pushSocial(c.from_user, c.to_user);
+      const me = db.userById(t.userId)?.name ?? 'Your friend';
+      if (t.userId === c.to_user) notify(c.from_user, `${me} declined your challenge.`);
+      else notify(c.to_user, `${me} withdrew their challenge.`);
+      return;
+    }
     case 'chat':
       if (!t.game) return t.error('You are not in a game.');
       if (typeof msg.text === 'string') t.game.chatMessage(t, msg.text);
@@ -267,8 +364,10 @@ httpServer.on('upgrade', (req, socket, head) => {
     const t = new SocketTransport(ws, user.id);
     let set = socketsByUser.get(user.id);
     if (!set) socketsByUser.set(user.id, (set = new Set()));
+    const cameOnline = set.size === 0;
     set.add(t);
     t.send({ type: 'welcome', version: PROTOCOL_VERSION, user: toUserInfo(user) });
+    if (cameOnline) pushPresenceToFriends(user.id);
 
     ws.on('message', (raw) => {
       let msg: ClientMessage;
@@ -280,7 +379,7 @@ httpServer.on('upgrade', (req, socket, head) => {
       try {
         handleMessage(t, msg);
       } catch (e) {
-        if (e instanceof GameError || e instanceof ProgressionError) return t.error(e.message);
+        if (e instanceof GameError || e instanceof ProgressionError || e instanceof SocialError) return t.error(e.message);
         console.error(e);
         t.error('Server error.');
       }
@@ -288,7 +387,10 @@ httpServer.on('upgrade', (req, socket, head) => {
     ws.on('close', () => {
       detach(t);
       set!.delete(t);
-      if (set!.size === 0) socketsByUser.delete(user.id);
+      if (set!.size === 0) {
+        socketsByUser.delete(user.id);
+        pushPresenceToFriends(user.id);
+      }
     });
   });
 });

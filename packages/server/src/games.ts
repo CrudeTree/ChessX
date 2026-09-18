@@ -75,6 +75,10 @@ export class LiveGame {
     return this.watchers.size > 0;
   }
 
+  watchersList(): Transport[] {
+    return [...this.watchers];
+  }
+
   isParticipant(userId: string): boolean {
     return this.row.white_user_id === userId || this.row.black_user_id === userId;
   }
@@ -382,6 +386,19 @@ export class GameManager {
       this.db.updateGame(row);
     }
     return game;
+  }
+
+  /** Remove a game nobody has started playing (declined/cancelled challenge). Anyone viewing it is sent home. */
+  discardUnstarted(gameId: string): void {
+    const g = this.get(gameId);
+    if (!g || g.state) return;
+    for (const t of g.watchersList()) {
+      g.detach(t);
+      t.send({ type: 'left' });
+    }
+    this.live.delete(gameId);
+    this.db.deleteGame(gameId);
+    this.onChanged(g);
   }
 
   summariesFor(userId: string): GameSummary[] {

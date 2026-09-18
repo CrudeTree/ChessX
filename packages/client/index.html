@@ -81,19 +81,38 @@
         <img src="/art/elder_wyrm.png" alt="" />
       </div>
       <p id="home-error" class="error"></p>
-      <section>
-        <h2 class="section-title">Your move</h2>
-        <div id="games-mine" class="games"></div>
-      </section>
-      <section>
-        <h2 class="section-title">Waiting on the opponent</h2>
-        <div id="games-theirs" class="games"></div>
-      </section>
-      <section>
-        <h2 class="section-title">Finished</h2>
-        <div id="games-done" class="games"></div>
-      </section>
-      <p id="home-empty" class="hint hidden">No games yet. Start one and send the invite code to a friend, or try Practice.</p>
+      <div class="home-body">
+        <div class="home-games">
+          <section id="sec-challenges" class="hidden">
+            <h2 class="section-title">Challenges</h2>
+            <div id="challenges" class="challenges"></div>
+          </section>
+          <section>
+            <h2 class="section-title">Your move</h2>
+            <div id="games-mine" class="games"></div>
+          </section>
+          <section>
+            <h2 class="section-title">Waiting on the opponent</h2>
+            <div id="games-theirs" class="games"></div>
+          </section>
+          <section>
+            <h2 class="section-title">Finished</h2>
+            <div id="games-done" class="games"></div>
+          </section>
+          <p id="home-empty" class="hint hidden">No games yet. Challenge a friend, start one with an invite code, or try Practice.</p>
+        </div>
+        <aside class="friends-panel">
+          <h2 class="section-title">Friends</h2>
+          <div class="friend-code">Your friend code <b id="my-code">------</b></div>
+          <form id="friend-search-form" class="row" autocomplete="off">
+            <input id="friend-search" placeholder="Name, friend code or email" />
+            <button type="submit">Find</button>
+          </form>
+          <div id="friend-results" class="friend-results"></div>
+          <div id="friend-requests"></div>
+          <div id="friend-list" class="friend-list"></div>
+        </aside>
+      </div>
     </div>
 
     <!-- Binder: your collection and decks -->

@@ -71,6 +71,46 @@ export interface RewardReport {
 }
 
 // ---------------------------------------------------------------------------
+// Friends and challenges.
+
+export interface FriendInfo {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+  online: boolean;
+  level: number;
+}
+
+export interface ChallengeInfo {
+  id: string;
+  from: { id: string; name: string };
+  to: { id: string; name: string };
+  gameId: string;
+  createdAt: number;
+}
+
+/** Everything the Friends panel shows. Pushed over the socket whenever it changes. */
+export interface Social {
+  myFriendCode: string;
+  friends: FriendInfo[];
+  /** People who asked to be your friend. */
+  incomingRequests: FriendInfo[];
+  /** People you asked. */
+  outgoingRequests: FriendInfo[];
+  incomingChallenges: ChallengeInfo[];
+  outgoingChallenges: ChallengeInfo[];
+}
+
+export interface UserSearchResult {
+  id: string;
+  name: string;
+  friendCode: string;
+  level: number;
+  /** Relationship with the searcher, so the UI can show the right button. */
+  relation: 'none' | 'friend' | 'requested' | 'requestedYou' | 'you';
+}
+
+// ---------------------------------------------------------------------------
 // Game summaries for the home page.
 
 export interface Clocks {
@@ -126,6 +166,17 @@ export type ClientMessage =
   | { type: 'joinGame'; code: string; deckSlot: number }
   /** Open one of your games in this tab. */
   | { type: 'openGame'; gameId: string }
+  // ---- friends & challenges
+  | { type: 'getSocial' }
+  | { type: 'friendRequest'; userId: string }
+  | { type: 'friendAccept'; userId: string }
+  /** Decline an incoming request, cancel an outgoing one, or unfriend. */
+  | { type: 'friendRemove'; userId: string }
+  /** Challenge a friend: creates a game with you seated and invites them. */
+  | { type: 'challenge'; friendId: string; deckSlot: number }
+  | { type: 'acceptChallenge'; challengeId: string; deckSlot: number }
+  /** Decline (as the invitee) or cancel (as the challenger). */
+  | { type: 'declineChallenge'; challengeId: string }
   | { type: 'action'; action: Action }
   | { type: 'chat'; text: string }
   /** Detach this tab from its game (the game persists). */
@@ -143,6 +194,10 @@ export type ServerMessage =
   | { type: 'chat'; messages: ChatMessage[] }
   /** A game you were in just finished and you earned something. */
   | { type: 'rewards'; report: RewardReport }
+  /** Friends panel data (sent on request and whenever it changes). */
+  | { type: 'social'; social: Social }
+  /** Short notice worth a toast: someone challenged you, accepted, declined... */
+  | { type: 'notice'; message: string }
   | { type: 'error'; message: string }
   | { type: 'left' };
 

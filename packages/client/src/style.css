@@ -335,6 +335,153 @@ button.danger {
   color: var(--muted);
 }
 
+/* ---------------------------------------------------------------- Friends */
+.home-body {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 28px;
+  align-items: start;
+}
+
+.friends-panel {
+  background: var(--panel);
+  border: 1px solid #2f2f44;
+  border-radius: 14px;
+  padding: 14px;
+  position: sticky;
+  top: 0;
+}
+
+.friends-panel .section-title {
+  margin-top: 0;
+}
+
+.friend-code {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.friend-code b {
+  color: var(--accent);
+  letter-spacing: 3px;
+  margin-left: 6px;
+  font-size: 14px;
+}
+
+#friend-search {
+  margin: 0;
+  flex: 1;
+}
+
+.friend-results {
+  margin-top: 8px;
+}
+
+.friend-results:empty { display: none; }
+
+.friend-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 6px;
+  border-bottom: 1px solid #262636;
+  font-size: 14px;
+}
+
+.friend-row:last-child { border-bottom: none; }
+
+.friend-row .fdot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #555;
+  flex: none;
+}
+
+.friend-row .fdot.on { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+
+.friend-row .fname {
+  flex: 1;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.friend-row .flvl {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.friend-row button {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.friend-row button.x {
+  border-color: transparent;
+  color: var(--muted);
+}
+
+.friend-row button.go {
+  background: var(--accent);
+  color: #1a1408;
+  border-color: var(--accent);
+}
+
+.sub-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin: 14px 0 4px;
+}
+
+.friend-list:empty::after {
+  content: 'No friends yet. Find someone above, or share your friend code.';
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 10px 0;
+}
+
+/* Challenge cards on the home page */
+.challenges {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.challenge {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 2px solid var(--accent-2);
+  box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.2);
+}
+
+.challenge.outgoing {
+  border-color: #3a3a52;
+  box-shadow: none;
+}
+
+.challenge .ctext {
+  flex: 1;
+}
+
+.challenge .ctext b {
+  color: var(--accent);
+}
+
+.challenge .cwhen {
+  font-size: 11px;
+  color: var(--muted);
+}
+
 /* ----------------------------------------------------------------- Binder */
 #binder {
   overflow: hidden;
@@ -1428,4 +1575,10 @@ button.danger {
   font-size: 14px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   z-index: 10;
+}
+
+#toast.info {
+  background: #1d2a22;
+  border-color: var(--ok);
+  color: #d7f5e2;
 }

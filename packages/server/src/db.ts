@@ -3,8 +3,12 @@
 // repository functions below are the only place SQL lives, so swapping in
 // Postgres later is contained.
 
-import { DatabaseSync } from 'node:sqlite';
+import type { DatabaseSync as DatabaseSyncT } from 'node:sqlite';
 import { randomBytes, createHash } from 'node:crypto';
+
+// Loaded at runtime rather than via a static import so test tooling (which does
+// not yet know node:sqlite is a built-in) does not try to bundle it.
+const { DatabaseSync } = process.getBuiltinModule('node:sqlite') as typeof import('node:sqlite');
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { ChatMessage } from '@chessx/protocol';
@@ -22,6 +26,25 @@ export interface UserRow {
   xp: number;
   games_played: number;
   wins: number;
+  /** Short shareable code friends can add you by. */
+  friend_code: string | null;
+}
+
+export interface FriendRow {
+  user_id: string;
+  friend_id: string;
+  /** 'pending' = user_id asked friend_id; 'accepted' = mutual (two rows). */
+  status: 'pending' | 'accepted';
+  created_at: number;
+}
+
+export interface ChallengeRow {
+  id: string;
+  from_user: string;
+  to_user: string;
+  game_id: string;
+  status: 'pending' | 'accepted' | 'declined';
+  created_at: number;
 }
 
 export interface CollectionRow {
@@ -66,7 +89,7 @@ export const newId = (bytes = 12): string => randomBytes(bytes).toString('base64
 export const sha256 = (s: string): string => createHash('sha256').update(s).digest('hex');
 
 export class Db {
-  private db: DatabaseSync;
+  private db: DatabaseSyncT;
 
   constructor(path: string) {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
@@ -124,6 +147,24 @@ export class Db {
         cards_json TEXT NOT NULL DEFAULT '[]',
         PRIMARY KEY (user_id, slot)
       );
+      CREATE TABLE IF NOT EXISTS friends (
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        friend_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        status TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (user_id, friend_id)
+      );
+      CREATE INDEX IF NOT EXISTS friends_target ON friends(friend_id);
+      CREATE TABLE IF NOT EXISTS challenges (
+        id TEXT PRIMARY KEY,
+        from_user TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        to_user TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        game_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS challenges_to ON challenges(to_user, status);
+      CREATE INDEX IF NOT EXISTS challenges_from ON challenges(from_user, status);
     `);
     // Columns added after the first release; safe to run on an existing database.
     this.addColumn('users', 'xp', 'INTEGER NOT NULL DEFAULT 0');
@@ -132,6 +173,8 @@ export class Db {
     this.addColumn('games', 'white_deck_json', 'TEXT');
     this.addColumn('games', 'black_deck_json', 'TEXT');
     this.addColumn('games', 'rewarded', 'INTEGER NOT NULL DEFAULT 0');
+    this.addColumn('users', 'friend_code', 'TEXT');
+    this.db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_friend_code ON users(friend_code)');
   }
 
   private addColumn(table: string, column: string, decl: string): void {
@@ -141,8 +184,8 @@ export class Db {
 
   // ------------------------------------------------------------------ users
 
-  createUser(u: Omit<UserRow, 'id' | 'created_at' | 'xp' | 'games_played' | 'wins'>): UserRow {
-    const row: UserRow = { ...u, id: newId(), created_at: Date.now(), xp: 0, games_played: 0, wins: 0 };
+  createUser(u: Omit<UserRow, 'id' | 'created_at' | 'xp' | 'games_played' | 'wins' | 'friend_code'>): UserRow {
+    const row: UserRow = { ...u, id: newId(), created_at: Date.now(), xp: 0, games_played: 0, wins: 0, friend_code: null };
     this.db
       .prepare(
         `INSERT INTO users (id, email, name, password_hash, google_id, facebook_id, avatar_url, created_at, xp, games_played, wins)
@@ -154,6 +197,82 @@ export class Db {
 
   addProgress(userId: string, xp: number, played: number, wins: number): void {
     this.db.prepare('UPDATE users SET xp = xp + ?, games_played = games_played + ?, wins = wins + ? WHERE id = ?').run(xp, played, wins, userId);
+  }
+
+  /** Every user gets a short code friends can add them by (created lazily for older accounts). */
+  friendCodeFor(user: UserRow): string {
+    if (user.friend_code) return user.friend_code;
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    for (;;) {
+      const bytes = randomBytes(6);
+      let code = '';
+      for (let i = 0; i < 6; i++) code += alphabet[bytes[i]! % alphabet.length];
+      try {
+        this.db.prepare('UPDATE users SET friend_code = ? WHERE id = ? AND friend_code IS NULL').run(code, user.id);
+        user.friend_code = code;
+        return code;
+      } catch {
+        /* collision: try another */
+      }
+    }
+  }
+
+  userByFriendCode(code: string): UserRow | undefined {
+    return this.db.prepare('SELECT * FROM users WHERE friend_code = ?').get(code.toUpperCase()) as UserRow | undefined;
+  }
+
+  /** Name search for the "add friend" box (case-insensitive substring). */
+  searchUsersByName(q: string, limit = 10): UserRow[] {
+    return this.db.prepare('SELECT * FROM users WHERE name LIKE ? COLLATE NOCASE ORDER BY name LIMIT ?').all(`%${q}%`, limit) as unknown as UserRow[];
+  }
+
+  // ---------------------------------------------------------------- friends
+
+  friendRows(userId: string): FriendRow[] {
+    return this.db.prepare('SELECT * FROM friends WHERE user_id = ? OR friend_id = ?').all(userId, userId) as unknown as FriendRow[];
+  }
+
+  friendRow(userId: string, friendId: string): FriendRow | undefined {
+    return this.db.prepare('SELECT * FROM friends WHERE user_id = ? AND friend_id = ?').get(userId, friendId) as FriendRow | undefined;
+  }
+
+  upsertFriend(userId: string, friendId: string, status: FriendRow['status']): void {
+    this.db
+      .prepare(
+        `INSERT INTO friends (user_id, friend_id, status, created_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(user_id, friend_id) DO UPDATE SET status = excluded.status`,
+      )
+      .run(userId, friendId, status, Date.now());
+  }
+
+  deleteFriendPair(a: string, b: string): void {
+    this.db.prepare('DELETE FROM friends WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)').run(a, b, b, a);
+  }
+
+  // ------------------------------------------------------------- challenges
+
+  insertChallenge(c: ChallengeRow): void {
+    this.db
+      .prepare('INSERT INTO challenges (id, from_user, to_user, game_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(c.id, c.from_user, c.to_user, c.game_id, c.status, c.created_at);
+  }
+
+  challengeById(id: string): ChallengeRow | undefined {
+    return this.db.prepare('SELECT * FROM challenges WHERE id = ?').get(id) as ChallengeRow | undefined;
+  }
+
+  pendingChallengesFor(userId: string): ChallengeRow[] {
+    return this.db
+      .prepare("SELECT * FROM challenges WHERE status = 'pending' AND (to_user = ? OR from_user = ?) ORDER BY created_at DESC")
+      .all(userId, userId) as unknown as ChallengeRow[];
+  }
+
+  setChallengeStatus(id: string, status: ChallengeRow['status']): void {
+    this.db.prepare('UPDATE challenges SET status = ? WHERE id = ?').run(status, id);
+  }
+
+  deleteGame(id: string): void {
+    this.db.prepare('DELETE FROM games WHERE id = ?').run(id);
   }
 
   // ------------------------------------------------------------- collection

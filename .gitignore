@@ -2,6 +2,8 @@ node_modules/
 dist/
 # SQLite database (accounts + games)
 packages/server/data/
+# Production secrets
+deploy/.env
 .vite/
 *.log
 .env
