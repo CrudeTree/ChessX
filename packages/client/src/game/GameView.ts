@@ -113,6 +113,10 @@ export class GameView {
   /** A finger/pointer went down on a hand card; we decide tap / swipe / drag once it moves. */
   private pendingCard: { sprite: CardSprite; homeX: number; homeY: number; startX: number; startY: number; scrollStart: number } | null = null;
   private handScrolling = false;
+  /** Instance ids in the hand at the last render, to spot freshly drawn cards. */
+  private handIds = new Set<string>();
+  /** Phone: badges showing how many hand cards are scrolled off each edge. */
+  private handOverflow = new Container();
   /** Horizontal scroll offset of the hand strip (phones). */
   private handScroll = 0;
   private handMaxScroll = 0;
@@ -163,6 +167,8 @@ export class GameView {
     // Cards scroll horizontally inside the hand strip; keep them out of the deck column.
     const handMask = new Graphics().rect(HAND_X0 - 6, HAND_Y - 30, HAND_X1 - HAND_X0 + 12, CARD_H + 60).fill(0xffffff);
     this.app.stage.addChild(handMask);
+    this.handOverflow.eventMode = 'none';
+    this.app.stage.addChild(this.handOverflow);
     this.handLayer.mask = handMask;
     this.myDeck.onDraw = () => this.onAction({ type: 'draw' });
     this.oppDeck.onDraw = () => this.onAction({ type: 'draw' });
@@ -221,6 +227,9 @@ export class GameView {
     for (const layer of [this.highlightLayer, this.lastMoveLayer, this.inspectLayer, this.fxLayer, this.banner]) layer.removeChildren();
     for (const old of this.handLayer.removeChildren()) old.destroy();
     for (const old of this.dragLayer.removeChildren()) old.destroy({ children: true }); // an in-flight card reveal
+    this.handOverflow.removeChildren();
+    this.handIds.clear();
+    this.handScroll = 0;
     if (this.ready) {
       this.myDiscard.update([]);
       this.oppDiscard.update([]);
@@ -570,12 +579,11 @@ export class GameView {
         const at = ev.color === bottom ? MY_DECK : OPP_DECK;
         this.burst(at.x, at.y, COLORS.ringFill, 2);
       }
-      // Card drawn: fly a card back from the deck toward the hand.
-      if (ev.type !== 'drew') continue;
-      const fromBottom = ev.color === bottom;
-      const from = fromBottom ? MY_DECK : OPP_DECK;
-      const to = fromBottom ? { x: (HAND_X0 + HAND_X1) / 2, y: HAND_Y + CARD_H / 2 } : { x: (OPP_HAND_X0 + OPP_HAND_X1) / 2, y: OPP_HAND_Y };
-      for (let i = 0; i < ev.count; i++) this.flyCard(from, to, i * 120);
+      // Opponent drew: fly face-down cards from their deck to their hand row.
+      // (Our own draws are animated per card by renderHand -> arriveCard.)
+      if (ev.type !== 'drew' || ev.color === bottom) continue;
+      const to = { x: (OPP_HAND_X0 + OPP_HAND_X1) / 2, y: OPP_HAND_Y };
+      for (let i = 0; i < ev.count; i++) this.flyCard(OPP_DECK, to, i * 120);
     }
   }
 
@@ -713,6 +721,14 @@ export class GameView {
     const contentW = CARD_W + (n - 1) * spacing;
     const startX = MOBILE ? HAND_X0 + CARD_W / 2 : (HAND_X0 + HAND_X1) / 2 - ((n - 1) * spacing) / 2;
     this.handMaxScroll = Math.max(0, contentW - span);
+    // Cards that were not in the hand last time we drew it are new (drawn this action).
+    // Only when this action actually drew for us — in practice mode the whole hand
+    // swaps sides every turn, which is not a draw.
+    const drew = view.events.some((e) => e.type === 'drew' && e.color === view.you);
+    const fresh = drew ? hand.filter((inst) => this.handIds.size > 0 && !this.handIds.has(inst.instanceId)) : [];
+    this.handIds = new Set(hand.map((inst) => inst.instanceId));
+    // New cards go on the right; on the phone strip make sure they are on screen.
+    if (fresh.length && MOBILE) this.handScroll = this.handMaxScroll;
     this.handScroll = Math.min(this.handScroll, this.handMaxScroll);
     this.handLayer.x = -this.handScroll;
     const mana = view.players[view.you].mana;
@@ -721,6 +737,7 @@ export class GameView {
       const hx = startX + i * spacing;
       const hy = HAND_Y + CARD_H / 2;
       sprite.position.set(hx, hy);
+      if (fresh.includes(inst)) this.arriveCard(sprite, hx - this.handScroll, hy, fresh.indexOf(inst));
       sprite.on('pointerover', () => {
         if (this.drag) return;
         this.inspectCard(inst.cardId);
@@ -744,6 +761,63 @@ export class GameView {
       this.handLayer.addChild(sprite);
     });
     this.handLayer.sortableChildren = true;
+    this.renderHandOverflow();
+  }
+
+  /**
+   * A freshly drawn card: it flies in from the deck to its slot and glows for a
+   * moment so it is obvious which cards are new (even in a crowded hand).
+   */
+  private arriveCard(sprite: CardSprite, x: number, y: number, index: number): void {
+    const from = MY_DECK;
+    sprite.alpha = 0;
+    const ghost = new Graphics().roundRect(-CARD_W / 2, -CARD_H / 2, CARD_W, CARD_H, 9).fill(COLORS.deckBack).stroke({ width: 2.5, color: COLORS.deckEdge });
+    ghost.position.set(from.x, from.y);
+    ghost.scale.set(DECK_SCALE);
+    this.dragLayer.addChild(ghost);
+    this.tweens.run(420, (t) => {
+      if (ghost.destroyed) return;
+      ghost.position.set(from.x + (x - from.x) * t, from.y + (y - from.y) * t - Math.sin(t * Math.PI) * 40);
+      ghost.scale.set(DECK_SCALE + (1 - DECK_SCALE) * t);
+    }, {
+      delay: index * 140,
+      ease: easeInOutQuad,
+      done: () => {
+        if (!ghost.destroyed) ghost.destroy();
+        if (sprite.destroyed) return;
+        sprite.alpha = sprite.playable ? 1 : 0.6;
+        const glow = new Graphics().roundRect(-CARD_W / 2 - 6, -CARD_H / 2 - 6, CARD_W + 12, CARD_H + 12, 12).stroke({ width: 4, color: COLORS.select });
+        sprite.addChildAt(glow, 0);
+        this.tweens.run(1400, (t) => {
+          if (glow.destroyed) return;
+          glow.alpha = (1 - t) * (0.6 + 0.4 * Math.sin(t * Math.PI * 4));
+        }, { done: () => !glow.destroyed && glow.destroy() });
+      },
+    });
+  }
+
+  /** Phone strip: "‹ 2" / "3 ›" badges when cards are scrolled out of view. */
+  private renderHandOverflow(): void {
+    this.handOverflow.removeChildren();
+    if (!MOBILE || !this.view) return;
+    const hand = this.view.players[this.view.you].hand ?? [];
+    const spacing = CARD_W + 8;
+    let left = 0;
+    let right = 0;
+    hand.forEach((_, i) => {
+      const cx = HAND_X0 + CARD_W / 2 + i * spacing - this.handScroll;
+      if (cx + CARD_W / 2 < HAND_X0 + 12) left++;
+      else if (cx - CARD_W / 2 > HAND_X1 - 12) right++;
+    });
+    const badge = (text: string, x: number, anchorX: number) => {
+      const t = new Text({ text, style: { fontFamily: UI_FONT, fontSize: 13, fontWeight: '900', fill: 0xffffff, stroke: { color: 0x000000, width: 4 } } });
+      t.anchor.set(anchorX, 0.5);
+      t.position.set(x, HAND_Y + CARD_H / 2);
+      const bg = new Graphics().roundRect(t.x - (anchorX ? t.width + 8 : 4), t.y - 12, t.width + 12, 24, 12).fill({ color: 0x000000, alpha: 0.55 });
+      this.handOverflow.addChild(bg, t);
+    };
+    if (left) badge(`‹ ${left}`, HAND_X0 + 4, 0);
+    if (right) badge(`${right} ›`, HAND_X1 - 4, 1);
   }
 
   private renderBanner(): void {
@@ -896,6 +970,7 @@ export class GameView {
   private setHandScroll(x: number): void {
     this.handScroll = Math.max(0, Math.min(this.handMaxScroll, x));
     this.handLayer.x = -this.handScroll;
+    this.renderHandOverflow();
   }
 
   private onStagePointerDown(e: FederatedPointerEvent): void {
