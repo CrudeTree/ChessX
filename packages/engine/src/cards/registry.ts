@@ -1,16 +1,44 @@
-import { registerPieceDef, setPieceDef } from '../pieces.js';
+import { registerPieceDef, removePieceDef, setPieceDef } from '../pieces.js';
 import type { CardDef } from './types.js';
 
-/** Cards as shipped in code. */
+/** Cards as shipped in code (plus admin-created cards, which are their own base). */
 const base = new Map<string, CardDef>();
 /** Cards as the game currently plays them (base + balance patches). */
 const cards = new Map<string, CardDef>();
+/** Ids of admin-created cards currently registered. */
+const custom = new Set<string>();
 
 export function registerCard(card: CardDef): void {
   if (base.has(card.id)) throw new Error(`Duplicate card id: ${card.id}`);
   base.set(card.id, card);
   cards.set(card.id, card);
   if (card.type === 'summon') registerPieceDef(card.piece);
+}
+
+/**
+ * Replace the set of admin-created cards. Ones no longer listed are removed
+ * (along with their creature definitions); the rest are (re)registered as base.
+ */
+export function setCustomCards(list: CardDef[]): void {
+  const keep = new Set(list.map((c) => c.id));
+  for (const id of custom) {
+    if (keep.has(id)) continue;
+    const old = base.get(id);
+    base.delete(id);
+    cards.delete(id);
+    custom.delete(id);
+    if (old?.type === 'summon') removePieceDef(old.piece.kind);
+  }
+  for (const card of list) {
+    base.set(card.id, card);
+    cards.set(card.id, card);
+    custom.add(card.id);
+    if (card.type === 'summon') registerPieceDef(card.piece);
+  }
+}
+
+export function isCustomCard(id: string): boolean {
+  return custom.has(id);
 }
 
 export function registerCards(list: CardDef[]): void {

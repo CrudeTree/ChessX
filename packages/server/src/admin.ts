@@ -12,23 +12,52 @@
 // database volume, so deploys and code changes never overwrite them.
 
 import { applyBalance, currentBalance, EMPTY_BALANCE, validateBalance, type Balance } from '@chessx/engine';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Db, UserRow } from './db.js';
 
 const ADMIN_ID_KEY = 'admin_user_id';
 const BALANCE_KEY = 'balance';
+/** Uploaded art is re-encoded by the browser to a 512px PNG before upload; allow headroom. */
+const MAX_UPLOAD_BYTES = 3 * 1024 * 1024;
 
 export class AdminError extends Error {}
 
 export class Admin {
   private readonly extraIds: Set<string>;
   private readonly bootstrapName: string;
+  /** Where uploaded card/board images live (inside the data volume, so they survive deploys). */
+  readonly uploadsDir: string;
 
   constructor(
     private db: Db,
+    dataDir: string,
     env: NodeJS.ProcessEnv = process.env,
   ) {
     this.bootstrapName = (env.ADMIN_NAME ?? 'Djabooty').trim();
     this.extraIds = new Set((env.ADMIN_USER_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean));
+    this.uploadsDir = join(dataDir, 'uploads');
+    mkdirSync(this.uploadsDir, { recursive: true });
+  }
+
+  /**
+   * Store an uploaded PNG (as a data: URL) and return its public path. Files are
+   * named by content hash, so re-uploading the same picture is free and URLs are
+   * safe to cache forever.
+   */
+  saveImage(dataUrl: unknown): string {
+    if (typeof dataUrl !== 'string') throw new AdminError('No image received.');
+    const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+    if (!m) throw new AdminError('Image must be a PNG.');
+    const bytes = Buffer.from(m[1]!, 'base64');
+    if (bytes.length > MAX_UPLOAD_BYTES) throw new AdminError('Image is too large (max 3 MB).');
+    // PNG signature.
+    if (bytes.length < 8 || bytes.readUInt32BE(0) !== 0x89504e47 || bytes.readUInt32BE(4) !== 0x0d0a1a0a) throw new AdminError('That is not a PNG file.');
+    const name = `${createHash('sha1').update(bytes).digest('hex').slice(0, 20)}.png`;
+    const path = join(this.uploadsDir, name);
+    if (!existsSync(path)) writeFileSync(path, bytes);
+    return `/uploads/${name}`;
   }
 
   /** Load the saved balance into the engine. Call once at startup. */
@@ -40,7 +69,12 @@ export class Admin {
         const parsed = JSON.parse(raw) as Balance;
         const problems = validateBalance(parsed);
         if (problems.length) console.warn('[admin] saved balance has problems, applying anyway:', problems.join(' '));
-        balance = { cards: parsed.cards ?? {}, pieces: parsed.pieces ?? {}, ...(parsed.rules ? { rules: parsed.rules } : {}) };
+        balance = {
+          cards: parsed.cards ?? {},
+          pieces: parsed.pieces ?? {},
+          ...(parsed.rules ? { rules: parsed.rules } : {}),
+          ...(parsed.customCards?.length ? { customCards: parsed.customCards } : {}),
+        };
       } catch (e) {
         console.error('[admin] could not parse saved balance; using shipped values', e);
       }
@@ -51,8 +85,12 @@ export class Admin {
     return balance;
   }
 
-  /** Validate, persist and apply a new balance. Returns the applied balance. */
-  saveBalance(proposed: unknown): Balance {
+  /**
+   * Validate, persist and apply a new balance. Returns the applied balance and
+   * the ids of admin-created cards that were removed (so callers can clean up
+   * collections, decks and games that still mention them).
+   */
+  saveBalance(proposed: unknown): { balance: Balance; removedCards: string[] } {
     const problems = validateBalance(proposed);
     if (problems.length) throw new AdminError(problems.join(' '));
     const b = proposed as Balance;
@@ -61,9 +99,14 @@ export class Admin {
     for (const [id, p] of Object.entries(b.cards ?? {})) if (p && Object.keys(p).length) balance.cards[id] = p;
     for (const [k, p] of Object.entries(b.pieces ?? {})) if (p && Object.keys(p).length) balance.pieces[k] = p;
     if (b.rules && Object.keys(b.rules).length) balance.rules = b.rules;
+    if (b.customCards?.length) balance.customCards = b.customCards;
+    const before = new Set((currentBalance().customCards ?? []).map((c) => c.id));
+    const after = new Set((balance.customCards ?? []).map((c) => c.id));
+    const removedCards = [...before].filter((id) => !after.has(id));
     this.db.setKv(BALANCE_KEY, JSON.stringify(balance));
     applyBalance(balance);
-    return currentBalance();
+    for (const id of removedCards) this.db.removeCardEverywhere(id);
+    return { balance: currentBalance(), removedCards };
   }
 
   isAdmin(user: UserRow): boolean {

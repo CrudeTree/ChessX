@@ -103,6 +103,17 @@ export function setPieceDef(def: PieceDef): void {
   registry.set(def.kind, def);
 }
 
+/** Forget a creature entirely (an admin-created card was deleted). */
+export function removePieceDef(kind: string): void {
+  if (kind in STANDARD_PIECES) return;
+  base.delete(kind);
+  registry.delete(kind);
+}
+
+export function hasPieceDef(kind: string): boolean {
+  return registry.has(kind);
+}
+
 export function getPieceDef(kind: string): PieceDef {
   const def = registry.get(kind);
   if (!def) throw new Error(`Unknown piece kind: ${kind}`);

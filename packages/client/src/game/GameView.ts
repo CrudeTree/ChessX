@@ -217,6 +217,18 @@ export class GameView {
   }
 
   /** Forget the current game (called when leaving a room). */
+  /**
+   * The catalog changed (admin edit): load any new pictures, then rebuild the
+   * piece sprites and hand so they pick up new art/stats. No animations replay.
+   */
+  async refreshArt(): Promise<void> {
+    if (!this.ready) return;
+    await preloadArt();
+    for (const s of this.sprites.values()) s.destroy();
+    this.sprites.clear();
+    if (this.view) this.sync({ ...this.view, events: [] });
+  }
+
   reset(): void {
     this.cancelDrag();
     this.selection = null;

@@ -13,17 +13,21 @@ import {
   currentBalance,
   describeCard,
   describeMovement,
+  DIRS,
+  isCustomCard,
   patchedCard,
   STANDARD_KINDS,
   validateBalance,
   type Balance,
   type CardDef,
   type CardPatch,
+  type CustomCard,
   type Effect,
   type MovementSpec,
   type PiecePatch,
   type RulesPatch,
 } from '@chessx/engine';
+import { pickImageFile, prepareImage } from './imageprep.js';
 import { movementMap } from './inspect.js';
 import { ApiError, balanceApi } from './net.js';
 
@@ -31,7 +35,27 @@ const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
-type Selection = { kind: 'card'; id: string } | { kind: 'piece'; id: string } | { kind: 'rules'; id: 'rules' };
+type Selection = { kind: 'card'; id: string } | { kind: 'piece'; id: string } | { kind: 'rules'; id: 'rules' } | { kind: 'custom'; id: string };
+
+function defaultEffect(kind: Effect['kind']): Effect {
+  switch (kind) {
+    case 'modifyStats':
+      return { kind, atk: 1 };
+    case 'modifyStatsAll':
+      return { kind, atk: 1 };
+    case 'damage':
+      return { kind, amount: 1 };
+    case 'heal':
+      return { kind, amount: 1 };
+    case 'draw':
+      return { kind, count: 1 };
+    case 'hastenSummon':
+      return { kind, turns: 1 };
+    case 'restore':
+    case 'freeStance':
+      return { kind };
+  }
+}
 
 const DIRS8: ReadonlyArray<readonly [number, number, string]> = [
   [-1, 1, '↖'], [0, 1, '↑'], [1, 1, '↗'],
@@ -50,8 +74,8 @@ export class BalanceEditor {
     $('editor-back').onclick = () => this.leave();
     $('editor-save').onclick = () => void this.save();
     $('editor-reset-all').onclick = () => {
-      if (!confirm('Reset every card, piece and rule to the values in the code? (You still need to press Save.)')) return;
-      this.draft = { cards: {}, pieces: {} };
+      if (!confirm('Reset every shipped card, piece and rule to the values in the code? Your own created cards are kept. (You still need to press Save.)')) return;
+      this.draft = { cards: {}, pieces: {}, ...(this.draft.customCards?.length ? { customCards: this.draft.customCards } : {}) };
       this.refresh();
     };
     $<HTMLInputElement>('editor-search').oninput = (e) => {
@@ -137,15 +161,53 @@ export class BalanceEditor {
       const p = basePieceDef(kind);
       item({ kind: 'piece', id: kind }, p.name, `Tier ${p.tier}`, !!this.draft.pieces[kind]);
     }
-    const cards = allCards().map((c) => baseCardDef(c.id));
+    // Shipped cards (from the code) and the admin's own cards (from the draft).
+    const shipped = allCards()
+      .filter((c) => !isCustomCard(c.id))
+      .map((c) => baseCardDef(c.id));
     section('Creatures');
-    for (const c of cards.filter((c) => c.type === 'summon').sort((a, b) => a.name.localeCompare(b.name))) {
+    for (const c of shipped.filter((c) => c.type === 'summon').sort((a, b) => a.name.localeCompare(b.name))) {
       item({ kind: 'card', id: c.id }, c.name, `Tier ${(c as Extract<CardDef, { type: 'summon' }>).tier} · ${c.cost} mana`, !!this.draft.cards[c.id]);
     }
     section('Spells');
-    for (const c of cards.filter((c) => c.type === 'spell').sort((a, b) => a.name.localeCompare(b.name))) {
+    for (const c of shipped.filter((c) => c.type === 'spell').sort((a, b) => a.name.localeCompare(b.name))) {
       item({ kind: 'card', id: c.id }, c.name, `${c.cost} mana`, !!this.draft.cards[c.id]);
     }
+    section('Your cards');
+    for (const c of [...(this.draft.customCards ?? [])].sort((a, b) => a.name.localeCompare(b.name))) {
+      item({ kind: 'custom', id: c.id }, c.name || '(unnamed)', c.type === 'summon' ? `Creature · Tier ${c.tier} · ${c.cost} mana` : `Spell · ${c.cost} mana`, false);
+    }
+    const add = document.createElement('button');
+    add.className = 'editor-item editor-add';
+    add.innerHTML = '<span class="n">+ New card</span><span class="s">creature or spell</span>';
+    add.onclick = () => this.newCard();
+    el.appendChild(add);
+  }
+
+  /** Start a brand-new card with sensible defaults and open it for editing. */
+  private newCard(): void {
+    const type = confirm('Create a CREATURE card?\n\nOK = creature (summon)\nCancel = spell') ? 'summon' : 'spell';
+    const id = `custom_${Math.random().toString(36).slice(2, 8)}`;
+    const name = 'New card';
+    const card: CustomCard =
+      type === 'summon'
+        ? {
+            id,
+            type,
+            name,
+            glyph: '✨',
+            cost: 200,
+            tier: 2,
+            summonTurns: 2,
+            text: '',
+            piece: { kind: id, name, glyph: '✨', tier: 2, movement: { leaps: DIRS.ALL.map(([f, r]) => [f, r] as const) }, atk: 1, def: 0, hp: 2 },
+            give: 'everyone',
+          }
+        : { id, type, name, glyph: '✨', cost: 150, target: 'ownPiece', text: '', effects: [{ kind: 'modifyStats', atk: 1 }], give: 'everyone' };
+    card.text = describeCard(card);
+    (this.draft.customCards ??= []).push(card);
+    this.selected = { kind: 'custom', id };
+    this.refresh();
   }
 
   // ------------------------------------------------------------------ form
@@ -156,7 +218,80 @@ export class BalanceEditor {
     if (!this.selected) return;
     if (this.selected.kind === 'rules') this.renderRulesForm(form);
     else if (this.selected.kind === 'piece') this.renderPieceForm(form, this.selected.id);
-    else this.renderCardForm(form, this.selected.id);
+    else if (this.selected.kind === 'custom') {
+      const card = this.draft.customCards?.find((c) => c.id === this.selected!.id);
+      if (card) this.renderCustomForm(form, card);
+      else this.selected = null;
+    } else this.renderCardForm(form, this.selected.id);
+  }
+
+  // ---- shared: pictures
+
+  /**
+   * Picture chooser: shows the current image, uploads a replacement (fitted to
+   * 512×512, optionally with the white background knocked out) and lets you go
+   * back to the default. `current` is what the card uses now; `def` the code's.
+   */
+  private imageField(label: string, hint: string, current: string | undefined, def: string | undefined, set: (url: string | undefined) => void): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'eimage';
+    const preview = document.createElement('div');
+    preview.className = 'epreview-img';
+    preview.innerHTML = current ? `<img src="${esc(current)}" alt="">` : '<span class="muted">none</span>';
+    const col = document.createElement('div');
+    col.className = 'eimage-col';
+    col.innerHTML = `<div class="el">${esc(label)}<small>${esc(hint)}</small></div>`;
+    const row = document.createElement('div');
+    row.className = 'eimage-row';
+    const knock = document.createElement('label');
+    knock.className = 'eknock';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = true;
+    knock.append(cb, ' remove white background');
+    const up = document.createElement('button');
+    up.type = 'button';
+    up.textContent = current ? 'Replace image…' : 'Upload image…';
+    up.onclick = async () => {
+      const file = await pickImageFile();
+      if (!file) return;
+      up.disabled = true;
+      up.textContent = 'Uploading…';
+      try {
+        const data = await prepareImage(file, { knockoutWhite: cb.checked });
+        const url = await balanceApi.upload(data);
+        set(url);
+        this.refresh();
+      } catch (e) {
+        $('editor-msg').textContent = e instanceof ApiError ? e.message : 'Could not upload that image.';
+        $('editor-msg').className = 'hint editor-msg error';
+        up.disabled = false;
+        up.textContent = 'Upload image…';
+      }
+    };
+    row.append(up);
+    if (def !== undefined && current !== def) {
+      const reset = document.createElement('button');
+      reset.type = 'button';
+      reset.textContent = 'Use default';
+      reset.onclick = () => {
+        set(undefined);
+        this.refresh();
+      };
+      row.append(reset);
+    } else if (def === undefined && current) {
+      const clear = document.createElement('button');
+      clear.type = 'button';
+      clear.textContent = 'Remove';
+      clear.onclick = () => {
+        set(undefined);
+        this.refresh();
+      };
+      row.append(clear);
+    }
+    col.append(row, knock);
+    wrap.append(preview, col);
+    return wrap;
   }
 
   // ---- game rules
@@ -307,6 +442,14 @@ export class BalanceEditor {
     const cost = this.group(form, 'Cost');
     cost.appendChild(this.numField('Mana cost', patch.cost, base.cost, setC('cost')));
 
+    const images = this.group(form, 'Pictures');
+    images.appendChild(this.imageField('Card image', 'shown on the card in hand, the binder and the inspector', live.art, base.art, setC('art')));
+    if (base.type === 'summon') {
+      images.appendChild(
+        this.imageField('Board sprite', 'the piece on the board; uses the card image unless set', live.type === 'summon' ? live.boardArt ?? live.art : undefined, base.boardArt ?? base.art, (u) => setC('boardArt')(u)),
+      );
+    }
+
     if (base.type === 'summon') {
       const setPP = <K extends keyof PiecePatch>(k: K) => (v: PiecePatch[K] | undefined) => {
         if (v === undefined) delete sub[k];
@@ -357,6 +500,275 @@ export class BalanceEditor {
       this.refresh();
     };
     textG.append(ta, hint, useGen);
+  }
+
+  // ---- admin-created cards (edited directly; no code default to fall back on)
+
+  /** A plain integer input for custom cards. */
+  private plainNum(label: string, value: number, set: (v: number) => void, hint = ''): HTMLElement {
+    const row = document.createElement('label');
+    row.className = 'efield';
+    row.innerHTML = `<span class="el">${esc(label)}${hint ? `<small>${esc(hint)}</small>` : ''}</span>`;
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.step = '1';
+    input.value = String(value);
+    input.oninput = () => {
+      const n = Math.round(Number(input.value));
+      if (input.value === '' || !Number.isFinite(n)) return;
+      set(n);
+      this.refreshQuiet();
+    };
+    const box = document.createElement('span');
+    box.className = 'ebox';
+    box.append(input);
+    row.appendChild(box);
+    return row;
+  }
+
+  private textField(label: string, value: string, set: (v: string) => void, hint = '', maxLength = 24): HTMLElement {
+    const row = document.createElement('label');
+    row.className = 'efield';
+    row.innerHTML = `<span class="el">${esc(label)}${hint ? `<small>${esc(hint)}</small>` : ''}</span>`;
+    const input = document.createElement('input');
+    input.maxLength = maxLength;
+    input.value = value;
+    input.oninput = () => {
+      set(input.value);
+      this.refreshQuiet();
+    };
+    row.appendChild(input);
+    return row;
+  }
+
+  private selectField<T extends string>(label: string, value: T, options: [T, string][], set: (v: T) => void, hint = ''): HTMLElement {
+    const row = document.createElement('label');
+    row.className = 'efield';
+    row.innerHTML = `<span class="el">${esc(label)}${hint ? `<small>${esc(hint)}</small>` : ''}</span>`;
+    const sel = document.createElement('select');
+    for (const [v, text] of options) {
+      const o = document.createElement('option');
+      o.value = v;
+      o.textContent = text;
+      o.selected = v === value;
+      sel.appendChild(o);
+    }
+    sel.onchange = () => {
+      set(sel.value as T);
+      this.refresh();
+    };
+    row.appendChild(sel);
+    return row;
+  }
+
+  /** Validate and update the save button/list without rebuilding the form (keeps focus while typing). */
+  private refreshQuiet(): void {
+    const problems = validateBalance(this.draft);
+    $('editor-msg').textContent = problems.join(' ');
+    $('editor-msg').className = `hint editor-msg ${problems.length ? 'error' : ''}`;
+    $<HTMLButtonElement>('editor-save').disabled = !this.dirty || problems.length > 0;
+    $('editor-dirty').textContent = this.dirty ? 'Unsaved changes' : '';
+    this.renderList();
+  }
+
+  private renderCustomForm(form: HTMLElement, card: CustomCard): void {
+    const art = card.art ? `<img src="${esc(card.art)}" alt="">` : `<span class="glyph emoji">${esc(card.glyph)}</span>`;
+    const h = document.createElement('div');
+    h.className = 'ehead';
+    h.innerHTML = `<div class="eart">${art}</div><div class="etitle"><h2>${esc(card.name || '(unnamed)')}</h2><div class="muted">Your ${card.type === 'summon' ? 'creature' : 'spell'} card · ${esc(card.id)}</div></div>`;
+    const del = document.createElement('button');
+    del.className = 'danger';
+    del.textContent = 'Delete card';
+    del.onclick = () => {
+      if (!confirm(`Delete "${card.name}"? It will be removed from every player's collection and deck, and any copies in games in progress vanish. (Takes effect when you Save.)`)) return;
+      this.draft.customCards = (this.draft.customCards ?? []).filter((c) => c.id !== card.id);
+      delete this.draft.cards[card.id];
+      this.selected = null;
+      this.refresh();
+    };
+    h.appendChild(del);
+    form.appendChild(h);
+
+    const basics = this.group(form, 'Card');
+    basics.append(
+      this.textField('Name', card.name, (v) => {
+        card.name = v;
+        if (card.type === 'summon') card.piece.name = v;
+      }),
+      this.textField('Emoji / symbol', card.glyph, (v) => {
+        card.glyph = v;
+        if (card.type === 'summon') card.piece.glyph = v;
+      }, 'fallback when there is no picture', 8),
+      this.plainNum('Mana cost', card.cost, (v) => (card.cost = v)),
+      this.selectField(
+        'Who gets it',
+        card.give,
+        [
+          ['everyone', 'Everyone (3 copies, now)'],
+          ['reward', 'Reward pool (won after checkmates)'],
+          ['none', 'Nobody yet'],
+        ],
+        (v) => (card.give = v),
+      ),
+    );
+
+    const images = this.group(form, 'Pictures');
+    images.appendChild(this.imageField('Card image', 'shown on the card in hand, the binder and the inspector', card.art, undefined, (u) => (card.art = u)));
+    if (card.type === 'summon') {
+      images.appendChild(this.imageField('Board sprite', 'the piece on the board; uses the card image unless set', card.boardArt ?? card.art, card.art, (u) => (card.boardArt = u)));
+    }
+
+    if (card.type === 'summon') {
+      const summon = this.group(form, 'Summoning');
+      summon.append(
+        this.plainNum('Creature tier', card.tier, (v) => {
+          card.tier = v;
+          card.piece.tier = v;
+        }, 'also sets the default sacrifice: tier − 1'),
+        this.plainNum('Sacrifice tier', card.sacrificeTier ?? card.tier - 1, (v) => (card.sacrificeTier = v), 'which of your pieces can be sacrificed'),
+        this.plainNum('Turns to summon', card.summonTurns, (v) => (card.summonTurns = v)),
+      );
+      const stats = this.group(form, 'Creature stats');
+      stats.append(
+        this.plainNum('ATK', card.piece.atk, (v) => (card.piece.atk = v)),
+        this.plainNum('DEF', card.piece.def, (v) => (card.piece.def = v)),
+        this.plainNum('HP', card.piece.hp, (v) => (card.piece.hp = v)),
+        this.plainNum('Mana per turn', card.piece.manaYield ?? card.piece.tier, (v) => (card.piece.manaYield = v), 'default = tier'),
+      );
+      this.movementEditor(form, card.piece.movement, card.piece.movement, (m) => {
+        if (m) card.piece.movement = m;
+      }, card.piece.glyph, false);
+    } else {
+      const targeting = this.group(form, 'Targeting');
+      targeting.append(
+        this.selectField(
+          'Target',
+          card.target,
+          [
+            ['none', 'No target (drop anywhere)'],
+            ['ownPiece', 'One of your pieces'],
+            ['enemyPiece', 'An enemy piece'],
+            ['anyPiece', 'Any piece'],
+            ['ownSummoning', 'Your piece being sacrificed'],
+            ['ownDefending', 'Your piece in Defense mode'],
+          ],
+          (v) => (card.target = v),
+        ),
+        this.plainNum('Only tier (0 = any)', card.targetTier ?? 0, (v) => {
+          if (v > 0) card.targetTier = v;
+          else delete card.targetTier;
+        }, 'restrict targets to one tier'),
+      );
+      const king = document.createElement('label');
+      king.className = 'eflag';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !!card.allowKing;
+      cb.onchange = () => {
+        if (cb.checked) card.allowKing = true;
+        else delete card.allowKing;
+        this.refreshQuiet();
+      };
+      king.append(cb, ' may target the King');
+      targeting.appendChild(king);
+      this.customEffectsEditor(form, card);
+    }
+
+    // Description: generated from the numbers until you type your own.
+    const textG = this.group(form, 'Card text');
+    const generated = describeCard(card);
+    const ta = document.createElement('textarea');
+    ta.rows = 3;
+    ta.maxLength = 300;
+    ta.value = card.text;
+    ta.oninput = () => {
+      card.text = ta.value;
+      this.refreshQuiet();
+    };
+    const useGen = document.createElement('button');
+    useGen.textContent = 'Use generated text';
+    useGen.onclick = () => {
+      card.text = generated;
+      this.refresh();
+    };
+    const hint = document.createElement('p');
+    hint.className = 'hint';
+    hint.innerHTML = `Generated from the numbers: <i>${esc(generated)}</i>`;
+    textG.append(ta, hint, useGen);
+  }
+
+  private customEffectsEditor(form: HTMLElement, card: Extract<CustomCard, { type: 'spell' }>): void {
+    const g = this.group(form, 'Effects');
+    const KINDS: [Effect['kind'], string][] = [
+      ['modifyStats', 'Change target stats (permanent)'],
+      ['modifyStatsAll', 'Change stats of all your pieces'],
+      ['damage', 'Deal damage'],
+      ['heal', 'Heal HP'],
+      ['restore', 'Fully restore HP and shield'],
+      ['draw', 'Draw cards'],
+      ['hastenSummon', 'Speed up a summon'],
+      ['freeStance', 'Switch to Attack and still act'],
+    ];
+    card.effects.forEach((e, i) => {
+      const row = document.createElement('div');
+      row.className = 'eeffect';
+      row.appendChild(
+        this.selectField('Effect', e.kind, KINDS, (kind) => {
+          card.effects[i] = defaultEffect(kind);
+        }),
+      );
+      const num = (label: string, key: string, hint = '') => {
+        const obj = e as unknown as Record<string, number | undefined>;
+        row.appendChild(this.plainNum(label, obj[key] ?? 0, (v) => (obj[key] = v), hint));
+      };
+      switch (e.kind) {
+        case 'modifyStats':
+        case 'modifyStatsAll':
+          num('ATK change', 'atk');
+          num('DEF change', 'def');
+          num('HP change', 'hp');
+          if (e.kind === 'modifyStatsAll') {
+            row.appendChild(
+              this.selectField('Which pieces', e.pieceKind ?? '', [['', 'All pieces'], ...STANDARD_KINDS.filter((k) => k !== 'king').map((k) => [k, basePieceDef(k).name + 's'] as [string, string])], (v) => {
+                if (v) e.pieceKind = v;
+                else delete e.pieceKind;
+              }),
+            );
+          }
+          break;
+        case 'damage':
+        case 'heal':
+          num('Amount', 'amount');
+          break;
+        case 'draw':
+          num('Cards drawn', 'count');
+          break;
+        case 'hastenSummon':
+          num('Turns', 'turns');
+          break;
+        default:
+          break;
+      }
+      if (card.effects.length > 1) {
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.textContent = '✕ remove';
+        del.onclick = () => {
+          card.effects.splice(i, 1);
+          this.refresh();
+        };
+        row.appendChild(del);
+      }
+      g.appendChild(row);
+    });
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.textContent = '+ Add effect';
+    add.onclick = () => {
+      card.effects.push(defaultEffect('damage'));
+      this.refresh();
+    };
+    g.appendChild(add);
   }
 
   private effectsEditor(form: HTMLElement, baseEffects: Effect[], patch: CardPatch, clean: () => void): void {
@@ -418,12 +830,13 @@ export class BalanceEditor {
   private movementEditor(form: HTMLElement, base: MovementSpec, patch: MovementSpec | undefined, set: (m: MovementSpec | undefined) => void, glyph: string, isKing: boolean): void {
     const g = this.group(form, 'Movement');
     const m = cloneMovement(patch ?? base) as { pawn?: boolean; relative?: boolean; leaps?: (readonly [number, number])[]; slides?: { dirs: (readonly [number, number])[]; range?: number }[] };
+    const direct = patch === base; // custom card: the spec itself is being edited, nothing to "reset" to
     const commit = () => {
       const norm = (x: MovementSpec) => JSON.stringify(cloneMovement(x));
-      set(norm(m) === norm(base) ? undefined : cloneMovement(m));
+      set(!direct && norm(m) === norm(base) ? undefined : cloneMovement(m));
       this.refresh();
     };
-    if (patch) {
+    if (patch && patch !== base) {
       const b = document.createElement('button');
       b.textContent = 'Reset movement';
       b.className = 'ereset-mv';

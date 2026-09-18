@@ -5,10 +5,11 @@ import { CHESS_FONT, COLORS, EMOJI_FONT, SQ, UI_FONT } from './layout.js';
 
 const isStandard = (kind: string) => kind in STANDARD_PIECES;
 
-/** The card artwork for a summoned creature, if the card has any and it loaded. */
+/** The board sprite for a summoned creature: its own board picture if it has one, else the card art. */
 function artFor(kind: string): Texture | undefined {
   const card = allCards().find((c) => c.type === 'summon' && c.piece.kind === kind);
-  return card?.art ? artTextures.get(card.art) : undefined;
+  const url = card?.boardArt ?? card?.art;
+  return url ? artTextures.get(url) : undefined;
 }
 
 /**

@@ -23,7 +23,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const DB_PATH = process.env.DB_PATH ?? join(here, '..', 'data', 'chessx.sqlite');
 
 const db = new Db(DB_PATH);
-const admin = new Admin(db);
+const admin = new Admin(db, dirname(DB_PATH));
 setAdminCheck((u) => admin.isAdmin(u));
 admin.loadBalance(); // before any game is loaded or created
 const auth = new Auth(db, configFromEnv(process.env));
@@ -112,12 +112,12 @@ function json(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
-async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
+async function readJson(req: IncomingMessage, limit = 16_384): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     let data = '';
     req.on('data', (chunk: Buffer) => {
       data += chunk.toString();
-      if (data.length > 16_384) reject(new AuthError('Request too large.'));
+      if (data.length > limit) reject(new AuthError('Request too large.'));
     });
     req.on('end', () => {
       try {
@@ -166,9 +166,26 @@ function serveStatic(req: IncomingMessage, res: ServerResponse, url: URL): void 
 // ---------------------------------------------------------------------------
 // HTTP routing
 
+/** Admin-uploaded card art. Content-hashed names, so cache forever. */
+function serveUpload(res: ServerResponse, pathname: string): void {
+  const name = pathname.slice('/uploads/'.length);
+  if (!/^[a-f0-9]{20}\.png$/.test(name)) {
+    res.writeHead(404).end();
+    return;
+  }
+  const file = join(admin.uploadsDir, name);
+  if (!existsSync(file)) {
+    res.writeHead(404).end();
+    return;
+  }
+  res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'public, max-age=31536000, immutable' });
+  res.end(readFileSync(file));
+}
+
 async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://localhost');
   const path = url.pathname;
+  if (path.startsWith('/uploads/')) return serveUpload(res, path);
   if (!path.startsWith('/api/')) return serveStatic(req, res, url);
 
   try {
@@ -180,13 +197,20 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 
     // ---- balance (card/piece numbers). Reading is public: every client needs it to render cards.
     if (req.method === 'GET' && path === '/api/balance') return json(res, 200, { balance: currentBalance() });
-    if (req.method === 'PUT' && path === '/api/balance') {
+    if ((path === '/api/balance' && req.method === 'PUT') || (path === '/api/admin/upload' && req.method === 'POST')) {
       const user = auth.userFromRequest(req);
       if (!user) return json(res, 401, { error: 'Not signed in.' });
       if (!admin.isAdmin(user)) return json(res, 403, { error: 'Only the game admin can edit cards.' });
-      const b = await readJson(req);
-      const balance = admin.saveBalance(b.balance);
-      console.log(`[admin] ${user.name} saved balance (${Object.keys(balance.cards).length} cards, ${Object.keys(balance.pieces).length} pieces patched)`);
+      // Images arrive base64-encoded; the balance itself grows with custom cards.
+      const b = await readJson(req, path === '/api/admin/upload' ? 4 * 1024 * 1024 + 1024 : 1024 * 1024);
+      if (path === '/api/admin/upload') {
+        const url = admin.saveImage(b.image);
+        return json(res, 200, { url });
+      }
+      const { balance, removedCards } = admin.saveBalance(b.balance);
+      console.log(
+        `[admin] ${user.name} saved balance (${Object.keys(balance.cards).length} cards, ${Object.keys(balance.pieces).length} pieces patched, ${balance.customCards?.length ?? 0} custom cards${removedCards.length ? `, removed ${removedCards.join(', ')}` : ''})`,
+      );
       // Everyone online picks up the new numbers immediately (definitions first, then the
       // games themselves: pieces on the board, legal moves, playable cards).
       for (const set of socketsByUser.values()) for (const t of set) t.send({ type: 'balance', balance });

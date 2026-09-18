@@ -46,6 +46,8 @@ interface CardBase {
   glyph: string;
   /** Optional artwork (URL path served by the client), shown where there is room. */
   art?: string;
+  /** Optional separate picture for the piece on the board (summons). Defaults to `art`. */
+  boardArt?: string;
 }
 
 export interface SummonCardDef extends CardBase {

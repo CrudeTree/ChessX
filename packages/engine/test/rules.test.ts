@@ -4,6 +4,7 @@ import {
   applyBalance,
   baseCardDef,
   createGame,
+  customCardsGiven,
   describeMovement,
   DIRS,
   EMPTY_BALANCE,
@@ -15,6 +16,7 @@ import {
   legalMoves,
   parseSquare as s,
   pieceAt,
+  pruneUnknownCards,
   rebasePieces,
   REWARD_CARDS,
   STARTER_CARDS,
@@ -670,6 +672,64 @@ describe('balance patches', () => {
     expect(pieceAt(g, s('d2'))!.atk).toBe(1);
     expect(pieceAt(g, s('e2'))!.atk).toBe(2);
     expect(pieceAt(g, s('d2'))!.hp).toBe(1);
+  });
+
+  it('admin-created cards register, play like any other, and can be removed again', () => {
+    const wolf = {
+      id: 'custom_wolf',
+      type: 'summon' as const,
+      name: 'Dire Wolf',
+      glyph: '🐺',
+      art: '/uploads/abc.png',
+      boardArt: '/uploads/def.png',
+      cost: 150,
+      tier: 2,
+      summonTurns: 1,
+      text: 'A wolf.',
+      piece: { kind: 'custom_wolf', name: 'Dire Wolf', glyph: '🐺', tier: 2, movement: { leaps: DIRS.KNIGHT }, atk: 2, def: 0, hp: 2 },
+      give: 'everyone' as const,
+    };
+    const zap = {
+      id: 'custom_zap',
+      type: 'spell' as const,
+      name: 'Zap',
+      glyph: '⚡',
+      cost: 150,
+      target: 'enemyPiece' as const,
+      text: 'Zap.',
+      effects: [{ kind: 'damage' as const, amount: 1 }],
+      give: 'reward' as const,
+    };
+    expect(validateBalance({ cards: {}, pieces: {}, customCards: [wolf, zap] })).toEqual([]);
+    expect(validateBalance({ cards: {}, pieces: {}, customCards: [{ ...wolf, id: 'wolf' }] })).toEqual(expect.arrayContaining([expect.stringMatching(/bad id|kind must match/)]));
+    expect(validateBalance({ cards: {}, pieces: {}, customCards: [{ ...wolf, art: 'https://evil.example/x.png' }] })).toEqual([expect.stringMatching(/card image/)]);
+
+    applyBalance({ cards: {}, pieces: {}, customCards: [wolf, zap] });
+    expect(getCardDef('custom_wolf').name).toBe('Dire Wolf');
+    expect(getPieceDef('custom_wolf').atk).toBe(2);
+    expect(customCardsGiven('everyone')).toEqual(['custom_wolf']);
+    expect(customCardsGiven('reward')).toEqual(['custom_zap']);
+
+    let g = newGame();
+    const w = giveCard(g, 'white', 'custom_wolf');
+    g = act(g, { type: 'playCard', cardInstanceId: w, target: s('e2') });
+    g = move(g, 'a2', 'a3');
+    g = move(g, 'a7', 'a6'); // wolf rises at the start of white's next turn (1 turn)
+    expect(pieceAt(g, s('e2'))!.kind).toBe('custom_wolf');
+    const z = giveCard(g, 'black', 'custom_zap');
+    g = move(g, 'b2', 'b3');
+    g = act(g, { type: 'playCard', cardInstanceId: z, target: s('e2') });
+    expect(pieceAt(g, s('e2'))!.hp).toBe(1);
+
+    // Deleting the cards: the creature and any copies in hands/decks are pruned from saved games.
+    applyBalance(EMPTY_BALANCE);
+    expect(() => getCardDef('custom_wolf')).toThrow();
+    giveCard(g, 'white', 'custom_zap');
+    expect(pruneUnknownCards(g)).toBe(true);
+    expect(pieceAt(g, s('e2'))).toBeUndefined();
+    expect(g.players.white.hand.some((c) => c.cardId === 'custom_zap')).toBe(false);
+    expect(pruneUnknownCards(g)).toBe(false);
+    expect(legalActions(g).length).toBeGreaterThan(0); // the game still works
   });
 
   it('rule patches change what new games start with', () => {

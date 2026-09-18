@@ -6,7 +6,7 @@
 //  - Every checkmate (or king capture) rolls a reward: a new card you don't own
 //    yet, or a spare copy of a card you already have.
 
-import { DEFAULT_RULES, hasCard, REWARD_CARDS, STARTER_CARDS, starterDeck, validateDeck } from '@chessx/engine';
+import { customCardsGiven, DEFAULT_RULES, hasCard, REWARD_CARDS, STARTER_CARDS, starterDeck, validateDeck } from '@chessx/engine';
 import { DECK_SLOTS, levelFor, XP_PER_MATCH, XP_PER_WIN, type CollectionEntry, type DeckInfo, type Profile, type RewardReport } from '@chessx/protocol';
 import { toUserInfo } from './auth.js';
 import type { Db, UserRow } from './db.js';
@@ -16,11 +16,18 @@ export class ProgressionError extends Error {}
 export class Progression {
   constructor(private db: Db) {}
 
-  /** Give a fresh account its starter collection and Deck 1 (idempotent). */
+  /** Give a fresh account its starter collection and Deck 1 (idempotent), plus any admin-created cards meant for everyone. */
   ensureStarter(userId: string): void {
-    if (this.db.collectionFor(userId).length > 0) return;
-    for (const id of STARTER_CARDS) this.db.grantCard(userId, id, 3, true);
-    this.db.saveDeck(userId, 1, 'Deck 1', starterDeck());
+    if (this.db.collectionFor(userId).length === 0) {
+      for (const id of STARTER_CARDS) this.db.grantCard(userId, id, 3, true);
+      this.db.saveDeck(userId, 1, 'Deck 1', starterDeck());
+    }
+    // Admin-created cards handed to everyone: three copies, shown as new in the binder.
+    const everyone = customCardsGiven('everyone');
+    if (everyone.length) {
+      const owned = new Set(this.db.collectionFor(userId).map((r) => r.card_id));
+      for (const id of everyone) if (!owned.has(id)) this.db.grantCard(userId, id, 3, false); // unseen -> "NEW" in the binder
+    }
   }
 
   collection(userId: string): CollectionEntry[] {
@@ -132,7 +139,7 @@ export class Progression {
   /** Grant a random reward card the player does not own yet; null if they have them all. */
   private rollNewCard(userId: string): string | null {
     const owned = new Set(this.db.collectionFor(userId).map((r) => r.card_id));
-    const pool = REWARD_CARDS.filter((id) => !owned.has(id));
+    const pool = [...REWARD_CARDS, ...customCardsGiven('reward')].filter((id) => !owned.has(id));
     if (pool.length === 0) return null;
     const pick = pool[Math.floor(Math.random() * pool.length)]!;
     this.db.grantCard(userId, pick, 1, false);

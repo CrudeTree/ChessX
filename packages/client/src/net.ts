@@ -40,6 +40,8 @@ export const authApi = {
 export const balanceApi = {
   get: () => api<{ balance: Balance }>('/api/balance').then((r) => r.balance),
   save: (balance: Balance) => api<{ balance: Balance }>('/api/balance', { method: 'PUT', body: JSON.stringify({ balance }) }).then((r) => r.balance),
+  /** Upload a PNG data: URL; returns its public path. */
+  upload: (image: string) => api<{ url: string }>('/api/admin/upload', { method: 'POST', body: JSON.stringify({ image }) }).then((r) => r.url),
 };
 
 export const profileApi = {

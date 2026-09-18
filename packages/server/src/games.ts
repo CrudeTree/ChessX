@@ -8,6 +8,7 @@ import {
   createGame,
   IllegalActionError,
   opposite,
+  pruneUnknownCards,
   rebasePieces,
   starterDeck,
   viewFor,
@@ -347,7 +348,8 @@ export class LiveGame {
    */
   rebalance(): void {
     if (!this.state) return;
-    if (rebasePieces(this.state)) {
+    const pruned = pruneUnknownCards(this.state);
+    if (rebasePieces(this.state) || pruned) {
       this.state.seq++;
       this.state.events = [];
       this.save(Date.now(), false);

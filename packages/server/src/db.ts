@@ -12,7 +12,7 @@ const { DatabaseSync } = process.getBuiltinModule('node:sqlite') as typeof impor
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { ChatMessage } from '@chessx/protocol';
-import { upgradeState, type Color, type GameState } from '@chessx/engine';
+import { pruneUnknownCards, upgradeState, type Color, type GameState } from '@chessx/engine';
 
 export interface UserRow {
   id: string;
@@ -350,6 +350,17 @@ export class Db {
     return this.db.prepare('SELECT * FROM decks WHERE user_id = ? ORDER BY slot').all(userId) as unknown as DeckRow[];
   }
 
+  /** An admin-created card was deleted: take it out of every collection and deck. */
+  removeCardEverywhere(cardId: string): void {
+    this.db.prepare('DELETE FROM collection WHERE card_id = ?').run(cardId);
+    const rows = this.db.prepare(`SELECT * FROM decks WHERE cards_json LIKE ?`).all(`%"${cardId}"%`) as unknown as DeckRow[];
+    const update = this.db.prepare('UPDATE decks SET cards_json = ? WHERE user_id = ? AND slot = ?');
+    for (const r of rows) {
+      const cards = (JSON.parse(r.cards_json) as string[]).filter((c) => c !== cardId);
+      update.run(JSON.stringify(cards), r.user_id, r.slot);
+    }
+  }
+
   saveDeck(userId: string, slot: number, name: string, cards: string[]): void {
     this.db
       .prepare(
@@ -457,6 +468,11 @@ export class Db {
 }
 
 // Helpers for the JSON columns.
-/** Games saved before newer fields (e.g. mana) existed are upgraded on load. */
-export const parseState = (row: GameRow): GameState | null => (row.state_json ? upgradeState(JSON.parse(row.state_json) as GameState) : null);
+/** Games saved before newer fields (e.g. mana) existed are upgraded on load; cards the admin has since deleted are dropped. */
+export const parseState = (row: GameRow): GameState | null => {
+  if (!row.state_json) return null;
+  const state = upgradeState(JSON.parse(row.state_json) as GameState);
+  pruneUnknownCards(state);
+  return state;
+};
 export const parseChat = (row: GameRow): ChatMessage[] => JSON.parse(row.chat_json) as ChatMessage[];

@@ -297,14 +297,14 @@ function takeBalance(b: Balance): void {
   rerenderAfterBalance();
 }
 
-/** Redraw whatever is on screen with the new numbers (no animations: the events are already spent). */
+/** Redraw whatever is on screen with the new numbers and pictures (no animations: the events are already spent). */
 function rerenderAfterBalance(): void {
   if (currentView && viewReady) {
     currentView = { ...currentView, events: [] };
-    gameView.sync(currentView);
     renderStatus(currentView);
+    void gameView.refreshArt(); // loads any new images, then rebuilds pieces and hand
   }
-  if (!binderScreen.classList.contains('hidden') && profile) binder.open(profile);
+  if (!binderScreen.classList.contains('hidden') && profile) void refreshProfile().then(() => profile && binder.open(profile));
   if (!discardEl.classList.contains('hidden')) renderDiscard();
 }
 

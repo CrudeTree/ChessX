@@ -4,11 +4,11 @@
 // a patch only carries the fields the admin actually changed, everything else
 // keeps following the code.
 
-import { allCards, baseCardDef, setCardDef } from './cards/registry.js';
-import type { CardDef, Effect } from './cards/types.js';
-import { basePieceDef, getPieceDef, setPieceDef, STANDARD_KINDS } from './pieces.js';
-import { BASE_RULES, DEFAULT_RULES } from './state.js';
-import type { MovementSpec, PieceDef } from './types.js';
+import { allCards, baseCardDef, hasCard, setCardDef, setCustomCards } from './cards/registry.js';
+import type { CardDef, Effect, TargetRule } from './cards/types.js';
+import { basePieceDef, getPieceDef, hasPieceDef, setPieceDef, STANDARD_KINDS } from './pieces.js';
+import { BASE_RULES, DEFAULT_RULES, type GameState } from './state.js';
+import type { Color, MovementSpec, PieceDef } from './types.js';
 
 export interface PiecePatch {
   atk?: number;
@@ -31,6 +31,10 @@ export interface CardPatch {
   targetTier?: number;
   /** Rules text shown on the card. Regenerated from the numbers unless set explicitly. */
   text?: string;
+  /** Replacement card picture (an uploaded image URL). */
+  art?: string;
+  /** Replacement board sprite for the creature (an uploaded image URL). */
+  boardArt?: string;
 }
 
 /** Game-wide numbers (apply to games created after the change). */
@@ -40,13 +44,24 @@ export interface RulesPatch {
   drawEvery?: number;
 }
 
+/** Who gets an admin-created card: three copies for everyone, the reward pool, or nobody yet. */
+export type CardGive = 'everyone' | 'reward' | 'none';
+
+/** An admin-created card: a complete definition plus how it is handed out. */
+export type CustomCard = CardDef & { give: CardGive };
+
 export interface Balance {
   /** Patches keyed by card id. */
   cards: Record<string, CardPatch>;
   /** Patches for the six standard chess pieces, keyed by kind. */
   pieces: Record<string, PiecePatch>;
   rules?: RulesPatch;
+  /** Cards created in the editor. Their ids start with `custom_`. */
+  customCards?: CustomCard[];
 }
+
+export const CUSTOM_ID = /^custom_[a-z0-9_]{1,40}$/;
+export const ART_URL = /^\/(uploads|art)\/[a-z0-9_.-]+\.(png|webp|jpg|jpeg)$/i;
 
 export const EMPTY_BALANCE: Balance = { cards: {}, pieces: {} };
 
@@ -87,15 +102,24 @@ export function patchedCard(id: string, patch: CardPatch | undefined): CardDef {
     if (patch?.tier !== undefined) card.tier = patch.tier;
     if (patch?.sacrificeTier !== undefined) card.sacrificeTier = patch.sacrificeTier;
     if (patch?.summonTurns !== undefined) card.summonTurns = patch.summonTurns;
+    if (patch?.art !== undefined) card.art = patch.art;
+    if (patch?.boardArt !== undefined) card.boardArt = patch.boardArt;
     // Hand-written text stays until the numbers change; then it is regenerated (unless set explicitly).
-    card.text = patch?.text ?? (patch && Object.keys(patch).length ? describeCard(card) : base.text);
+    card.text = patch?.text ?? (numbersChanged(patch) ? describeCard(card) : base.text);
     return card;
   }
   const card = { ...base, effects: (patch?.effects ?? base.effects).map((e) => ({ ...e })) };
   if (patch?.cost !== undefined) card.cost = patch.cost;
   if (patch?.targetTier !== undefined) card.targetTier = patch.targetTier;
-  card.text = patch?.text ?? (patch && Object.keys(patch).length ? describeCard(card) : base.text);
+  if (patch?.art !== undefined) card.art = patch.art;
+  card.text = patch?.text ?? (numbersChanged(patch) ? describeCard(card) : base.text);
   return card;
+}
+
+/** Did the patch touch anything the rules text describes? (Pictures and cost do not.) */
+function numbersChanged(patch: CardPatch | undefined): boolean {
+  if (!patch) return false;
+  return Object.keys(patch).some((k) => k !== 'art' && k !== 'boardArt' && k !== 'text' && k !== 'cost');
 }
 
 /**
@@ -103,11 +127,54 @@ export function patchedCard(id: string, patch: CardPatch | undefined): CardDef {
  * pieces with no patch return to their shipped definitions.
  */
 export function applyBalance(balance: Balance): void {
-  current = { cards: { ...balance.cards }, pieces: { ...balance.pieces }, ...(balance.rules && Object.keys(balance.rules).length ? { rules: { ...balance.rules } } : {}) };
+  current = {
+    cards: { ...balance.cards },
+    pieces: { ...balance.pieces },
+    ...(balance.rules && Object.keys(balance.rules).length ? { rules: { ...balance.rules } } : {}),
+    ...(balance.customCards?.length ? { customCards: balance.customCards.map((c) => ({ ...c })) } : {}),
+  };
+  // Admin-created cards become part of the base catalog first (patches may then apply to them too).
+  setCustomCards((current.customCards ?? []).map(({ give: _give, ...card }) => card as CardDef));
   for (const base of allCards()) setCardDef(patchedCard(base.id, current.cards[base.id]));
   for (const kind of STANDARD_KINDS) setPieceDef(patchPiece(basePieceDef(kind), current.pieces[kind]));
   // New games pick these up; games in progress keep the rules they started with.
   Object.assign(DEFAULT_RULES, BASE_RULES, current.rules ?? {});
+}
+
+/** Custom cards handed out in a given way (for the server's collection logic). */
+export function customCardsGiven(give: CardGive): string[] {
+  return (current.customCards ?? []).filter((c) => c.give === give).map((c) => c.id);
+}
+
+/**
+ * A card the admin deleted may still be in a saved game's hand, deck, graveyard
+ * or on the board as a creature. Drop those so the game can go on. Returns true
+ * if anything was removed.
+ */
+export function pruneUnknownCards(state: GameState): boolean {
+  let changed = false;
+  for (const color of ['white', 'black'] as Color[]) {
+    const p = state.players[color];
+    for (const key of ['hand', 'deck', 'graveyard'] as const) {
+      const kept = p[key].filter((c) => hasCard(c.cardId));
+      if (kept.length !== p[key].length) {
+        p[key] = kept;
+        changed = true;
+      }
+    }
+  }
+  for (const piece of Object.values(state.pieces)) {
+    if (piece.summon && !hasCard(piece.summon.cardId)) {
+      delete piece.summon; // the pending summon simply fizzles
+      changed = true;
+    }
+    if (!hasPieceDef(piece.kind)) {
+      state.board[piece.square] = null;
+      delete state.pieces[piece.id];
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 // ---------------------------------------------------------------------------
@@ -170,22 +237,77 @@ function validateEffects(effects: unknown, where: string, problems: string[]): v
   }
 }
 
+const TARGET_RULES: TargetRule[] = ['none', 'ownPiece', 'enemyPiece', 'anyPiece', 'ownSummoning', 'ownDefending'];
+const GIVES: CardGive[] = ['everyone', 'reward', 'none'];
+const artOk = (u: unknown) => typeof u === 'string' && ART_URL.test(u);
+
+/** Check an admin-created card is complete and sane. */
+function validateCustomCard(c: unknown, problems: string[]): void {
+  if (typeof c !== 'object' || c === null) return void problems.push('Custom card must be an object.');
+  const card = c as CustomCard;
+  const where = typeof card.name === 'string' && card.name ? card.name : String(card.id);
+  if (typeof card.id !== 'string' || !CUSTOM_ID.test(card.id)) problems.push(`${where}: bad id.`);
+  if (typeof card.name !== 'string' || !card.name.trim() || card.name.length > 24) problems.push(`${where}: name must be 1–24 characters.`);
+  if (typeof card.glyph !== 'string' || card.glyph.length > 8) problems.push(`${where}: glyph must be a short emoji or symbol.`);
+  if (typeof card.text !== 'string' || card.text.length > 300) problems.push(`${where}: text must be 0–300 characters.`);
+  if (card.art !== undefined && !artOk(card.art)) problems.push(`${where}: card image must be an uploaded image.`);
+  if (card.boardArt !== undefined && !artOk(card.boardArt)) problems.push(`${where}: board sprite must be an uploaded image.`);
+  if (!isInt(card.cost, 0, 9999)) problems.push(`${where}: cost must be 0–9999.`);
+  if (!GIVES.includes(card.give)) problems.push(`${where}: choose who receives the card.`);
+  if (card.type === 'summon') {
+    if (!isInt(card.tier, 1, 6)) problems.push(`${where}: tier must be 1–6.`);
+    if (card.sacrificeTier !== undefined && !isInt(card.sacrificeTier, 1, 4)) problems.push(`${where}: sacrifice tier must be 1–4.`);
+    if (!isInt(card.summonTurns, 1, 10)) problems.push(`${where}: summon turns must be 1–10.`);
+    const p = card.piece;
+    if (typeof p !== 'object' || p === null) problems.push(`${where}: creature stats missing.`);
+    else {
+      if (p.kind !== card.id) problems.push(`${where}: creature kind must match the card id.`);
+      if (!isInt(p.tier, 1, 6)) problems.push(`${where}: creature tier must be 1–6.`);
+      validatePiece({ atk: p.atk, def: p.def, hp: p.hp, manaYield: p.manaYield, movement: p.movement }, where, problems, false);
+      if (p.atk === undefined || p.def === undefined || p.hp === undefined || !p.movement) problems.push(`${where}: creature needs ATK, DEF, HP and movement.`);
+    }
+  } else if (card.type === 'spell') {
+    if (!TARGET_RULES.includes(card.target)) problems.push(`${where}: bad target rule.`);
+    if (card.targetTier !== undefined && !isInt(card.targetTier, 1, 6)) problems.push(`${where}: target tier must be 1–6.`);
+    validateEffects(card.effects, where, problems);
+  } else {
+    problems.push(`${where}: type must be summon or spell.`);
+  }
+}
+
 /** Problems with a proposed balance, or [] if it is acceptable. */
 export function validateBalance(b: unknown): string[] {
   const problems: string[] = [];
   if (typeof b !== 'object' || b === null) return ['Balance must be an object.'];
   const bal = b as Partial<Balance>;
+  const customIds = new Set<string>();
+  if (bal.customCards !== undefined) {
+    if (!Array.isArray(bal.customCards)) problems.push('customCards must be a list.');
+    else {
+      for (const c of bal.customCards) {
+        validateCustomCard(c, problems);
+        const id = (c as CustomCard)?.id;
+        if (typeof id === 'string') {
+          if (customIds.has(id)) problems.push(`Duplicate custom card id: ${id}`);
+          customIds.add(id);
+        }
+      }
+    }
+  }
   for (const [id, patch] of Object.entries(bal.cards ?? {})) {
     let base: CardDef;
     try {
       base = baseCardDef(id);
     } catch {
+      if (customIds.has(id)) continue; // patches on a brand-new custom card are applied after it registers
       problems.push(`Unknown card: ${id}`);
       continue;
     }
     const where = base.name;
     if (patch.cost !== undefined && !isInt(patch.cost, 0, 9999)) problems.push(`${where}: cost must be 0–9999.`);
     if (patch.text !== undefined && (typeof patch.text !== 'string' || patch.text.length > 300)) problems.push(`${where}: text too long.`);
+    if (patch.art !== undefined && !artOk(patch.art)) problems.push(`${where}: card image must be an uploaded image.`);
+    if (patch.boardArt !== undefined && !artOk(patch.boardArt)) problems.push(`${where}: board sprite must be an uploaded image.`);
     if (base.type === 'summon') {
       if (patch.tier !== undefined && !isInt(patch.tier, 1, 6)) problems.push(`${where}: tier must be 1–6.`);
       if (patch.sacrificeTier !== undefined && !isInt(patch.sacrificeTier, 1, 4)) problems.push(`${where}: sacrifice tier must be 1–4 (nothing above the Queen can be sacrificed).`);
