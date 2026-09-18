@@ -14,7 +14,7 @@ export const CATALOG: CardDef[] = [
     glyph: '🐂',
     tier: 2,
     summonTurns: 3,
-    text: 'Sacrifice a Pawn. Summons in 3 turns. Moves up to 2 squares orthogonally. 2 ATK / 0 DEF / 2 HP.',
+    text: 'Sacrifice a Tier 1 piece. Summons in 3 turns. Moves up to 2 squares orthogonally. 2 ATK / 0 DEF / 2 HP.',
     piece: {
       kind: 'the_ox',
       name: 'The Ox',
@@ -33,7 +33,7 @@ export const CATALOG: CardDef[] = [
     glyph: '🗿',
     tier: 2,
     summonTurns: 2,
-    text: 'Sacrifice a Pawn. Summons in 2 turns. Moves 1 square in any direction. 1 ATK / 1 DEF / 3 HP.',
+    text: 'Sacrifice a Tier 1 piece. Summons in 2 turns. Moves 1 square in any direction. 1 ATK / 1 DEF / 3 HP.',
     piece: {
       kind: 'stone_sentinel',
       name: 'Stone Sentinel',
@@ -52,7 +52,7 @@ export const CATALOG: CardDef[] = [
     glyph: '🏇',
     tier: 3,
     summonTurns: 3,
-    text: 'Sacrifice a Knight or Bishop. Summons in 3 turns. Moves like a Rook or a Knight. 2 ATK / 0 DEF / 2 HP.',
+    text: 'Sacrifice a Tier 2 piece. Summons in 3 turns. Moves like a Rook or a Knight. 2 ATK / 0 DEF / 2 HP.',
     piece: {
       kind: 'war_chariot',
       name: 'War Chariot',
@@ -71,7 +71,7 @@ export const CATALOG: CardDef[] = [
     glyph: '🐉',
     tier: 4,
     summonTurns: 4,
-    text: 'Sacrifice a Rook. Summons in 4 turns. Moves up to 3 squares in any direction. 3 ATK / 1 DEF / 3 HP.',
+    text: 'Sacrifice a Tier 3 piece. Summons in 4 turns. Moves up to 3 squares in any direction. 3 ATK / 1 DEF / 3 HP.',
     piece: {
       kind: 'elder_wyrm',
       name: 'Elder Wyrm',
