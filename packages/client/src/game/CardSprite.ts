@@ -8,7 +8,11 @@ export class CardSprite extends Container {
   readonly cardId: string;
   playable: boolean;
 
-  constructor(inst: CardInstance, playable: boolean) {
+  /**
+   * @param playable  has a legal target right now (bright border, draggable)
+   * @param affordable  the owner has the mana for it (cost gem blue; red when not)
+   */
+  constructor(inst: CardInstance, playable: boolean, affordable = true) {
     super();
     this.instanceId = inst.instanceId;
     this.cardId = inst.cardId;
@@ -54,6 +58,14 @@ export class CardSprite extends Container {
     name.anchor.set(0.5, 0);
     name.position.set(0, -CARD_H / 2 + 5);
     this.addChild(name);
+
+    // Mana cost gem in the corner of the art (blue; red when the owner cannot afford it).
+    const gemColor = affordable ? COLORS.mana : COLORS.atk;
+    const gem = new Graphics().roundRect(artX - 2, artY - 2, 30, 16, 6).fill({ color: 0x0b1020, alpha: 0.9 }).stroke({ width: 1.5, color: gemColor });
+    const cost = new Text({ text: `${card.cost}`, style: { fontFamily: UI_FONT, fontSize: 10, fontWeight: '900', fill: gemColor } });
+    cost.anchor.set(0.5);
+    cost.position.set(artX + 13, artY + 6);
+    this.addChild(gem, cost);
 
     // Summon info: tier + timer
     if (isSummon) {

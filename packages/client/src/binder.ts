@@ -15,7 +15,7 @@ export function cardElement(card: CardDef, opts: { count?: number; isNew?: boole
   const art = card.art ? `<img src="${card.art}" alt="">` : `<span>${card.glyph}</span>`;
   el.innerHTML = `
     <div class="bname"><span>${card.name}</span></div>
-    <div class="bart">${art}</div>
+    <div class="bart">${art}<span class="bcost" title="Mana cost">${card.cost}</span></div>
     <div class="btype">${type}</div>
     <div class="btext">${card.text}</div>
   `;

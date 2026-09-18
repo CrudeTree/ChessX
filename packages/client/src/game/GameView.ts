@@ -4,6 +4,7 @@ import { preloadArt } from './art.js';
 import { CardSprite } from './CardSprite.js';
 import { DeckSprite } from './DeckSprite.js';
 import { DiscardSprite } from './DiscardSprite.js';
+import { ManaCounter } from './ManaCounter.js';
 import {
   BOARD_SIZE,
   BOARD_X,
@@ -23,10 +24,12 @@ import {
   MOBILE,
   MY_DECK,
   MY_DISCARD,
+  MY_MANA,
   OPP_CARD_H,
   OPP_CARD_W,
   OPP_DECK,
   OPP_DISCARD,
+  OPP_MANA,
   OPP_HAND_X0,
   OPP_HAND_X1,
   OPP_HAND_Y,
@@ -91,6 +94,8 @@ export class GameView {
   private oppDeck = new DeckSprite();
   private myDiscard!: DiscardSprite;
   private oppDiscard!: DiscardSprite;
+  private myMana!: ManaCounter;
+  private oppMana!: ManaCounter;
   /** Fired when a discard pile is clicked, with the colour whose pile it is. */
   onOpenDiscard: (color: Color) => void = () => {};
 
@@ -129,6 +134,9 @@ export class GameView {
       autoDensity: true,
     });
     mount.appendChild(this.app.canvas);
+    // Logical size for the stylesheet: it scales the canvas down to fit but never above this.
+    this.app.canvas.style.setProperty('--canvas-w', `${CANVAS_W}px`);
+    this.app.canvas.style.setProperty('--canvas-h', `${CANVAS_H}px`);
     this.tweens = new Tweens(this.app.ticker);
     await preloadArt();
 
@@ -165,6 +173,13 @@ export class GameView {
     this.myDiscard.onOpen = () => this.onOpenDiscard(this.bottomColor());
     this.oppDiscard.onOpen = () => this.onOpenDiscard(opposite(this.bottomColor()));
     this.deckLayer.addChild(this.oppDeck, this.myDeck, this.oppDiscard, this.myDiscard);
+    this.myMana = new ManaCounter(MY_MANA.size, 'MANA', !MOBILE);
+    this.oppMana = new ManaCounter(OPP_MANA.size, 'THEIR MANA', !MOBILE);
+    this.myMana.tweens = this.tweens;
+    this.oppMana.tweens = this.tweens;
+    this.myMana.position.set(MY_MANA.x, MY_MANA.y);
+    this.oppMana.position.set(OPP_MANA.x, OPP_MANA.y);
+    this.deckLayer.addChild(this.myMana, this.oppMana);
 
     this.app.stage.eventMode = 'static';
     this.app.stage.hitArea = this.app.screen;
@@ -423,6 +438,23 @@ export class GameView {
           this.flash(x, y, COLORS.summon);
           break;
         }
+        case 'manaGained': {
+          // A blue number rises from every piece, rippling from the back rank forward,
+          // while the owner's counter counts up to the new total.
+          const mine = ev.color === this.bottomColor();
+          const pieces = [...ev.pieces].sort((a, b) => {
+            const ya = squareToXY(a.square, this.flipped).y;
+            const yb = squareToXY(b.square, this.flipped).y;
+            return mine ? yb - ya : ya - yb;
+          });
+          pieces.forEach((p, i) => {
+            const { x, y } = squareToXY(p.square, this.flipped);
+            this.floatText(x, y, `+${p.amount}`, COLORS.mana, i * 35, MOBILE ? 15 : 18, 900);
+          });
+          const counter = mine ? this.myMana : this.oppMana;
+          counter.countTo(ev.mana, 250, 900);
+          break;
+        }
         default:
           break;
       }
@@ -508,6 +540,12 @@ export class GameView {
     const bottom = this.bottomColor();
     this.myDiscard.update(view.players[bottom].graveyard);
     this.oppDiscard.update(view.players[opposite(bottom)].graveyard);
+    // Income animates the count-up (see playEvents); anything else (a card's cost) snaps.
+    this.myMana.caption = this.hotseat ? (MOBILE ? 'WHITE' : 'WHITE MANA') : 'MANA';
+    this.oppMana.caption = this.hotseat ? (MOBILE ? 'BLACK' : 'BLACK MANA') : MOBILE ? 'THEIRS' : 'THEIR MANA';
+    const gained = new Set(view.events.filter((e) => e.type === 'manaGained').map((e) => e.color));
+    this.myMana.set(view.players[bottom].mana, view.players[bottom].manaIncome, gained.has(bottom));
+    this.oppMana.set(view.players[opposite(bottom)].mana, view.players[opposite(bottom)].manaIncome, gained.has(opposite(bottom)));
     const canDraw = view.legalActions.some((a) => a.type === 'draw');
     for (const [deck, color] of [
       [this.myDeck, bottom],
@@ -670,8 +708,9 @@ export class GameView {
     this.handMaxScroll = Math.max(0, contentW - span);
     this.handScroll = Math.min(this.handScroll, this.handMaxScroll);
     this.handLayer.x = -this.handScroll;
+    const mana = view.players[view.you].mana;
     hand.forEach((inst, i) => {
-      const sprite = new CardSprite(inst, playable.has(inst.instanceId));
+      const sprite = new CardSprite(inst, playable.has(inst.instanceId), getCardDef(inst.cardId).cost <= mana);
       const hx = startX + i * spacing;
       const hy = HAND_Y + CARD_H / 2;
       sprite.position.set(hx, hy);
@@ -744,14 +783,15 @@ export class GameView {
     }
   }
 
-  private floatText(x: number, y: number, text: string, color: number, delay = 0): void {
-    const t = new Text({ text, style: { fontFamily: UI_FONT, fontSize: 22, fontWeight: '900', fill: color, stroke: { color: 0x000000, width: 4 } } });
+  private floatText(x: number, y: number, text: string, color: number, delay = 0, fontSize = 22, duration = 700): void {
+    const t = new Text({ text, style: { fontFamily: UI_FONT, fontSize, fontWeight: '900', fill: color, stroke: { color: 0x000000, width: 4 } } });
     t.anchor.set(0.5);
     t.position.set(x, y - 10);
+    t.alpha = 0;
     this.fxLayer.addChild(t);
-    this.tweens.run(700, (k) => {
+    this.tweens.run(duration, (k) => {
       t.y = y - 10 - 34 * k;
-      t.alpha = 1 - k * k;
+      t.alpha = Math.min(1, k * 6) * (1 - k * k);
     }, { delay, done: () => t.destroy() });
   }
 

@@ -12,7 +12,7 @@ const { DatabaseSync } = process.getBuiltinModule('node:sqlite') as typeof impor
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { ChatMessage } from '@chessx/protocol';
-import type { Color, GameState } from '@chessx/engine';
+import { upgradeState, type Color, type GameState } from '@chessx/engine';
 
 export interface UserRow {
   id: string;
@@ -452,5 +452,6 @@ export class Db {
 }
 
 // Helpers for the JSON columns.
-export const parseState = (row: GameRow): GameState | null => (row.state_json ? (JSON.parse(row.state_json) as GameState) : null);
+/** Games saved before newer fields (e.g. mana) existed are upgraded on load. */
+export const parseState = (row: GameRow): GameState | null => (row.state_json ? upgradeState(JSON.parse(row.state_json) as GameState) : null);
 export const parseChat = (row: GameRow): ChatMessage[] => JSON.parse(row.chat_json) as ChatMessage[];

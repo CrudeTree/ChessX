@@ -9,6 +9,8 @@ import {
   legalMoves,
   parseSquare as s,
   pieceAt,
+  REWARD_CARDS,
+  STARTER_CARDS,
   starterDeck,
   validateDeck,
   viewFor,
@@ -16,7 +18,13 @@ import {
   type GameState,
 } from '../src/index.js';
 
+/** A game with a deep mana pool so card tests can play cards straight away. */
 function newGame(seed = 1): GameState {
+  return createGame({ decks: { white: starterDeck(), black: starterDeck() }, seed, rules: { startingMana: 9999 } });
+}
+
+/** A game with the real starting mana (0). */
+function realGame(seed = 1): GameState {
   return createGame({ decks: { white: starterDeck(), black: starterDeck() }, seed });
 }
 
@@ -463,6 +471,58 @@ describe('cards', () => {
     const fs = giveCard(g, 'white', 'foresight');
     g = act(g, { type: 'playCard', cardInstanceId: fs });
     expect(g.players.white.hand.length).toBe(before + 2); // +1 given, -1 played, +2 drawn
+  });
+
+  describe('mana', () => {
+    it('starts at 0 and every card has a cost of at least 150', () => {
+      const g = realGame();
+      expect(g.players.white.mana).toBe(0);
+      expect(g.players.black.mana).toBe(0);
+      for (const id of [...STARTER_CARDS, ...REWARD_CARDS]) expect(getCardDef(id).cost).toBeGreaterThanOrEqual(150);
+    });
+
+    it('cards cannot be played without mana, with a clear error', () => {
+      const g = realGame();
+      const ws = giveCard(g, 'white', 'whetstone');
+      expect(legalActions(g).some((a) => a.type === 'playCard')).toBe(false);
+      expect(() => act(g, { type: 'playCard', cardInstanceId: ws, target: s('e2') })).toThrow(/Not enough mana.*costs 150.*have 0/);
+    });
+
+    it('a full army earns 32 mana at the end of its turn, one per tier per piece', () => {
+      let g = realGame();
+      expect(viewFor(g, 'white').players.white.manaIncome).toBe(32); // 8 + 2·2 + 2·2 + 2·3 + 4 + 6
+      g = move(g, 'e2', 'e4');
+      expect(g.players.white.mana).toBe(32);
+      expect(g.players.black.mana).toBe(0); // black has not ended a turn yet
+      const gained = g.events.find((e) => e.type === 'manaGained');
+      expect(gained).toMatchObject({ type: 'manaGained', color: 'white', total: 32, mana: 32 });
+      if (gained?.type !== 'manaGained') throw new Error('unreachable');
+      expect(gained.pieces).toHaveLength(16);
+      expect(gained.pieces.find((p) => p.square === s('e1'))?.amount).toBe(6); // the King
+      expect(gained.pieces.find((p) => p.square === s('e4'))?.amount).toBe(1); // the pawn that moved
+      g = move(g, 'e7', 'e5');
+      expect(g.players.black.mana).toBe(32);
+    });
+
+    it('losing pieces lowers income; playing a card spends it', () => {
+      let g = realGame();
+      g = move(g, 'e2', 'e4');
+      g = move(g, 'd7', 'd5');
+      g = move(g, 'e4', 'd5'); // pawn takes pawn: black now has 15 pieces
+      expect(g.players.white.mana).toBe(64);
+      expect(viewFor(g, 'black').players.black.manaIncome).toBe(31);
+      g = move(g, 'a7', 'a6');
+      expect(g.players.black.mana).toBe(63);
+
+      // After five ended turns white has 160 and can afford a 150 spell; it is deducted immediately.
+      for (const [f, t] of [['a2', 'a3'], ['a6', 'a5'], ['b2', 'b3'], ['a5', 'a4'], ['c2', 'c3'], ['h7', 'h6']] as const) g = move(g, f, t);
+      expect(g.players.white.mana).toBe(160);
+      const ws = giveCard(g, 'white', 'whetstone');
+      expect(legalActions(g).some((a) => a.type === 'playCard' && a.cardInstanceId === ws)).toBe(true);
+      g = act(g, { type: 'playCard', cardInstanceId: ws, target: s('e1') });
+      expect(g.players.white.mana).toBe(10);
+      expect(viewFor(g, 'white').players.white.mana).toBe(10);
+    });
   });
 
   it('Hex only targets enemy Tier 1 pieces (and can destroy one)', () => {

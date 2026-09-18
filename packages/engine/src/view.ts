@@ -1,7 +1,7 @@
 import type { CardInstance } from './cards/types.js';
 import { isInCheck } from './movement.js';
 import { legalActions } from './rules.js';
-import type { GameState, RuleConstants, TurnInfo } from './state.js';
+import { manaIncome, type GameState, type RuleConstants, type TurnInfo } from './state.js';
 import type { Action, Color, GameEvent, GameStatus, Piece, Square } from './types.js';
 
 export interface PlayerViewSide {
@@ -13,6 +13,10 @@ export interface PlayerViewSide {
   /** Your own hand; null for the opponent. */
   hand: CardInstance[] | null;
   graveyard: CardInstance[];
+  /** Current mana pool (public information, like the board). */
+  mana: number;
+  /** What this side will collect at the end of their turn with the board as it stands. */
+  manaIncome: number;
 }
 
 /** What one player is allowed to know about the game. */
@@ -45,6 +49,8 @@ export function viewFor(state: GameState, you: Color): PlayerView {
       handCount: p.hand.length,
       hand: c === you ? p.hand : null,
       graveyard: p.graveyard,
+      mana: p.mana,
+      manaIncome: manaIncome(state, c),
     };
   };
   return {

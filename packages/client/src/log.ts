@@ -79,6 +79,9 @@ export function describeEvents(view: PlayerView, names: Record<'white' | 'black'
       case 'check':
         lines.push({ text: `${names[e.color]} is in check!`, important: true });
         break;
+      case 'manaGained':
+        lines.push({ text: `${names[e.color]} gains ${e.total} mana (${e.mana}).`, color: e.color });
+        break;
       case 'turnEnded':
         lines.push({ text: `— ${names[e.color]} ends the turn —`, color: e.color });
         break;

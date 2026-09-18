@@ -19,6 +19,7 @@ export const CATALOG: CardDef[] = [
   {
     id: 'the_ox',
     type: 'summon',
+    cost: 200,
     name: 'The Ox',
     glyph: '🐂',
     art: '/art/the_ox.png',
@@ -39,6 +40,7 @@ export const CATALOG: CardDef[] = [
   {
     id: 'stone_sentinel',
     type: 'summon',
+    cost: 200,
     name: 'Stone Sentinel',
     glyph: '🗿',
     art: '/art/stone_sentinel.png',
@@ -59,6 +61,7 @@ export const CATALOG: CardDef[] = [
   {
     id: 'war_chariot',
     type: 'summon',
+    cost: 300,
     name: 'War Chariot',
     glyph: '🏇',
     art: '/art/war_chariot.png',
@@ -79,6 +82,7 @@ export const CATALOG: CardDef[] = [
   {
     id: 'elder_wyrm',
     type: 'summon',
+    cost: 450,
     name: 'Elder Wyrm',
     glyph: '🐉',
     art: '/art/elder_wyrm.png',
@@ -102,6 +106,7 @@ export const CATALOG: CardDef[] = [
   {
     id: 'iron_hide',
     type: 'spell',
+    cost: 150,
     name: 'Iron Hide',
     glyph: '🥩',
     target: 'ownPiece',
@@ -111,6 +116,7 @@ export const CATALOG: CardDef[] = [
   {
     id: 'whetstone',
     type: 'spell',
+    cost: 150,
     name: 'Whetstone',
     glyph: '⚔️',
     target: 'ownPiece',
@@ -121,6 +127,7 @@ export const CATALOG: CardDef[] = [
   {
     id: 'shield_wall',
     type: 'spell',
+    cost: 150,
     name: 'Shield Wall',
     glyph: '🛡️',
     target: 'ownPiece',
@@ -130,6 +137,7 @@ export const CATALOG: CardDef[] = [
   {
     id: 'foresight',
     type: 'spell',
+    cost: 200,
     name: 'Foresight',
     glyph: '🔮',
     target: 'none',
@@ -139,6 +147,7 @@ export const CATALOG: CardDef[] = [
   {
     id: 'hex',
     type: 'spell',
+    cost: 150,
     name: 'Hex',
     glyph: '💀',
     target: 'enemyPiece',
@@ -149,6 +158,7 @@ export const CATALOG: CardDef[] = [
   {
     id: 'dark_ritual',
     type: 'spell',
+    cost: 175,
     name: 'Dark Ritual',
     glyph: '🕯️',
     target: 'ownSummoning',
@@ -160,6 +170,7 @@ export const CATALOG: CardDef[] = [
   {
     id: 'thornback_boar',
     type: 'summon',
+    cost: 200,
     name: 'Thornback Boar',
     glyph: '🐗',
     tier: 2,
@@ -179,6 +190,7 @@ export const CATALOG: CardDef[] = [
   {
     id: 'frost_owl',
     type: 'summon',
+    cost: 200,
     name: 'Frost Owl',
     glyph: '🦉',
     tier: 2,
@@ -198,6 +210,7 @@ export const CATALOG: CardDef[] = [
   {
     id: 'iron_golem',
     type: 'summon',
+    cost: 325,
     name: 'Iron Golem',
     glyph: '🤖',
     tier: 3,
@@ -217,6 +230,7 @@ export const CATALOG: CardDef[] = [
   {
     id: 'shadow_panther',
     type: 'summon',
+    cost: 325,
     name: 'Shadow Panther',
     glyph: '🐆',
     art: '/art/shadow_panther.png',
@@ -237,6 +251,7 @@ export const CATALOG: CardDef[] = [
   {
     id: 'ancient_treant',
     type: 'summon',
+    cost: 325,
     name: 'Ancient Treant',
     glyph: '🌳',
     tier: 3,
@@ -256,6 +271,7 @@ export const CATALOG: CardDef[] = [
   {
     id: 'storm_drake',
     type: 'summon',
+    cost: 450,
     name: 'Storm Drake',
     glyph: '🐲',
     art: '/art/storm_drake.png',
@@ -278,6 +294,7 @@ export const CATALOG: CardDef[] = [
   {
     id: 'battle_cry',
     type: 'spell',
+    cost: 300,
     name: 'Battle Cry',
     glyph: '📣',
     target: 'none',
@@ -287,6 +304,7 @@ export const CATALOG: CardDef[] = [
   {
     id: 'second_wind',
     type: 'spell',
+    cost: 175,
     name: 'Second Wind',
     glyph: '💨',
     target: 'ownPiece',
@@ -296,6 +314,7 @@ export const CATALOG: CardDef[] = [
   {
     id: 'battle_trance',
     type: 'spell',
+    cost: 150,
     name: 'Battle Trance',
     glyph: '🔥',
     target: 'ownDefending',
@@ -305,6 +324,7 @@ export const CATALOG: CardDef[] = [
   {
     id: 'smite',
     type: 'spell',
+    cost: 250,
     name: 'Smite',
     glyph: '⚡',
     target: 'enemyPiece',

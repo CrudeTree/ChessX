@@ -39,6 +39,9 @@ export let OPP_DECK = { x: 0, y: 0 };
 export let DISCARD_SCALE = 0.5;
 export let MY_DISCARD = { x: 0, y: 0 };
 export let OPP_DISCARD = { x: 0, y: 0 };
+/** Mana counters: yours in the upper right, theirs in the upper left. */
+export let MY_MANA = { x: 0, y: 0, size: 34 };
+export let OPP_MANA = { x: 0, y: 0, size: 24 };
 
 function desktop(): void {
   MOBILE = false;
@@ -66,6 +69,9 @@ function desktop(): void {
   DISCARD_SCALE = 0.5;
   MY_DISCARD = { x: MY_DECK.x, y: BOARD_Y + 150 };
   OPP_DISCARD = { x: OPP_DECK.x, y: BOARD_Y + BOARD_SIZE - 150 };
+  // Counters sit in the side columns above the board, where nothing else lives.
+  MY_MANA = { x: BOARD_X + BOARD_SIZE + SIDE_W / 2, y: 40, size: 34 };
+  OPP_MANA = { x: SIDE_W / 2, y: 40, size: 24 };
 }
 
 /**
@@ -91,7 +97,11 @@ function mobile(viewportW: number): void {
   OPP_DECK = { x: deckR + 8, y: deckR + 6 };
   OPP_DISCARD = { x: deckR * 2 + 16 + (92 * DISCARD_SCALE) / 2 + 6, y: deckR + 6 };
   OPP_HAND_X0 = OPP_DISCARD.x + (92 * DISCARD_SCALE) / 2 + 14;
-  OPP_HAND_X1 = W - 8;
+  // The right end of the top row is reserved for the two mana counters (yours on top).
+  const manaColW = 80;
+  OPP_HAND_X1 = W - manaColW - 6;
+  MY_MANA = { x: W - manaColW / 2 - 4, y: 24, size: 24 };
+  OPP_MANA = { x: W - manaColW / 2 - 4, y: 60, size: 15 };
   BOARD_Y = Math.round(deckR * 2 + 16);
 
   // Hand strip below the board; your discard above your deck at the right end.
@@ -136,6 +146,8 @@ export const COLORS = {
   deckEdge: 0x8f7bd6,
   ringTrack: 0x2a2a3a,
   ringFill: 0x3dd68c,
+  mana: 0x5ab4ff,
+  manaDim: 0x2c5f99,
 } as const;
 
 /** Board orientation: your pieces are always at the bottom. */

@@ -83,6 +83,7 @@ export class InspectPanel {
         <div class="zoom-owner">${isSummon ? 'CREATURE' : 'SPELL'}</div>
       </div>
       <div class="zoom-type">${esc(typeLine)}</div>
+      <div class="zoom-cost"><span class="mana-gem">${card.cost}</span> mana to play${this.manaNote(card.cost)}</div>
       ${artBanner(card.art)}
       ${isSummon ? movementMap(card.piece.movement, `<span class="glyph emoji">${card.piece.glyph}</span>`) : card.art ? '' : `<div class="zoom-art"><span class="glyph emoji">${card.glyph}</span></div>`}
       ${stats}
@@ -91,6 +92,16 @@ export class InspectPanel {
     `;
     this.flash();
     this.resetStanceButton('Drag the card onto a highlighted target to play it.');
+  }
+
+  /** " · you have N" / how many more turns of income are needed, when we know the viewer's pool. */
+  private manaNote(cost: number): string {
+    const view = this.ctx.view();
+    if (!view || this.ctx.solo()) return '';
+    const me = view.players[view.you];
+    if (me.mana >= cost) return ` · <span class="ok">you have ${me.mana}</span>`;
+    const turns = me.manaIncome > 0 ? Math.ceil((cost - me.mana) / me.manaIncome) : Infinity;
+    return ` · <span class="short">you have ${me.mana}${Number.isFinite(turns) ? ` (about ${turns} more turn${turns === 1 ? '' : 's'})` : ''}</span>`;
   }
 
   private renderPiece(piece: Piece): void {
@@ -103,7 +114,7 @@ export class InspectPanel {
     const isKing = piece.kind === 'king';
     const ownerName = solo ? (piece.owner === 'white' ? 'White' : 'Black') : this.ctx.names()[piece.owner];
 
-    const typeLine = isKing ? `Tier ${def.tier} · royal piece` : card ? `Tier ${def.tier} creature · summoned by ${card.name}` : `Tier ${def.tier} · basic piece`;
+    const typeLine = `${isKing ? `Tier ${def.tier} · royal piece` : card ? `Tier ${def.tier} creature · summoned by ${card.name}` : `Tier ${def.tier} · basic piece`} · +${def.tier} mana / turn`;
 
     const status: string[] = [];
     if (piece.summon) {

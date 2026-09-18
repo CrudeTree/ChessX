@@ -12,6 +12,8 @@ export interface RuleConstants {
   /** Draw 1 card at the start of every Nth turn a player takes (5th, 10th, 15th...). */
   drawEvery: number;
   maxCopies: number;
+  /** Mana each player begins with. Normally 0: the first cards come online after a few turns. */
+  startingMana: number;
 }
 
 export const DEFAULT_RULES: RuleConstants = {
@@ -20,6 +22,7 @@ export const DEFAULT_RULES: RuleConstants = {
   openingHand: 7,
   drawEvery: 5,
   maxCopies: 3,
+  startingMana: 0,
 };
 
 export interface PlayerState {
@@ -31,6 +34,8 @@ export interface PlayerState {
   turnsTaken: number;
   /** Draws owed by the timer. While > 0 the player's only legal action is `draw`. */
   pendingDraws: number;
+  /** Mana pool. Each piece on the board generates its tier in mana at the end of its owner's turn. */
+  mana: number;
 }
 
 /** What the side to move has done so far this turn. Reset by `endTurn`. */
@@ -103,8 +108,8 @@ export function createGame(config: GameConfig): GameState {
     pieces: {},
     board: new Array<string | null>(64).fill(null),
     players: {
-      white: { color: 'white', deck: [], hand: [], graveyard: [], turnsTaken: 1, pendingDraws: 0 },
-      black: { color: 'black', deck: [], hand: [], graveyard: [], turnsTaken: 0, pendingDraws: 0 },
+      white: { color: 'white', deck: [], hand: [], graveyard: [], turnsTaken: 1, pendingDraws: 0, mana: rules.startingMana },
+      black: { color: 'black', deck: [], hand: [], graveyard: [], turnsTaken: 0, pendingDraws: 0, mana: rules.startingMana },
     },
     turn: 'white',
     ply: 0,
@@ -181,6 +186,29 @@ export function piecesOf(state: GameState, color: Color): Piece[] {
   return Object.values(state.pieces).filter((p) => p.owner === color);
 }
 
+/** Mana a piece produces at the end of its owner's turn: its tier (King = 6). */
+export function manaFrom(piece: Piece): number {
+  return getPieceDef(piece.kind).tier;
+}
+
+/** Total mana `color` will collect at the end of their turn with the board as it stands. */
+export function manaIncome(state: GameState, color: Color): number {
+  return piecesOf(state, color).reduce((sum, p) => sum + manaFrom(p), 0);
+}
+
+/**
+ * Fill in fields added since a state was saved (older games in the database).
+ * Mutates and returns the state.
+ */
+export function upgradeState(state: GameState): GameState {
+  state.rules = { ...DEFAULT_RULES, ...state.rules };
+  for (const color of ['white', 'black'] as Color[]) {
+    const p = state.players[color];
+    if (typeof p.mana !== 'number') p.mana = 0;
+  }
+  return state;
+}
+
 export function findKing(state: GameState, color: Color): Piece | undefined {
   return Object.values(state.pieces).find((p) => p.owner === color && p.kind === 'king');
 }
@@ -199,6 +227,7 @@ export function cloneState(state: GameState): GameState {
     graveyard: p.graveyard.slice(),
     turnsTaken: p.turnsTaken,
     pendingDraws: p.pendingDraws,
+    mana: p.mana,
   });
   return {
     rules: state.rules,

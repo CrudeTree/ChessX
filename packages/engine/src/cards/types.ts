@@ -36,6 +36,12 @@ interface CardBase {
   id: string;
   name: string;
   text: string;
+  /**
+   * Mana needed to play the card. Every piece generates mana equal to its tier
+   * at the end of its owner's turn (a full army makes 32), so 150 is roughly
+   * five turns of income at the start and much longer once the board thins.
+   */
+  cost: number;
   /** Glyph shown on the card art area. */
   glyph: string;
   /** Optional artwork (URL path served by the client), shown where there is room. */

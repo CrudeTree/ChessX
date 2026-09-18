@@ -4,6 +4,7 @@
   --panel-2: #242434;
   --text: #e8e6f0;
   --muted: #8f8ca6;
+  --mana: #5ab4ff;
   --accent: #d4a24c;
   --accent-2: #7c5cff;
   --danger: #d9534f;
@@ -604,6 +605,7 @@ button.danger {
 }
 
 .bcard .bart {
+  position: relative;
   height: 84px;
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.3);
@@ -612,6 +614,49 @@ button.danger {
   justify-content: center;
   font-size: 40px;
   overflow: hidden;
+}
+
+/* Mana cost gem (blue), top-left of the art. */
+.bcard .bcost,
+.mana-gem {
+  display: inline-block;
+  min-width: 26px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: #0b1020;
+  border: 1.5px solid var(--mana);
+  color: var(--mana);
+  font-size: 11px;
+  font-weight: 900;
+  text-align: center;
+  line-height: 1.3;
+}
+
+.bcard .bcost {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+}
+
+.zoom-cost {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.zoom-cost .mana-gem {
+  font-size: 13px;
+}
+
+.zoom-cost .ok {
+  color: var(--mana);
+}
+
+.zoom-cost .short {
+  color: #e58a8a;
 }
 
 .bcard .bart img {
@@ -1205,10 +1250,12 @@ button.danger {
    window leaves after the two panels, both horizontally and vertically. */
 #board-mount canvas {
   display: block;
-  width: auto;
-  height: auto;
-  max-width: calc(100vw - var(--inspect-w) - var(--side-w) - 24px - 32px);
-  max-height: calc(100vh - 24px);
+  /* Pixi writes inline width/height; override both so a max-* clamp keeps the aspect ratio.
+     --canvas-w/--canvas-h (set by GameView) are the logical size, so HiDPI canvases don't show at 2x. */
+  width: auto !important;
+  height: auto !important;
+  max-width: min(var(--canvas-w, 896px), calc(100vw - var(--inspect-w) - var(--side-w) - 24px - 32px));
+  max-height: min(var(--canvas-h, 850px), calc(100vh - 24px));
 }
 
 /* Laptops: slimmer panels so the board keeps more of the width. */

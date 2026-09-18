@@ -2,7 +2,7 @@ import { getCardDef } from './cards/registry.js';
 import type { CardInstance, Effect, SummonCardDef, TargetRule } from './cards/types.js';
 import { isInCheck, lastRank, pseudoMoves, type MoveCandidate } from './movement.js';
 import { getPieceDef } from './pieces.js';
-import { cloneState, drawCards, freshTurnInfo, pieceAt, piecesOf, type GameState } from './state.js';
+import { cloneState, drawCards, freshTurnInfo, manaFrom, pieceAt, piecesOf, type GameState } from './state.js';
 import {
   opposite,
   rankOf,
@@ -64,6 +64,7 @@ export function legalActions(state: GameState, color: Color = state.turn): Actio
 
   for (const inst of state.players[color].hand) {
     const card = getCardDef(inst.cardId);
+    if (card.cost > state.players[color].mana) continue;
     // Summoning is the major action, and while in check the move must stay available.
     if (card.type === 'summon' && (majorAction !== null || inCheck)) continue;
     for (const target of cardTargets(state, inst, color)) {
@@ -150,6 +151,10 @@ export function applyAction(state: GameState, action: Action): GameState {
   }
   if (action.type === 'playCard') {
     const inst = player.hand.find((c) => c.instanceId === action.cardInstanceId);
+    if (inst && getCardDef(inst.cardId).cost > player.mana) {
+      const card = getCardDef(inst.cardId);
+      throw new IllegalActionError(`Not enough mana: ${card.name} costs ${card.cost}, you have ${player.mana}.`);
+    }
     if (inst && getCardDef(inst.cardId).type === 'summon') {
       if (next.turnInfo.majorAction !== null) {
         throw new IllegalActionError(
@@ -428,7 +433,10 @@ function performCard(state: GameState, action: Extract<Action, { type: 'playCard
     );
   }
 
+  if (card.cost > player.mana) throw new IllegalActionError(`Not enough mana: ${card.name} costs ${card.cost}, you have ${player.mana}.`);
+
   player.hand.splice(idx, 1);
+  player.mana -= card.cost;
   state.events.push({ type: 'cardPlayed', color, cardId: card.id, target: action.target });
 
   if (card.type === 'summon') {
@@ -556,6 +564,7 @@ function emitStats(state: GameState, p: Piece): void {
  *     drawn card might be the answer to check).
  */
 function endTurn(state: GameState): void {
+  collectMana(state, state.turn);
   state.events.push({ type: 'turnEnded', color: state.turn });
   // A double pawn push this turn is capturable en passant during the opponent's turn only.
   state.enPassant = state.turnInfo.enPassant;
@@ -581,6 +590,20 @@ function endTurn(state: GameState): void {
 
   if (isInCheck(state, color)) state.events.push({ type: 'check', color });
   if (player.pendingDraws === 0) evaluateMate(state);
+}
+
+/**
+ * End-of-turn income: every piece `color` has on the board produces its tier in
+ * mana (Pawn 1 … Queen 4, King 6; a full army makes 32). Pieces being
+ * sacrificed still count until they are gone. Losing pieces therefore slows
+ * down how often cards can be played.
+ */
+function collectMana(state: GameState, color: Color): void {
+  const pieces = piecesOf(state, color).map((p) => ({ square: p.square, amount: manaFrom(p) }));
+  const total = pieces.reduce((sum, p) => sum + p.amount, 0);
+  const player = state.players[color];
+  player.mana += total;
+  state.events.push({ type: 'manaGained', color, total, mana: player.mana, pieces });
 }
 
 /**

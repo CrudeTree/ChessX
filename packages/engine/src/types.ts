@@ -125,5 +125,7 @@ export type GameEvent =
   /** The draw timer completed: this player must click their deck before acting. */
   | { type: 'drawReady'; color: Color }
   | { type: 'check'; color: Color }
+  /** End-of-turn income: every piece produced its tier in mana. `mana` is the pool after adding `total`. */
+  | { type: 'manaGained'; color: Color; total: number; mana: number; pieces: { square: Square; amount: number }[] }
   | { type: 'turnEnded'; color: Color }
   | { type: 'gameOver'; status: GameStatus };
