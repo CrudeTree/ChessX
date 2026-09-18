@@ -8,6 +8,7 @@ import {
   createGame,
   IllegalActionError,
   opposite,
+  rebasePieces,
   starterDeck,
   viewFor,
   type Action,
@@ -339,6 +340,21 @@ export class LiveGame {
     for (const w of this.watchers) w.send(msg);
   }
 
+  /**
+   * The admin changed card/piece numbers: bring pieces on the board in line and
+   * resend the view (legal moves, playable cards and mana income are all derived
+   * from the definitions, so they need a fresh state even if no piece changed).
+   */
+  rebalance(): void {
+    if (!this.state) return;
+    if (rebasePieces(this.state)) {
+      this.state.seq++;
+      this.state.events = [];
+      this.save(Date.now(), false);
+    }
+    this.broadcastState();
+  }
+
   private broadcastState(): void {
     for (const w of this.watchers) this.sendState(w);
   }
@@ -433,6 +449,11 @@ export class GameManager {
     }
     this.db.insertGame(row);
     return this.track(new LiveGame(row, this.db, this.userName));
+  }
+
+  /** After a balance change: update every game in memory and resend its state. */
+  rebalanceAll(): void {
+    for (const g of this.live.values()) g.rebalance();
   }
 
   /**

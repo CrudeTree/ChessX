@@ -162,10 +162,44 @@ export function addPiece(state: GameState, kind: string, owner: Color, square: S
     maxHp: def.hp,
     hasMoved,
     stance: 'attack',
+    base: { atk: def.atk, def: def.def, hp: def.hp },
   };
   state.pieces[piece.id] = piece;
   state.board[square] = piece.id;
   return piece;
+}
+
+/**
+ * Bring every piece in line with the current (possibly admin-patched) piece
+ * definitions: the change in base stats is applied on top of whatever the
+ * piece has now, so a Whetstone'd pawn stays one ATK ahead of its friends.
+ * Returns true if anything changed.
+ */
+export function rebasePieces(state: GameState): boolean {
+  let changed = false;
+  for (const p of Object.values(state.pieces)) {
+    const def = getPieceDef(p.kind);
+    const next = { atk: def.atk, def: def.def, hp: def.hp };
+    if (!p.base) {
+      // Older save: assume it was created under the current definition.
+      p.base = next;
+      continue;
+    }
+    const dAtk = next.atk - p.base.atk;
+    const dDef = next.def - p.base.def;
+    const dHp = next.hp - p.base.hp;
+    if (!dAtk && !dDef && !dHp) continue;
+    p.atk = Math.max(0, p.atk + dAtk);
+    p.maxDef = Math.max(0, p.maxDef + dDef);
+    p.def = Math.min(p.maxDef, Math.max(0, p.def + dDef));
+    if (p.kind !== 'king') {
+      p.maxHp = Math.max(1, p.maxHp + dHp);
+      p.hp = Math.min(p.maxHp, Math.max(1, p.hp + dHp));
+    }
+    p.base = next;
+    changed = true;
+  }
+  return changed;
 }
 
 function setupStandardBoard(state: GameState): void {
@@ -223,6 +257,8 @@ export function upgradeState(state: GameState): GameState {
   // already moved is simply treated as still in its main phase (the next move ends it).
   const ti = state.turnInfo as Partial<TurnInfo> & { majorAction?: unknown };
   state.turnInfo = { cardsPlayed: ti.cardsPlayed ?? 0, stanceChanged: ti.stanceChanged ?? [], enPassant: ti.enPassant ?? null };
+  // Card/piece numbers may have been edited since this game was saved.
+  rebasePieces(state);
   return state;
 }
 

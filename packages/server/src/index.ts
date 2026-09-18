@@ -187,8 +187,10 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
       const b = await readJson(req);
       const balance = admin.saveBalance(b.balance);
       console.log(`[admin] ${user.name} saved balance (${Object.keys(balance.cards).length} cards, ${Object.keys(balance.pieces).length} pieces patched)`);
-      // Everyone online picks up the new numbers immediately.
+      // Everyone online picks up the new numbers immediately (definitions first, then the
+      // games themselves: pieces on the board, legal moves, playable cards).
       for (const set of socketsByUser.values()) for (const t of set) t.send({ type: 'balance', balance });
+      games.rebalanceAll();
       return json(res, 200, { balance });
     }
 

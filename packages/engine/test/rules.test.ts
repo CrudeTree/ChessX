@@ -15,6 +15,7 @@ import {
   legalMoves,
   parseSquare as s,
   pieceAt,
+  rebasePieces,
   REWARD_CARDS,
   STARTER_CARDS,
   starterDeck,
@@ -647,6 +648,28 @@ describe('balance patches', () => {
     expect(getCardDef('stone_sentinel').text).toBe(baseCardDef('stone_sentinel').text);
     expect(getPieceDef('pawn').atk).toBe(1);
     expect(viewFor(realGame(), 'white').players.white.manaIncome).toBe(32);
+  });
+
+  it('rebasePieces carries a stat change onto pieces already on the board, keeping buffs', () => {
+    let g = newGame();
+    const ws = giveCard(g, 'white', 'whetstone');
+    g = act(g, { type: 'playCard', cardInstanceId: ws, target: s('e2') }); // e2 pawn: 2 ATK
+    expect(pieceAt(g, s('e2'))!.base).toEqual({ atk: 1, def: 0, hp: 1 });
+
+    applyBalance({ cards: {}, pieces: { pawn: { atk: 3, hp: 2 } } });
+    expect(rebasePieces(g)).toBe(true);
+    expect(pieceAt(g, s('d2'))!.atk).toBe(3); // plain pawn follows the new base
+    expect(pieceAt(g, s('e2'))!.atk).toBe(4); // buffed pawn keeps its +1
+    expect(pieceAt(g, s('d2'))!.hp).toBe(2);
+    expect(pieceAt(g, s('d2'))!.maxHp).toBe(2);
+    expect(pieceAt(g, s('b1'))!.atk).toBe(1); // knights untouched
+    expect(rebasePieces(g)).toBe(false); // idempotent
+
+    applyBalance(EMPTY_BALANCE);
+    expect(rebasePieces(g)).toBe(true);
+    expect(pieceAt(g, s('d2'))!.atk).toBe(1);
+    expect(pieceAt(g, s('e2'))!.atk).toBe(2);
+    expect(pieceAt(g, s('d2'))!.hp).toBe(1);
   });
 
   it('rule patches change what new games start with', () => {

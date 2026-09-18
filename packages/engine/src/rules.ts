@@ -453,6 +453,7 @@ function resolveSummon(state: GameState, sacrifice: Piece): void {
     maxHp: def.hp,
     hasMoved: true,
     stance: 'attack',
+    base: { atk: def.atk, def: def.def, hp: def.hp },
   };
   state.pieces[summoned.id] = summoned;
   state.board[square] = summoned.id;

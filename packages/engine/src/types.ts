@@ -82,6 +82,12 @@ export interface Piece {
   hasMoved: boolean;
   stance: Stance;
   summon?: PendingSummon;
+  /**
+   * The definition stats this piece was created from. When the admin changes a
+   * card or piece, the difference is applied on top of the piece's current
+   * stats (so spell buffs survive) and this is updated.
+   */
+  base?: { atk: number; def: number; hp: number };
 }
 
 export type PromotionKind = 'queen' | 'rook' | 'bishop' | 'knight';
