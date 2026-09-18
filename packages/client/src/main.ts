@@ -582,6 +582,9 @@ function leaveGameUi(): void {
   lastSeq = -1;
   wasMyTurn = false;
   stateQueue.length = 0;
+  gameGeneration++;
+  statusEl.textContent = 'Setting up the board…';
+  statusEl.className = 'status';
   logEl.innerHTML = '';
   $('chat-log').innerHTML = '';
   if (viewReady) gameView.reset();
@@ -822,7 +825,11 @@ function renderStatus(view: PlayerView): void {
 
 const stateQueue: { view: PlayerView; clocks: Clocks }[] = [];
 let draining = false;
+/** Bumped whenever we leave a game, so an in-flight replay never applies to the next game. */
+let gameGeneration = 0;
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+/** Never let an animation hold up the game: whichever finishes first wins. */
+const withTimeout = (p: Promise<void>, ms: number) => Promise.race([p.catch(() => undefined), sleep(ms)]);
 
 function enqueueState(view: PlayerView, clocks: Clocks): void {
   stateQueue.push({ view, clocks });
@@ -833,18 +840,25 @@ async function drainStates(): Promise<void> {
   draining = true;
   try {
     while (stateQueue.length) {
+      const gen = gameGeneration;
       const { view, clocks } = stateQueue.shift()!;
       const opponentPlayed = !solo && view.events.find((e) => e.type === 'cardPlayed' && e.color !== view.you);
       const opponentActed = !solo && view.events.some((e) => (e.type === 'moved' || e.type === 'attacked') && view.turn !== view.you);
       if (opponentPlayed && opponentPlayed.type === 'cardPlayed') {
-        await gameView.revealCard(opponentPlayed.cardId, false, opponentPlayed.target);
+        await withTimeout(gameView.revealCard(opponentPlayed.cardId, false, opponentPlayed.target), 4000);
+        if (gen !== gameGeneration) continue; // we left this game while the card was being shown
       }
-      applyState(view, clocks);
+      try {
+        applyState(view, clocks);
+      } catch (err) {
+        console.error('applyState failed', err);
+      }
       // Give a move a moment to be seen before the next queued action lands.
       if (stateQueue.length && (opponentActed || opponentPlayed)) await sleep(opponentPlayed ? 500 : 700);
     }
   } finally {
     draining = false;
+    if (stateQueue.length) void drainStates(); // arrived during the final await
   }
 }
 
@@ -969,12 +983,15 @@ net.onMessage = async (msg: ServerMessage) => {
             if (route.screen === 'binder') void openBinder();
           }
         }
-      } else if (currentGameId) {
+      } else if (currentGameId && !net.hasPending) {
         net.send({ type: 'openGame', gameId: currentGameId });
       } else {
         net.send({ type: 'listGames' });
       }
       net.send({ type: 'getSocial' });
+      // Anything the player asked for while we were reconnecting (e.g. clicking Practice
+      // during a server restart) goes out now instead of being lost.
+      net.flushPending();
       return;
     }
     case 'social': {
@@ -1029,19 +1046,29 @@ net.onMessage = async (msg: ServerMessage) => {
       // Let the game-over banner land first, then celebrate.
       setTimeout(() => showRewards(msg.report), gameScreen.classList.contains('hidden') ? 0 : 1200);
       return;
-    case 'error':
+    case 'error': {
+      const gameGone = /not yours|No game|no longer available/i.test(msg.message);
       if (!homeScreen.classList.contains('hidden')) {
         homeError.textContent = msg.message;
         // The remembered game is gone or not ours: fall back to the list.
-        if (/not yours|No game|no longer available/i.test(msg.message)) {
+        if (gameGone) {
           rememberOpenGame(null);
           history.replaceState({ screen: 'home' } satisfies Route, '', '/');
           net.send({ type: 'listGames' });
         }
+      } else if (gameGone && currentGameId && !gameScreen.classList.contains('hidden')) {
+        // We were in a game that no longer exists (a practice game after a server restart, a
+        // cancelled invite...). Don't leave a dead board on screen: back to the list, with a note.
+        const wasPractice = solo;
+        currentGameId = null;
+        goHome();
+        history.replaceState({ screen: 'home' } satisfies Route, '', '/');
+        showToast(wasPractice ? 'That practice game ended (the server restarted). Start a new one any time.' : msg.message, 'info');
       } else {
         showToast(msg.message);
       }
       return;
+    }
     case 'left':
       // The server closed our view (e.g. a pending challenge was declined): back to the list.
       if (currentGameId) {

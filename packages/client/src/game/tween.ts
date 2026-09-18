@@ -36,10 +36,22 @@ export class Tweens {
       tw.elapsed += dt;
       if (tw.elapsed < 0) continue;
       const t = Math.min(1, tw.elapsed / tw.duration);
-      tw.update(tw.ease(t));
-      if (t >= 1) {
+      // A throwing callback (e.g. touching a sprite destroyed by a game reset) must not stop
+      // the ticker or leave anything awaiting `done` hanging: drop the tween and finish it.
+      let failed = false;
+      try {
+        tw.update(tw.ease(t));
+      } catch (err) {
+        failed = true;
+        console.warn('tween update failed; finishing early', err);
+      }
+      if (t >= 1 || failed) {
         this.list.splice(i, 1);
-        tw.done?.();
+        try {
+          tw.done?.();
+        } catch (err) {
+          console.warn('tween done() failed', err);
+        }
       }
     }
   }

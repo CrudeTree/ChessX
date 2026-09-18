@@ -435,6 +435,22 @@ export class GameManager {
     return this.track(new LiveGame(row, this.db, this.userName));
   }
 
+  /**
+   * Graceful shutdown (deploy/restart): practice games live only in memory and will
+   * not survive, so send their players home with a note rather than leaving them
+   * on a board that silently stops responding. Persistent games resume on reconnect.
+   */
+  shutdown(): void {
+    for (const g of this.live.values()) {
+      if (!g.solo) continue;
+      for (const t of g.watchersList()) {
+        t.send({ type: 'notice', message: 'The server is restarting for an update — practice games end here. Start a new one in a moment.' });
+        g.detach(t);
+        t.send({ type: 'left' });
+      }
+    }
+  }
+
   /** Remove a game nobody has started playing (declined/cancelled challenge). Anyone viewing it is sent home. */
   discardUnstarted(gameId: string): void {
     const g = this.get(gameId);

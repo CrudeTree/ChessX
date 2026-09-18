@@ -220,6 +220,7 @@ export class GameView {
     this.voids.clear();
     for (const layer of [this.highlightLayer, this.lastMoveLayer, this.inspectLayer, this.fxLayer, this.banner]) layer.removeChildren();
     for (const old of this.handLayer.removeChildren()) old.destroy();
+    for (const old of this.dragLayer.removeChildren()) old.destroy({ children: true }); // an in-flight card reveal
     if (this.ready) {
       this.myDiscard.update([]);
       this.oppDiscard.update([]);
@@ -341,9 +342,10 @@ export class GameView {
       this.syncVoid(id, false, 0, 0);
       sprite.eventMode = 'none';
       this.tweens.run(260, (t) => {
+        if (sprite.destroyed) return;
         sprite.alpha = 1 - t;
         sprite.scale.set(1 - 0.4 * t);
-      }, { done: () => sprite.destroy() });
+      }, { done: () => !sprite.destroyed && sprite.destroy() });
     }
     this.pieceLayer.sortableChildren = true;
 
@@ -374,7 +376,7 @@ export class GameView {
       this.tweens.run(400, (t) => g.scale.set(t), { ease: easeOutBack });
     } else if (!active && existing) {
       this.voids.delete(pieceId);
-      this.tweens.run(300, (t) => existing.scale.set(1 - t), { done: () => existing.destroy() });
+      this.tweens.run(300, (t) => !existing.destroyed && existing.scale.set(1 - t), { done: () => !existing.destroyed && existing.destroy() });
     } else if (existing) {
       existing.position.set(x, y);
     }
@@ -617,6 +619,7 @@ export class GameView {
     // 1. Rise to the centre, growing, spinning face-down -> face-up at the halfway point.
     const s0 = holder.scale.x;
     await this.tween(650, (t) => {
+      if (holder.destroyed) return;
       holder.position.set(from.x + (centre.x - from.x) * t, from.y + (centre.y - from.y) * t);
       const s = s0 + (bigScale - s0) * t;
       const flip = Math.cos(t * Math.PI); // 1 -> -1
@@ -627,18 +630,22 @@ export class GameView {
         glow.visible = true;
       }
     });
+    if (holder.destroyed) return;
     holder.scale.set(bigScale);
     // 2. Hold so it can be read; a gentle breathing glow.
     await this.tween(1000, (t) => {
-      glow.alpha = 0.7 + 0.3 * Math.sin(t * Math.PI * 2);
+      if (!glow.destroyed) glow.alpha = 0.7 + 0.3 * Math.sin(t * Math.PI * 2);
     });
+    if (holder.destroyed) return;
     // 3. Glide onto the discard pile, shrinking to pile size.
     glow.visible = false;
     await this.tween(450, (t) => {
+      if (holder.destroyed) return;
       holder.position.set(centre.x + (pile.x - centre.x) * t, centre.y + (pile.y - centre.y) * t);
       holder.scale.set(bigScale + (landScale - bigScale) * t);
       if (isSummon) holder.alpha = 1 - t * 0.6;
     });
+    if (holder.destroyed) return;
     holder.destroy({ children: true });
     this.burst(pile.x, pile.y, isSummon ? COLORS.summon : COLORS.card, isSummon ? 1.2 : 0.6);
   }

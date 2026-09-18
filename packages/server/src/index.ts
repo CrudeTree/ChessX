@@ -260,6 +260,9 @@ class SocketTransport implements Transport {
   error(message: string): void {
     this.send({ type: 'error', message });
   }
+  close(code: number, reason: string): void {
+    if (this.ws.readyState === WebSocket.OPEN) this.ws.close(code, reason);
+  }
 }
 
 function detach(t: SocketTransport): void {
@@ -460,6 +463,21 @@ httpServer.on('upgrade', (req, socket, head) => {
     });
   });
 });
+
+// Graceful stop (docker sends SIGTERM on deploy): warn practice players, then close sockets
+// so clients reconnect promptly to the new process instead of waiting on a dead one.
+let stopping = false;
+function shutdown(signal: string): void {
+  if (stopping) return;
+  stopping = true;
+  console.log(`${signal}: shutting down`);
+  games.shutdown();
+  for (const set of socketsByUser.values()) for (const t of set) t.close(1012, 'Server restarting');
+  httpServer.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 2000).unref();
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 httpServer.listen(PORT, () => {
   const p = auth.providers();

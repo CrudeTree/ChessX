@@ -21,4 +21,6 @@ ENV DB_PATH=/data/chessx.sqlite
 VOLUME ["/data"]
 
 EXPOSE 8080
-CMD ["npm", "start"]
+# Run node directly (not via npm wrappers) so SIGTERM reaches the server for a graceful shutdown.
+WORKDIR /app/packages/server
+CMD ["node", "--import", "tsx", "src/index.ts"]

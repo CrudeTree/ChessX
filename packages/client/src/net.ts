@@ -12,8 +12,22 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return body;
 }
 
+/** Three-way answer for "am I signed in?": the user, `null` for a definite no, `'unknown'` if the server was unreachable. */
+async function whoAmI(): Promise<UserInfo | null | 'unknown'> {
+  try {
+    const res = await fetch('/api/me', { credentials: 'same-origin' });
+    if (res.status === 401 || res.status === 403) return null;
+    if (!res.ok) return 'unknown'; // 502/503 while the server restarts
+    const body = (await res.json()) as { user: UserInfo };
+    return body.user;
+  } catch {
+    return 'unknown'; // network down
+  }
+}
+
 export const authApi = {
-  me: () => api<{ user: UserInfo }>('/api/me').then((r) => r.user).catch(() => null),
+  me: () => whoAmI().then((u) => (u === 'unknown' ? null : u)),
+  whoAmI,
   providers: () => api<AuthProviders>('/api/auth/providers').catch(() => ({ google: false, facebook: false })),
   register: (email: string, name: string, password: string) =>
     api<{ user: UserInfo }>('/api/auth/register', { method: 'POST', body: JSON.stringify({ email, name, password }) }).then((r) => r.user),
@@ -58,6 +72,8 @@ export class Net {
   private backoff = 500;
   private closedByUser = false;
   private everOpened = false;
+  /** Messages sent while reconnecting (e.g. during a server restart); flushed once the socket is back. */
+  private pending: ClientMessage[] = [];
 
   constructor(private url = defaultUrl()) {}
 
@@ -71,15 +87,17 @@ export class Net {
       this.everOpened = true;
       this.backoff = 500;
       this.onStatus(true);
+      // The server sends `welcome` first; our queued requests follow it (see main.ts onMessage).
     };
     ws.onmessage = (ev) => this.onMessage(decode<ServerMessage>(String(ev.data)));
     ws.onclose = async () => {
       this.onStatus(false);
       if (this.closedByUser) return;
       if (!opened) {
-        // Likely a 401: confirm before retrying so we do not hammer the server while signed out.
-        const user = await authApi.me();
-        if (!user) return this.onUnauthorized();
+        // Could be a 401 (signed out) or the server being down/restarting. Only a definite
+        // "not signed in" answer sends the player to the sign-in screen; otherwise keep retrying.
+        const who = await authApi.whoAmI();
+        if (who === null) return this.onUnauthorized();
       }
       setTimeout(() => this.connect(), this.backoff);
       this.backoff = Math.min(this.backoff * 2, 8000);
@@ -87,12 +105,32 @@ export class Net {
     ws.onerror = () => ws.close();
   }
 
+  /** Send now, or queue until the socket is back (bounded so a long outage cannot pile up junk). */
   send(msg: ClientMessage): void {
-    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(encode(msg));
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(encode(msg));
+      return;
+    }
+    if (this.closedByUser) return;
+    // Only intent-carrying requests are worth replaying; list refreshes happen on `welcome` anyway.
+    if (msg.type === 'listGames' || msg.type === 'getSocial' || msg.type === 'openGame' || msg.type === 'leave') return;
+    if (this.pending.length < 8) this.pending.push(msg);
+  }
+
+  /** Replay requests made while disconnected. Called after the server's `welcome`. */
+  flushPending(): void {
+    const queue = this.pending;
+    this.pending = [];
+    for (const msg of queue) this.send(msg);
+  }
+
+  get hasPending(): boolean {
+    return this.pending.length > 0;
   }
 
   close(): void {
     this.closedByUser = true;
+    this.pending = [];
     this.ws?.close();
     this.ws = null;
   }
