@@ -555,7 +555,9 @@ const logEl = $('log');
 const toast = $('toast');
 const endTurnBtn = $<HTMLButtonElement>('end-turn');
 const turnTrack = $('turn-track');
-const trackMajor = $('track-major');
+const trackDraw = $('track-draw');
+const trackCards = $('track-cards');
+const trackMove = $('track-move');
 
 endTurnBtn.onclick = () => net.send({ type: 'action', action: { type: 'endTurn' } });
 
@@ -763,13 +765,12 @@ setInterval(() => {
 function renderStatus(view: PlayerView): void {
   const mine = view.turn === view.you;
   statusEl.className = 'status';
-  const canEnd = view.legalActions.some((a) => a.type === 'endTurn');
-  // Only the side to move sees End Turn at all; it enables once a move/summon has been made.
-  endTurnBtn.classList.toggle('hidden', !mine || view.status.kind !== 'playing');
-  endTurnBtn.disabled = !canEnd;
-  endTurnBtn.textContent = canEnd && view.turnInfo.majorAction === null ? 'Pass' : 'End Turn';
-  endTurnBtn.title = canEnd ? '' : view.inCheck ? 'Get out of check first' : 'Move a piece or summon first';
-  endTurnBtn.classList.toggle('ready', canEnd && view.turnInfo.majorAction !== null);
+  // The move ends the turn by itself; the button only appears as a Pass when no move exists.
+  const canPass = view.legalActions.some((a) => a.type === 'endTurn');
+  endTurnBtn.classList.toggle('hidden', !mine || view.status.kind !== 'playing' || !canPass);
+  endTurnBtn.disabled = !canPass;
+  endTurnBtn.textContent = 'Pass (no legal moves)';
+  endTurnBtn.classList.toggle('ready', canPass);
   turnTrack.classList.toggle('hidden', !mine || view.status.kind !== 'playing');
 
   if (view.status.kind !== 'playing') {
@@ -786,25 +787,36 @@ function renderStatus(view: PlayerView): void {
   if (mine) statusEl.classList.add('mine');
   if (view.inCheck) statusEl.classList.add('check');
 
-  const major = view.turnInfo.majorAction;
-  trackMajor.className = `track ${major ? 'used' : 'ok'}`;
-  trackMajor.textContent = major === 'move' ? 'Moved' : major === 'summon' ? 'Summoned' : 'Move / Summon';
-
   const turnNo = view.players[view.turn].turnsTaken;
   const drawIn = view.rules.drawEvery - (turnNo % view.rules.drawEvery);
-  const mustDraw = view.players[view.turn].pendingDraws > 0;
+  const mustDraw = view.phase === 'draw';
+  const mover = view.players[view.turn];
+  const playable = new Set(view.legalActions.filter((a) => a.type === 'playCard').map((a) => (a as { cardInstanceId: string }).cardInstanceId)).size;
   const side = colorName(view.turn);
   const who = solo ? side : mine ? 'You' : 'Opponent';
   const whose = solo ? `${side}'s` : mine ? 'your' : "the opponent's";
 
+  // Phase track: Draw → Cards → Move. The current phase is highlighted, finished ones ticked.
+  const drawOwedThisTurn = turnNo % view.rules.drawEvery === 0 && (mustDraw || mover.deckCount > 0);
+  trackDraw.className = `track ${mustDraw ? 'now' : drawOwedThisTurn ? 'used' : 'skip'}`;
+  trackDraw.textContent = mustDraw ? 'Draw ▸ click deck' : drawOwedThisTurn ? 'Drew ✓' : `Draw in ${drawIn === view.rules.drawEvery ? view.rules.drawEvery : drawIn}`;
+  trackCards.className = `track ${mustDraw ? 'skip' : 'now'}`;
+  trackCards.textContent = view.turnInfo.cardsPlayed
+    ? `Cards: ${view.turnInfo.cardsPlayed} played${playable ? `, ${playable} more` : ''}`
+    : playable
+      ? `Cards: ${playable} playable`
+      : `Cards: none affordable (${mover.mana} mana)`;
+  trackMove.className = `track ${mustDraw ? 'skip' : 'now'}`;
+  trackMove.textContent = view.inCheck ? 'Move: escape check!' : 'Move a piece → ends turn';
+
   if (mustDraw) {
     statusEl.textContent = mine || solo ? `${who}: the draw timer is full — click ${whose} deck to draw a card.` : 'Opponent is drawing a card…';
   } else if (view.inCheck) {
-    statusEl.textContent = mine || solo ? `${who} ${solo ? 'is' : 'are'} in CHECK! Get the King to safety before ending the turn.` : 'Opponent is in check.';
+    statusEl.textContent = mine || solo ? `${who} ${solo ? 'is' : 'are'} in CHECK! Play cards if you like, then move the King to safety.` : 'Opponent is in check.';
   } else if (mine || solo) {
-    statusEl.textContent = major
-      ? `${who} ${major === 'move' ? 'moved' : 'summoned'} (turn ${turnNo}). Play spells or switch stances, then End Turn.`
-      : `${who}: turn ${turnNo}. Move a piece or summon (required), play spells, switch stances.`;
+    statusEl.textContent = playable
+      ? `${who}: turn ${turnNo}. Play cards (${mover.mana} mana), then move a piece — the move ends ${whose} turn.`
+      : `${who}: turn ${turnNo}. Move a piece to end ${whose} turn. (${mover.mana} mana — no card is affordable yet.)`;
   } else {
     statusEl.textContent = `Opponent's turn (${turnNo}).`;
   }

@@ -40,15 +40,23 @@ export interface PlayerState {
 
 /** What the side to move has done so far this turn. Reset by `endTurn`. */
 export interface TurnInfo {
-  /** The one big thing per turn: a piece move/attack, or a summon. */
-  majorAction: 'move' | 'summon' | null;
+  /** Cards played this turn (for the log/UI; there is no limit beyond mana). */
+  cardsPlayed: number;
   /** Pieces that changed stance this turn; they cannot act or switch again until the turn ends. */
   stanceChanged: string[];
   /** En passant square created by a double pawn push this turn (handed to the opponent at end of turn). */
   enPassant: Square | null;
 }
 
-export const freshTurnInfo = (): TurnInfo => ({ majorAction: null, stanceChanged: [], enPassant: null });
+export const freshTurnInfo = (): TurnInfo => ({ cardsPlayed: 0, stanceChanged: [], enPassant: null });
+
+/**
+ * Where the side to move is in their turn:
+ *  - `draw`: the draw timer completed; the only legal action is to click the deck,
+ *  - `main`: play any cards you can afford and switch stances, then move a piece
+ *            (the move ends the turn; passing is only allowed when no move exists).
+ */
+export type TurnPhase = 'draw' | 'main';
 
 export interface GameState {
   rules: RuleConstants;
@@ -206,6 +214,10 @@ export function upgradeState(state: GameState): GameState {
     const p = state.players[color];
     if (typeof p.mana !== 'number') p.mana = 0;
   }
+  // Older turn info tracked a single "major action"; a saved mid-turn state that had
+  // already moved is simply treated as still in its main phase (the next move ends it).
+  const ti = state.turnInfo as Partial<TurnInfo> & { majorAction?: unknown };
+  state.turnInfo = { cardsPlayed: ti.cardsPlayed ?? 0, stanceChanged: ti.stanceChanged ?? [], enPassant: ti.enPassant ?? null };
   return state;
 }
 

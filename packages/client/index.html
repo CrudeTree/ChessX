@@ -178,7 +178,7 @@
 
     <!-- The game -->
     <div id="game" class="screen hidden">
-      <!-- Phone-only top bar: opponent, status, End Turn -->
+      <!-- Phone-only top bar: opponent, status, Pass (only when no move exists) -->
       <div id="mbar" class="mbar">
         <div class="mrow">
           <button id="m-back" class="mback" title="Back to games">←</button>
@@ -187,7 +187,7 @@
         </div>
         <div class="mrow">
           <span id="m-status" class="mstatus"></span>
-          <button id="m-end" class="primary" disabled>End Turn</button>
+          <button id="m-end" class="primary hidden" disabled>Pass</button>
         </div>
       </div>
       <aside id="inspect">
@@ -210,12 +210,12 @@
             <div class="counts"><span class="hand">Hand: –</span> <span class="deck">Deck: –</span></div>
           </div>
           <div id="status" class="status">Waiting for an opponent to join.</div>
-          <div id="turn-track" class="turn-track hidden">
-            <span id="track-major" class="track">Move / Summon</span>
-            <span class="track ok">Spells: any</span>
-            <span class="track ok">Stance: any</span>
+          <div id="turn-track" class="turn-track hidden" title="Your turn: draw if the timer is full, play any cards you can afford, then move a piece — the move ends your turn.">
+            <span id="track-draw" class="track">Draw</span>
+            <span id="track-cards" class="track">Cards</span>
+            <span id="track-move" class="track">Move</span>
           </div>
-          <button id="end-turn" class="primary end-turn" disabled>End Turn</button>
+          <button id="end-turn" class="primary end-turn hidden" disabled>Pass</button>
           <div id="me" class="player">
             <div class="who"><span class="dot"></span><span class="pname">You</span><span class="clock"></span></div>
             <div class="counts"><span class="hand">Hand: –</span> <span class="deck">Deck: –</span></div>

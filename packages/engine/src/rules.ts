@@ -23,13 +23,15 @@ const PROMOTIONS: PromotionKind[] = ['queen', 'rook', 'bishop', 'knight'];
 
 /**
  * Every legal action for `color` (defaults to side to move) at this point in
- * the turn. A turn is a sequence of actions closed by `endTurn`:
+ * the turn. A turn has phases:
  *
- *  - one *major action*: move/attack a piece OR play a summon card,
- *  - any number of spells,
- *  - any number of stance switches (a piece that switched is frozen for the rest of the turn),
- *  - `endTurn`, which requires the major action to have been taken (unless none is
- *    possible at all), and is refused while in check or while a draw is owed.
+ *  1. Draw — if the draw timer completed, the only legal action is `draw`.
+ *  2. Main — play any number of cards (summons or spells) you have the mana for,
+ *     and switch any pieces' stance (a piece that switched is frozen for the turn).
+ *  3. Move — move or attack with one piece. The move ends the turn automatically.
+ *
+ * `endTurn` is only a *pass*: legal when you have no legal move at all (and are
+ * not in check — with no move and no card that helps, that is checkmate).
  *
  * Moves may never leave your own king in check. Cards and stance changes
  * cannot expose your king, so they are not filtered.
@@ -41,22 +43,19 @@ export function legalActions(state: GameState, color: Color = state.turn): Actio
 
   const out: Action[] = [];
   const inCheck = isInCheck(state, color);
-  const { majorAction, stanceChanged } = state.turnInfo;
-  const frozen = new Set(stanceChanged);
-  let majorAvailable = false;
+  const frozen = new Set(state.turnInfo.stanceChanged);
+  let canMove = false;
 
-  if (majorAction === null) {
-    for (const piece of piecesOf(state, color)) {
-      if (frozen.has(piece.id)) continue;
-      for (const cand of pseudoMoves(state, piece)) {
-        const moves: Action[] = cand.promotion
-          ? PROMOTIONS.map((promotion) => ({ type: 'move', from: cand.from, to: cand.to, promotion }))
-          : [{ type: 'move', from: cand.from, to: cand.to }];
-        for (const m of moves) {
-          if (leavesKingSafe(state, m, color)) {
-            out.push(m);
-            majorAvailable = true;
-          }
+  for (const piece of piecesOf(state, color)) {
+    if (frozen.has(piece.id)) continue;
+    for (const cand of pseudoMoves(state, piece)) {
+      const moves: Action[] = cand.promotion
+        ? PROMOTIONS.map((promotion) => ({ type: 'move', from: cand.from, to: cand.to, promotion }))
+        : [{ type: 'move', from: cand.from, to: cand.to }];
+      for (const m of moves) {
+        if (leavesKingSafe(state, m, color)) {
+          out.push(m);
+          canMove = true;
         }
       }
     }
@@ -65,11 +64,8 @@ export function legalActions(state: GameState, color: Color = state.turn): Actio
   for (const inst of state.players[color].hand) {
     const card = getCardDef(inst.cardId);
     if (card.cost > state.players[color].mana) continue;
-    // Summoning is the major action, and while in check the move must stay available.
-    if (card.type === 'summon' && (majorAction !== null || inCheck)) continue;
     for (const target of cardTargets(state, inst, color)) {
       out.push({ type: 'playCard', cardInstanceId: inst.instanceId, target });
-      if (card.type === 'summon') majorAvailable = true;
     }
   }
 
@@ -79,25 +75,17 @@ export function legalActions(state: GameState, color: Color = state.turn): Actio
     }
   }
 
-  // You must do something with your turn: end it only after moving or summoning.
-  // If neither is possible at all (everything frozen, no legal moves), passing is allowed.
-  if (!inCheck && (majorAction !== null || !majorAvailable)) out.push({ type: 'endTurn' });
+  // A turn ends with a move. Only when no move exists at all may the turn be passed.
+  if (!inCheck && !canMove) out.push({ type: 'endTurn' });
   return out;
 }
 
-/** Why `endTurn` is not allowed right now, for error messages. */
+/** Why `endTurn` (passing) is not allowed right now, for error messages. */
 function endTurnBlocker(state: GameState, color: Color): string | null {
   if (state.players[color].pendingDraws > 0) return 'Draw a card first (click your deck).';
   if (isInCheck(state, color)) return 'You cannot end your turn while in check.';
-  if (state.turnInfo.majorAction === null && legalActions(state, color).some((a) => a.type === 'move' || (a.type === 'playCard' && isSummon(state, color, a.cardInstanceId)))) {
-    return 'Move a piece or summon before ending your turn.';
-  }
+  if (legalActions(state, color).some((a) => a.type === 'move')) return 'Move a piece to end your turn.';
   return null;
-}
-
-function isSummon(state: GameState, color: Color, instanceId: string): boolean {
-  const inst = state.players[color].hand.find((c) => c.instanceId === instanceId);
-  return !!inst && getCardDef(inst.cardId).type === 'summon';
 }
 
 export function legalMoves(state: GameState, color: Color = state.turn): Extract<Action, { type: 'move' }>[] {
@@ -143,25 +131,11 @@ export function applyAction(state: GameState, action: Action): GameState {
 
   if (player.pendingDraws > 0) throw new IllegalActionError('Draw a card first (click your deck).');
 
-  // Turn-structure limits.
-  if (action.type === 'move' && next.turnInfo.majorAction !== null) {
-    throw new IllegalActionError(
-      next.turnInfo.majorAction === 'summon' ? 'You already summoned this turn, so you cannot move a piece.' : 'You already moved this turn.',
-    );
-  }
   if (action.type === 'playCard') {
     const inst = player.hand.find((c) => c.instanceId === action.cardInstanceId);
     if (inst && getCardDef(inst.cardId).cost > player.mana) {
       const card = getCardDef(inst.cardId);
       throw new IllegalActionError(`Not enough mana: ${card.name} costs ${card.cost}, you have ${player.mana}.`);
-    }
-    if (inst && getCardDef(inst.cardId).type === 'summon') {
-      if (next.turnInfo.majorAction !== null) {
-        throw new IllegalActionError(
-          next.turnInfo.majorAction === 'move' ? 'You already moved this turn, so you cannot summon.' : 'Only one summon per turn.',
-        );
-      }
-      if (isInCheck(next, color)) throw new IllegalActionError('You cannot summon while in check.');
     }
   }
   if ((action.type === 'move' || action.type === 'setStance') && isFrozenThisTurn(next, action.type === 'move' ? action.from : action.square)) {
@@ -170,13 +144,19 @@ export function applyAction(state: GameState, action: Action): GameState {
 
   performAction(next, action, color); // throws a descriptive IllegalActionError if malformed
 
-  if (action.type === 'move' && !kingSafe(next, color)) {
-    throw new IllegalActionError(
-      isInCheck(state, color) ? 'You must get your King out of check.' : 'That would leave your King in check.',
-    );
+  if (action.type === 'move') {
+    if (!kingSafe(next, color)) {
+      throw new IllegalActionError(
+        isInCheck(state, color) ? 'You must get your King out of check.' : 'That would leave your King in check.',
+      );
+    }
+    // The move is the last thing you do: it ends the turn (unless it ended the game).
+    if (next.status.kind === 'playing') endTurn(next);
   }
 
-  if (next.status.kind !== 'playing') next.events.push({ type: 'gameOver', status: next.status });
+  if (next.status.kind !== 'playing' && !next.events.some((e) => e.type === 'gameOver')) {
+    next.events.push({ type: 'gameOver', status: next.status });
+  }
   return next;
 }
 
@@ -291,7 +271,6 @@ function performMove(state: GameState, action: Extract<Action, { type: 'move' }>
   if (action.promotion && !cand.promotion) throw new IllegalActionError('Promotion not available for this move.');
 
   piece.hasMoved = true;
-  state.turnInfo.majorAction = 'move';
 
   switch (cand.kind) {
     case 'move': {
@@ -437,10 +416,10 @@ function performCard(state: GameState, action: Extract<Action, { type: 'playCard
 
   player.hand.splice(idx, 1);
   player.mana -= card.cost;
+  state.turnInfo.cardsPlayed++;
   state.events.push({ type: 'cardPlayed', color, cardId: card.id, target: action.target });
 
   if (card.type === 'summon') {
-    state.turnInfo.majorAction = 'summon';
     beginSummon(state, card, inst, pieceAt(state, action.target!)!);
   } else {
     const target = action.target === undefined ? undefined : pieceAt(state, action.target);
@@ -556,7 +535,8 @@ function emitStats(state: GameState, p: Piece): void {
 // Turn flow
 
 /**
- * Hand the turn over. At the start of the new player's turn:
+ * Hand the turn over (after a move, or a pass). The mover collects mana income
+ * first. Then, at the start of the new player's turn:
  *  1. their pending summon timers tick down (resolving at 0),
  *  2. on every `drawEvery`th turn the draw timer completes and they owe a draw
  *     (taken by clicking the deck; nothing else is legal until then),

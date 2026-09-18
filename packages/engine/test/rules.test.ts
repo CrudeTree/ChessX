@@ -33,22 +33,18 @@ function drawIfOwed(state: GameState): GameState {
   return state.players[state.turn].pendingDraws > 0 ? applyAction(state, { type: 'draw' }) : state;
 }
 
-/** Act without ending the turn. */
+/** Apply an action (taking an owed draw first, as a player would). */
 function act(state: GameState, action: Action): GameState {
   return applyAction(drawIfOwed(state), action);
 }
 
+/** Pass the turn (only legal when no move exists). */
 function end(state: GameState): GameState {
   return applyAction(state, { type: 'endTurn' });
 }
 
-/** A whole simple turn: move one piece, then end the turn. */
+/** Move a piece. Under the phase rules the move ends the turn by itself. */
 function move(state: GameState, from: string, to: string): GameState {
-  return end(act(state, { type: 'move', from: s(from), to: s(to) }));
-}
-
-/** Move without ending the turn. */
-function step(state: GameState, from: string, to: string): GameState {
   return act(state, { type: 'move', from: s(from), to: s(to) });
 }
 
@@ -93,8 +89,8 @@ describe('chess movement', () => {
   });
 
   it('rejects illegal moves', () => {
-    expect(() => step(newGame(), 'e2', 'e5')).toThrow(IllegalActionError);
-    expect(() => step(newGame(), 'e7', 'e5')).toThrow(IllegalActionError); // not your piece
+    expect(() => move(newGame(), 'e2', 'e5')).toThrow(IllegalActionError);
+    expect(() => move(newGame(), 'e7', 'e5')).toThrow(IllegalActionError); // not your piece
   });
 
   it("scholar's mate is checkmate", () => {
@@ -131,12 +127,11 @@ describe('chess movement', () => {
     expect(pieceAt(g, s('f1'))?.kind).toBe('rook');
   });
 
-  it('en passant survives spells played after the double push, but not the following turn', () => {
+  it('en passant is offered on the very next turn only, whatever else happened that turn', () => {
     let g = newGame();
-    g = step(g, 'e2', 'e4');
     const ws = giveCard(g, 'white', 'whetstone');
-    g = act(g, { type: 'playCard', cardInstanceId: ws, target: s('e4') }); // spell after the push
-    g = end(g);
+    g = act(g, { type: 'playCard', cardInstanceId: ws, target: s('e2') }); // a spell before the push
+    g = move(g, 'e2', 'e4');
     g = move(g, 'a7', 'a6');
     g = move(g, 'e4', 'e5');
     g = move(g, 'd7', 'd5');
@@ -162,42 +157,68 @@ describe('chess movement', () => {
 });
 
 describe('turn structure', () => {
-  it('a turn is a sequence: one move, any spells, then endTurn', () => {
+  it('phases: any number of cards, then one move which ends the turn', () => {
     let g = newGame();
+    expect(viewFor(g, 'white').phase).toBe('main');
     const ws = giveCard(g, 'white', 'whetstone');
     const sw = giveCard(g, 'white', 'shield_wall');
     g = act(g, { type: 'playCard', cardInstanceId: ws, target: s('e2') });
+    g = act(g, { type: 'playCard', cardInstanceId: sw, target: s('e2') });
     expect(g.turn).toBe('white');
-    g = step(g, 'e2', 'e4');
-    expect(g.turn).toBe('white');
-    expect(g.turnInfo.majorAction).toBe('move');
-    // A second move is refused; another spell is fine.
-    expect(() => step(g, 'd2', 'd4')).toThrow(/already moved/);
-    expect(legalMoves(g)).toHaveLength(0);
-    g = act(g, { type: 'playCard', cardInstanceId: sw, target: s('e4') });
-    expect(pieceAt(g, s('e4'))!.atk).toBe(2);
-    expect(pieceAt(g, s('e4'))!.maxDef).toBe(1);
-    g = end(g);
+    expect(g.turnInfo.cardsPlayed).toBe(2);
+    expect(pieceAt(g, s('e2'))!.atk).toBe(2);
+    expect(pieceAt(g, s('e2'))!.maxDef).toBe(1);
+    // The move closes the turn: black to play, mana collected, turn info reset.
+    g = move(g, 'e2', 'e4');
     expect(g.turn).toBe('black');
-    expect(g.turnInfo.majorAction).toBeNull();
+    expect(g.turnInfo.cardsPlayed).toBe(0);
+    expect(g.events.map((e) => e.type)).toEqual(expect.arrayContaining(['moved', 'manaGained', 'turnEnded']));
+    // Nothing more can be done for white now.
+    expect(() => act(g, { type: 'playCard', cardInstanceId: giveCard(g, 'white', 'whetstone'), target: s('e4') })).toThrow(IllegalActionError);
   });
 
-  it('you cannot end your turn until you have moved or summoned', () => {
+  it('you cannot end your turn without moving; cards (even summons) do not count', () => {
     const g = newGame();
     expect(has(legalActions(g), 'endTurn')).toBe(false);
-    expect(() => end(g)).toThrow(/Move a piece or summon/);
-    // Spells alone do not count.
+    expect(() => end(g)).toThrow(/Move a piece/);
     const ws = giveCard(g, 'white', 'whetstone');
     const afterSpell = act(g, { type: 'playCard', cardInstanceId: ws, target: s('e2') });
     expect(has(legalActions(afterSpell), 'endTurn')).toBe(false);
-    // A summon counts as the major action.
     const ox = giveCard(g, 'white', 'the_ox');
     const afterSummon = act(g, { type: 'playCard', cardInstanceId: ox, target: s('e2') });
-    expect(has(legalActions(afterSummon), 'endTurn')).toBe(true);
-    expect(end(afterSummon).turn).toBe('black');
+    expect(has(legalActions(afterSummon), 'endTurn')).toBe(false);
+    expect(() => end(afterSummon)).toThrow(/Move a piece/);
+    expect(move(afterSummon, 'a2', 'a3').turn).toBe('black');
   });
 
-  it('if no move or summon is possible at all, the turn may be passed', () => {
+  it('several cards, including several summons, may be played in one turn if the mana allows', () => {
+    let g = newGame();
+    const ox = giveCard(g, 'white', 'the_ox');
+    const ox2 = giveCard(g, 'white', 'the_ox');
+    const fs = giveCard(g, 'white', 'foresight');
+    const before = g.players.white.mana;
+    g = act(g, { type: 'playCard', cardInstanceId: ox, target: s('e2') });
+    g = act(g, { type: 'playCard', cardInstanceId: ox2, target: s('d2') });
+    g = act(g, { type: 'playCard', cardInstanceId: fs });
+    expect(g.players.white.mana).toBe(before - 200 - 200 - 200);
+    expect(pieceAt(g, s('e2'))!.summon?.turnsRemaining).toBe(3);
+    expect(pieceAt(g, s('d2'))!.summon?.turnsRemaining).toBe(3);
+    // Sacrifices cannot be the piece that moves; any other piece can.
+    expect(legalMoves(g).some((m) => m.from === s('e2') || m.from === s('d2'))).toBe(false);
+    g = move(g, 'a2', 'a3');
+    expect(g.turn).toBe('black');
+
+    // Mana is the only limit: with exactly one card's worth, only one card is playable.
+    let h = realGame();
+    h.players.white.mana = 200;
+    const a = giveCard(h, 'white', 'the_ox');
+    const b = giveCard(h, 'white', 'the_ox');
+    h = act(h, { type: 'playCard', cardInstanceId: a, target: s('e2') });
+    expect(legalActions(h).some((x) => x.type === 'playCard' && x.cardInstanceId === b)).toBe(false);
+    expect(() => act(h, { type: 'playCard', cardInstanceId: b, target: s('d2') })).toThrow(/Not enough mana/);
+  });
+
+  it('if no move is possible at all, the turn may be passed', () => {
     let g = newGame();
     // Freeze every white piece that can act by putting them all in Defense mode
     // over a few turns; when white has no legal move left, End Turn becomes a pass.
@@ -218,34 +239,13 @@ describe('turn structure', () => {
       src.square = s(sqn);
       g.board[src.square] = src.id;
     }
-    g.players.white.hand = g.players.white.hand.filter((c) => getCardDef(c.cardId).type !== 'summon');
+    // Playable summons in hand do not remove the pass: only a move would.
+    giveCard(g, 'white', 'the_ox');
     expect(legalMoves(g)).toHaveLength(0);
     expect(has(legalActions(g), 'endTurn')).toBe(true);
     g = end(g);
     expect(g.turn).toBe('black');
-  });
-
-  it('summoning and moving share the single major action', () => {
-    let g = newGame();
-    const ox = giveCard(g, 'white', 'the_ox');
-    g = act(g, { type: 'playCard', cardInstanceId: ox, target: s('e2') });
-    expect(g.turnInfo.majorAction).toBe('summon');
-    expect(legalMoves(g)).toHaveLength(0);
-    expect(() => step(g, 'd2', 'd4')).toThrow(/already summoned/);
-    // A second summon this turn is also refused.
-    const ox2 = giveCard(g, 'white', 'the_ox');
-    expect(() => act(g, { type: 'playCard', cardInstanceId: ox2, target: s('d2') })).toThrow(/one summon|already/i);
-    // Spells still fine.
-    const fs = giveCard(g, 'white', 'foresight');
-    g = act(g, { type: 'playCard', cardInstanceId: fs });
-    g = end(g);
-    expect(g.turn).toBe('black');
-
-    // The other way round: move first, then summoning is refused.
-    let h = newGame();
-    const ox3 = giveCard(h, 'white', 'the_ox');
-    h = step(h, 'a2', 'a3');
-    expect(() => act(h, { type: 'playCard', cardInstanceId: ox3, target: s('e2') })).toThrow(/already moved/);
+    expect(g.players.white.mana).toBeGreaterThan(9999); // passing still collects income
   });
 
   it('on every 5th turn the player owes a draw and must take it before anything else', () => {
@@ -322,11 +322,11 @@ describe('combat with HP', () => {
     pawn.maxHp = 2;
     pawn.def = 1;
     pawn.maxDef = 1;
-    const attackMode = step(g, 'e4', 'd5');
+    const attackMode = move(g, 'e4', 'd5');
     expect(pieceAt(attackMode, s('d5'))!.hp).toBe(1);
     expect(pieceAt(attackMode, s('d5'))!.def).toBe(1);
     pawn.stance = 'defense';
-    const defenseMode = step(g, 'e4', 'd5');
+    const defenseMode = move(g, 'e4', 'd5');
     expect(pieceAt(defenseMode, s('d5'))!.hp).toBe(2);
     expect(pieceAt(defenseMode, s('d5'))!.def).toBe(0);
   });
@@ -340,7 +340,7 @@ describe('combat with HP', () => {
     pawn.maxDef = 3;
     pawn.stance = 'defense';
     pieceAt(g, s('e4'))!.atk = 4;
-    g = step(g, 'e4', 'd5');
+    g = move(g, 'e4', 'd5');
     expect(pieceAt(g, s('d5'))!.owner).toBe('white');
     const dmg = g.events.find((e) => e.type === 'damaged');
     expect(dmg && dmg.type === 'damaged' && dmg.shield).toBe(3);
@@ -362,7 +362,7 @@ describe('combat with HP', () => {
     knight.maxDef = 3;
     knight.stance = 'defense';
     expect(pieceAt(g, s('e1'))!.atk).toBe(1);
-    g = step(g, 'e1', 'd2');
+    g = move(g, 'e1', 'd2');
     expect(pieceAt(g, s('d2'))!.kind).toBe('king'); // king took the square
     expect(Object.values(g.pieces).some((p) => p.id === knight.id)).toBe(false);
     expect(g.events.some((e) => e.type === 'attacked' && e.execution === true)).toBe(true);
@@ -390,12 +390,16 @@ describe('combat with HP', () => {
     for (const m of legalMoves(g)) expect(isInCheck(applyAction(g, m), 'black')).toBe(false);
     expect(has(legalActions(g), 'endTurn')).toBe(false);
     expect(() => end(g)).toThrow(/in check/);
-    // Spells may still be played while in check (the turn continues), summons may not.
+    // Cards may still be played while in check (the move that follows must resolve it).
     const ws = giveCard(g, 'black', 'whetstone');
     const ox = giveCard(g, 'black', 'the_ox');
     expect(legalActions(g).some((a) => a.type === 'playCard' && a.cardInstanceId === ws)).toBe(true);
-    expect(legalActions(g).some((a) => a.type === 'playCard' && a.cardInstanceId === ox)).toBe(false);
-    expect(() => act(g, { type: 'playCard', cardInstanceId: ox, target: s('a6') })).toThrow(/summon while in check/);
+    expect(legalActions(g).some((a) => a.type === 'playCard' && a.cardInstanceId === ox)).toBe(true);
+    g = act(g, { type: 'playCard', cardInstanceId: ox, target: s('a7') });
+    expect(isInCheck(g, 'black')).toBe(true);
+    expect(() => move(g, 'b7', 'b6')).toThrow(/out of check/);
+    g = move(g, 'e8', 'f7');
+    expect(g.turn).toBe('white');
   });
 });
 
@@ -406,15 +410,16 @@ describe('cards', () => {
     const acts = legalActions(g).filter((a) => a.type === 'playCard' && a.cardInstanceId === ox);
     expect(acts).toHaveLength(8); // any of the 8 pawns (tier 1)
 
-    g = end(act(g, { type: 'playCard', cardInstanceId: ox, target: s('e2') }));
+    g = act(g, { type: 'playCard', cardInstanceId: ox, target: s('e2') });
     expect(pieceAt(g, s('e2'))!.summon?.turnsRemaining).toBe(3);
-    g = move(g, 'a7', 'a6');
-    expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(false);
-    expect(pieceAt(g, s('e2'))!.summon?.turnsRemaining).toBe(2);
+    expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(false); // the sacrifice is frozen
     g = move(g, 'a2', 'a3');
+    g = move(g, 'a7', 'a6');
+    expect(pieceAt(g, s('e2'))!.summon?.turnsRemaining).toBe(2);
+    g = move(g, 'b2', 'b3');
     g = move(g, 'a6', 'a5');
     expect(pieceAt(g, s('e2'))!.summon?.turnsRemaining).toBe(1);
-    g = move(g, 'b2', 'b3');
+    g = move(g, 'c2', 'c3');
     g = move(g, 'a5', 'a4');
     const summoned = pieceAt(g, s('e2'))!;
     expect(summoned.kind).toBe('the_ox');
@@ -432,7 +437,7 @@ describe('cards', () => {
     g = move(g, 'e2', 'e4');
     g = move(g, 'd7', 'd5');
     const ox = giveCard(g, 'white', 'the_ox');
-    g = end(act(g, { type: 'playCard', cardInstanceId: ox, target: s('e4') }));
+    g = move(act(g, { type: 'playCard', cardInstanceId: ox, target: s('e4') }), 'a2', 'a3');
     g = move(g, 'd5', 'e4');
     expect(pieceAt(g, s('e4'))!.owner).toBe('black');
     expect(g.events.some((e) => e.type === 'summonFailed') || g.players.white.graveyard.some((c) => c.instanceId === ox)).toBe(true);
@@ -585,9 +590,9 @@ describe('cards', () => {
   it('reward creatures have sensible movement patterns', () => {
     let g = newGame();
     const boar = giveCard(g, 'white', 'thornback_boar');
-    g = end(act(g, { type: 'playCard', cardInstanceId: boar, target: s('e2') }));
+    g = move(act(g, { type: 'playCard', cardInstanceId: boar, target: s('e2') }), 'a2', 'a3');
     g = move(g, 'a7', 'a6');
-    g = move(g, 'a2', 'a3');
+    g = move(g, 'b2', 'b3');
     g = move(g, 'a6', 'a5'); // boar summoned at start of white's turn 3
     expect(pieceAt(g, s('e2'))!.kind).toBe('thornback_boar');
     const to = legalMoves(g).filter((m) => m.from === s('e2')).map((m) => m.to);
@@ -601,7 +606,7 @@ describe('cards', () => {
     let g = newGame();
     const ox = giveCard(g, 'white', 'the_ox');
     const ritual = giveCard(g, 'white', 'dark_ritual');
-    g = end(act(g, { type: 'playCard', cardInstanceId: ox, target: s('e2') }));
+    g = move(act(g, { type: 'playCard', cardInstanceId: ox, target: s('e2') }), 'a2', 'a3');
     g = move(g, 'a7', 'a6');
     expect(pieceAt(g, s('e2'))!.summon?.turnsRemaining).toBe(2);
     g = act(g, { type: 'playCard', cardInstanceId: ritual, target: s('e2') });
@@ -651,7 +656,7 @@ describe('stance', () => {
     expect(isInCheck(g, 'black')).toBe(false);
     g = move(act(g, { type: 'setStance', square: s('h5'), stance: 'attack' }), 'a3', 'a4');
     expect(isInCheck(g, 'black')).toBe(true);
-    expect(() => step(g, 'a7', 'a6')).toThrow(IllegalActionError);
+    expect(() => move(g, 'a7', 'a6')).toThrow(IllegalActionError);
   });
 
   it('kings and sacrifices cannot change stance', () => {
