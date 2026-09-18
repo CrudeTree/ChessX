@@ -1,0 +1,30 @@
+# Render blueprint: https://render.com/docs/blueprint-spec
+# Deploy: Render dashboard -> New -> Blueprint -> pick this repo.
+# The persistent disk keeps the SQLite database across deploys and restarts
+# (disks require a paid instance; the free tier has an ephemeral filesystem
+# and would lose accounts and games whenever it spins down).
+services:
+  - type: web
+    name: chessx
+    runtime: docker
+    plan: starter
+    region: oregon
+    healthCheckPath: /api/auth/providers
+    disk:
+      name: chessx-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: DB_PATH
+        value: /data/chessx.sqlite
+      - key: PUBLIC_URL
+        # Set this to the URL Render gives you, e.g. https://chessx.onrender.com
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: FACEBOOK_APP_ID
+        sync: false
+      - key: FACEBOOK_APP_SECRET
+        sync: false

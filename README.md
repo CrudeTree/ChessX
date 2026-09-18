@@ -40,7 +40,22 @@ Other scripts:
 | `npm run build`     | builds the client into `packages/client/dist`           |
 | `npm start`         | production server: serves the built client + websocket on `PORT` (default 8080) |
 
-To play over the internet, deploy `npm start` to any Node host (Fly.io, Render, Railway, a $5 VPS) and share the URL. The server is a single process with no database; rooms live in memory.
+## Putting it online
+
+ChessX has a real server (websockets, accounts, a SQLite database), so unlike a static game it **cannot be hosted on GitHub Pages**. It needs a small always-on Node host with a persistent disk for the database. The repo ships ready-to-go configs for two:
+
+**Render** (simplest): dashboard → *New* → *Blueprint* → pick this repo; `render.yaml` sets up a Docker web service with a 1 GB persistent disk. Set `PUBLIC_URL` to the URL Render assigns (e.g. `https://chessx.onrender.com`). Needs the Starter plan (~$7/mo) because the free tier's disk is wiped whenever it spins down, which would erase everyone's games.
+
+**Fly.io** (cheapest, ~$2–3/mo): install `flyctl`, then
+
+```bash
+fly launch --no-deploy        # creates the app; keep the generated settings from fly.toml
+fly volumes create chessx_data --size 1
+fly secrets set PUBLIC_URL=https://chessx.fly.dev
+fly deploy
+```
+
+Any other Docker host or a plain VPS works too: build the `Dockerfile`, mount a volume at `/data`, set `PUBLIC_URL`. Add the Google/Facebook keys as secrets when you want those sign-in buttons.
 
 ## Project layout
 
