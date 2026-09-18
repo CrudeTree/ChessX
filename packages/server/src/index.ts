@@ -12,6 +12,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { Auth, AuthError, configFromEnv, toUserInfo } from './auth.js';
 import { Db } from './db.js';
 import { GameError, GameManager, type LiveGame, type Transport } from './games.js';
+import { Notifier } from './notify.js';
 import { Progression, ProgressionError } from './progression.js';
 import { SocialError, SocialService } from './social.js';
 
@@ -29,6 +30,9 @@ setInterval(() => db.purgeExpiredSessions(), 60 * 60_000).unref();
 const socketsByUser = new Map<string, Set<SocketTransport>>();
 const social = new SocialService(db);
 social.isOnline = (uid) => (socketsByUser.get(uid)?.size ?? 0) > 0;
+const notifier = new Notifier(db, `mailto:admin@${new URL(auth.config.publicUrl).hostname}`);
+notifier.isOnline = social.isOnline;
+const nameOf = (uid: string) => db.userById(uid)?.name ?? 'Your opponent';
 
 /** Push a fresh Friends panel to every tab a user has open. */
 function pushSocial(...userIds: string[]): void {
@@ -70,7 +74,29 @@ games.onFinished = (game) => {
     const won = winner !== null && game.seatOf(uid) === winner;
     const report = progression.award(uid, game.id, won, checkmate);
     for (const t of socketsByUser.get(uid) ?? []) t.send({ type: 'rewards', report });
+    const opp = game.participants().find((x) => x !== uid);
+    const how = status.kind === 'timeout' ? 'on time' : status.kind === 'resigned' ? 'by resignation' : 'by checkmate';
+    void notifier.push(uid, {
+      title: won ? 'You won!' : 'Game over',
+      body: `${won ? 'You beat' : 'You lost to'} ${opp ? nameOf(opp) : 'your opponent'} ${how}.${report.cards.length ? ' A new card is waiting for you.' : ''}`,
+      url: `/?game=${game.id}`,
+      tag: `game-${game.id}`,
+    });
   }
+};
+
+// Push notifications for players who are not on the site right now.
+games.onYourTurn = (game, uid) => {
+  const opp = game.participants().find((x) => x !== uid);
+  void notifier.push(uid, {
+    title: 'Your move',
+    body: `${opp ? nameOf(opp) : 'Your opponent'} has played. It's your turn in ChessX.`,
+    url: `/?game=${game.id}`,
+    tag: `game-${game.id}`,
+  });
+};
+games.onChat = (game, from, to, text) => {
+  void notifier.push(to, { title: `${nameOf(from)} says`, body: text, url: `/?game=${game.id}`, tag: `chat-${game.id}` });
 };
 
 // ---------------------------------------------------------------------------
@@ -113,6 +139,7 @@ const MIME: Record<string, string> = {
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
   '.woff2': 'font/woff2',
+  '.webmanifest': 'application/manifest+json',
 };
 
 function serveStatic(req: IncomingMessage, res: ServerResponse, url: URL): void {
@@ -183,6 +210,17 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
       const user = auth.userFromRequest(req);
       if (!user) return json(res, 401, { error: 'Not signed in.' });
       return json(res, 200, { results: social.search(user, url.searchParams.get('q') ?? '') });
+    }
+
+    // ---- web push
+    if (req.method === 'GET' && path === '/api/push/vapid') return json(res, 200, { publicKey: notifier.publicKey });
+    if (path === '/api/push/subscribe' || path === '/api/push/unsubscribe') {
+      const user = auth.userFromRequest(req);
+      if (!user) return json(res, 401, { error: 'Not signed in.' });
+      const b = await readJson(req);
+      if (path === '/api/push/subscribe') notifier.subscribe(user.id, b.subscription as never);
+      else notifier.unsubscribe(str(b.endpoint));
+      return json(res, 200, { ok: true });
     }
 
     for (const provider of ['google', 'facebook'] as const) {
@@ -280,7 +318,14 @@ function handleMessage(t: SocketTransport, msg: ClientMessage): void {
       const me = db.userById(t.userId)!;
       const other = social.request(me, msg.userId);
       pushSocial(me.id, other.id);
-      notify(other.id, social.areFriends(me.id, other.id) ? `You and ${me.name} are now friends.` : `${me.name} wants to be your friend.`);
+      const nowFriends = social.areFriends(me.id, other.id);
+      notify(other.id, nowFriends ? `You and ${me.name} are now friends.` : `${me.name} wants to be your friend.`);
+      void notifier.push(other.id, {
+        title: nowFriends ? 'New friend' : 'Friend request',
+        body: nowFriends ? `You and ${me.name} are now friends.` : `${me.name} wants to be your friend on ChessX.`,
+        url: '/',
+        tag: `friend-${me.id}`,
+      });
       return;
     }
     case 'friendAccept': {
@@ -288,6 +333,7 @@ function handleMessage(t: SocketTransport, msg: ClientMessage): void {
       const other = social.accept(me, msg.userId);
       pushSocial(me.id, other.id);
       notify(other.id, `${me.name} accepted your friend request.`);
+      void notifier.push(other.id, { title: 'Friend request accepted', body: `${me.name} accepted your friend request.`, url: '/', tag: `friend-${me.id}` });
       return;
     }
     case 'friendRemove': {
@@ -307,6 +353,8 @@ function handleMessage(t: SocketTransport, msg: ClientMessage): void {
       open(t, game);
       pushSocial(me.id, friend.id);
       notify(friend.id, `${me.name} challenged you to a game!`);
+      // Challenges are worth a push even if they are on the site (they may be in another game).
+      void notifier.push(friend.id, { title: `${me.name} challenged you!`, body: 'Open ChessX to accept and pick your deck.', url: '/', tag: `challenge-${game.id}` }, { evenIfOnline: true });
       console.log(`[game ${game.row.code}] ${me.name} challenged ${friend.name}`);
       return;
     }
@@ -324,7 +372,8 @@ function handleMessage(t: SocketTransport, msg: ClientMessage): void {
       social.resolveChallenge(c.id, 'accepted');
       open(t, game);
       pushSocial(t.userId, c.from_user);
-      notify(c.from_user, `${db.userById(t.userId)?.name ?? 'Your friend'} accepted your challenge — game on!`);
+      notify(c.from_user, `${nameOf(t.userId)} accepted your challenge — game on!`);
+      void notifier.push(c.from_user, { title: 'Challenge accepted!', body: `${nameOf(t.userId)} accepted. It's your move.`, url: `/?game=${game.id}`, tag: `game-${game.id}` });
       return;
     }
     case 'declineChallenge': {

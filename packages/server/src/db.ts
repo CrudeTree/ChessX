@@ -165,6 +165,17 @@ export class Db {
       );
       CREATE INDEX IF NOT EXISTS challenges_to ON challenges(to_user, status);
       CREATE INDEX IF NOT EXISTS challenges_from ON challenges(from_user, status);
+      CREATE TABLE IF NOT EXISTS kv (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        endpoint TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        subscription_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS push_user ON push_subscriptions(user_id);
     `);
     // Columns added after the first release; safe to run on an existing database.
     this.addColumn('users', 'xp', 'INTEGER NOT NULL DEFAULT 0');
@@ -273,6 +284,35 @@ export class Db {
 
   deleteGame(id: string): void {
     this.db.prepare('DELETE FROM games WHERE id = ?').run(id);
+  }
+
+  // --------------------------------------------------------- kv + web push
+
+  getKv(key: string): string | undefined {
+    return (this.db.prepare('SELECT value FROM kv WHERE key = ?').get(key) as { value: string } | undefined)?.value;
+  }
+
+  setKv(key: string, value: string): void {
+    this.db.prepare('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, value);
+  }
+
+  savePushSubscription(userId: string, endpoint: string, subscriptionJson: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO push_subscriptions (endpoint, user_id, subscription_json, created_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id, subscription_json = excluded.subscription_json`,
+      )
+      .run(endpoint, userId, subscriptionJson, Date.now());
+  }
+
+  deletePushSubscription(endpoint: string): void {
+    this.db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(endpoint);
+  }
+
+  pushSubscriptionsFor(userId: string): string[] {
+    return (this.db.prepare('SELECT subscription_json FROM push_subscriptions WHERE user_id = ?').all(userId) as unknown as { subscription_json: string }[]).map(
+      (r) => r.subscription_json,
+    );
   }
 
   // ------------------------------------------------------------- collection

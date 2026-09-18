@@ -11,9 +11,11 @@
   "dependencies": {
     "@chessx/engine": "*",
     "@chessx/protocol": "*",
+    "web-push": "^3.6.7",
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@types/web-push": "^3.6.4",
     "@types/ws": "^8.5.13"
   }
 }

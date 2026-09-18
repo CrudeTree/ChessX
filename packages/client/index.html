@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#12121a" />
     <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="ChessX" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <title>ChessX</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
@@ -50,6 +55,11 @@
 
     <!-- Home: your games -->
     <div id="home" class="screen hidden">
+      <div id="push-banner" class="push-banner hidden">
+        <span>🔔 Get notified when it's your move or a friend challenges you — even with ChessX closed.</span>
+        <button id="push-enable" class="primary">Turn on</button>
+        <button id="push-dismiss" class="x">Not now</button>
+      </div>
       <header class="home-header">
         <h1>Chess<span>X</span></h1>
         <div class="home-actions">

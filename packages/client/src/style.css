@@ -335,6 +335,33 @@ button.danger {
   color: var(--muted);
 }
 
+/* ------------------------------------------------------------ Push banner */
+.push-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, rgba(124, 92, 255, 0.25), rgba(212, 162, 76, 0.18));
+  border: 1px solid rgba(124, 92, 255, 0.5);
+  font-size: 14px;
+}
+
+.push-banner span {
+  flex: 1;
+}
+
+.push-banner .primary {
+  width: auto;
+  padding: 8px 14px;
+}
+
+.push-banner .x {
+  border-color: transparent;
+  color: var(--muted);
+}
+
 /* ---------------------------------------------------------------- Friends */
 .home-body {
   display: grid;

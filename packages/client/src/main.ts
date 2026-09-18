@@ -11,8 +11,10 @@ import {
   type ServerMessage,
   type UserInfo,
 } from '@chessx/protocol';
+import { initAttention, notice as attention } from './attention.js';
 import { Binder, cardElement } from './binder.js';
 import { FriendsPanel } from './friends.js';
+import { initPush, onServiceWorkerMessage } from './push.js';
 import { GameView } from './game/GameView.js';
 import { configureLayout, MOBILE } from './game/layout.js';
 import { InspectPanel } from './inspect.js';
@@ -54,6 +56,8 @@ let lastSeq = -1;
 let viewReady = false;
 let games: GameSummary[] = [];
 let profile: Profile | null = null;
+let lastSocialCounts: { challenges: number; requests: number } | null = null;
+let wasMyTurn = false;
 
 const inspect = new InspectPanel({
   gameView,
@@ -133,6 +137,14 @@ async function signedIn(u: UserInfo): Promise<void> {
   show('home');
   await refreshProfile();
   net.connect();
+  void initPush($('push-banner'), $('push-enable'), $('push-dismiss'));
+}
+
+/** A game id from the URL (?game=...) — set by notification clicks. Consumed once. */
+function deepLinkedGame(): string | null {
+  const id = new URLSearchParams(location.search).get('game');
+  if (id) history.replaceState(null, '', '/');
+  return id;
 }
 
 // ---------------------------------------------------------------------------
@@ -375,6 +387,7 @@ function leaveGameUi(): void {
   currentView = null;
   currentClocks = null;
   lastSeq = -1;
+  wasMyTurn = false;
   logEl.innerHTML = '';
   $('chat-log').innerHTML = '';
   if (viewReady) gameView.reset();
@@ -668,23 +681,33 @@ net.onUnauthorized = () => {
 net.onMessage = async (msg: ServerMessage) => {
   switch (msg.type) {
     case 'welcome': {
-      // Fresh socket (first connect or reconnect): reopen this tab's game, or list games.
-      const reopen = currentGameId ?? openGameId();
+      // Fresh socket (first connect or reconnect): a notification deep link wins,
+      // then this tab's remembered game, otherwise the games list.
+      const reopen = deepLinkedGame() ?? currentGameId ?? openGameId();
       if (reopen) net.send({ type: 'openGame', gameId: reopen });
       else net.send({ type: 'listGames' });
       net.send({ type: 'getSocial' });
       return;
     }
-    case 'social':
+    case 'social': {
+      const before = lastSocialCounts;
+      lastSocialCounts = { challenges: msg.social.incomingChallenges.length, requests: msg.social.incomingRequests.length };
       friends.update(msg.social);
+      if (before && msg.social.incomingChallenges.length > before.challenges) attention('New challenge');
+      else if (before && msg.social.incomingRequests.length > before.requests) attention('Friend request');
       return;
+    }
     case 'notice':
       showToast(msg.message, 'info');
       return;
-    case 'games':
+    case 'games': {
+      const beforeMine = games.filter((g) => g.yourTurn && !g.solo && !g.waitingForOpponent).length;
       games = msg.games;
       renderHome();
+      const nowMine = games.filter((g) => g.yourTurn && !g.solo && !g.waitingForOpponent).length;
+      if (nowMine > beforeMine) attention('Your move');
       return;
+    }
     case 'seated':
       leaveGameUi();
       you = msg.color;
@@ -713,10 +736,16 @@ net.onMessage = async (msg: ServerMessage) => {
       renderClocks();
       appendLog(msg.view);
       renderMobileBar(msg.view);
+      {
+        const myTurn = !solo && msg.view.turn === msg.view.you && msg.view.status.kind === 'playing';
+        if (myTurn && !wasMyTurn && msg.view.ply > 0) attention('Your move');
+        wasMyTurn = myTurn;
+      }
       return;
     case 'chat':
       appendChat(msg.messages);
       if (MOBILE && openSheet !== 'chat' && msg.messages.length === 1) $('m-chat-badge').textContent = 'new';
+      if (msg.messages.length === 1 && msg.messages[0]!.from !== you && !solo) attention(`${msg.messages[0]!.name}: ${msg.messages[0]!.text}`);
       return;
     case 'rewards':
       // Let the game-over banner land first, then celebrate.
@@ -741,6 +770,15 @@ net.onMessage = async (msg: ServerMessage) => {
 
 // ---------------------------------------------------------------------------
 // Boot: are we signed in?
+
+initAttention();
+onServiceWorkerMessage((m) => {
+  // A notification was tapped while this tab was already open: go where it points.
+  if (m.type === 'open' && m.url) {
+    const id = new URL(m.url).searchParams.get('game');
+    if (id && user) openGame(id);
+  }
+});
 
 (async () => {
   const u = await authApi.me();

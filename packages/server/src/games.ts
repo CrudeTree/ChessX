@@ -49,6 +49,10 @@ export class LiveGame {
   onChanged: (game: LiveGame) => void = () => {};
   /** Fired once when a two-player game reaches a final result (rewards are handed out here). */
   onFinished: (game: LiveGame) => void = () => {};
+  /** Fired when the turn passes to `userId` in a two-player game. */
+  onYourTurn: (game: LiveGame, userId: string) => void = () => {};
+  /** Fired when a chat line is posted; `toUserId` is the other seat. */
+  onChat: (game: LiveGame, fromUserId: string, toUserId: string, text: string) => void = () => {};
 
   constructor(
     public row: GameRow,
@@ -242,6 +246,10 @@ export class LiveGame {
     this.save(now);
     this.broadcastState();
     this.finished();
+    if (!this.solo && next.status.kind === 'playing' && next.turn !== before) {
+      const nextUser = next.turn === 'white' ? this.row.white_user_id : this.row.black_user_id;
+      if (nextUser) this.onYourTurn(this, nextUser);
+    }
   }
 
   chatMessage(t: Transport, rawText: string): void {
@@ -257,6 +265,10 @@ export class LiveGame {
     if (this.chat.length > CHAT_HISTORY) this.chat.shift();
     this.save(now, false); // chat does not change the home-page card
     for (const w of this.watchers) w.send({ type: 'chat', messages: [msg] });
+    if (!this.solo) {
+      const other = color === 'white' ? this.row.black_user_id : this.row.white_user_id;
+      if (other) this.onChat(this, t.userId, other, text);
+    }
   }
 
   // ---------------------------------------------------------------- summary
@@ -320,6 +332,8 @@ export class GameManager {
   onChanged: (game: LiveGame) => void = () => {};
   /** Fired once per two-player game when it reaches a result. */
   onFinished: (game: LiveGame) => void = () => {};
+  onYourTurn: (game: LiveGame, userId: string) => void = () => {};
+  onChat: (game: LiveGame, fromUserId: string, toUserId: string, text: string) => void = () => {};
 
   constructor(
     private db: Db,
@@ -331,6 +345,8 @@ export class GameManager {
   private track(g: LiveGame): LiveGame {
     g.onChanged = (game) => this.onChanged(game);
     g.onFinished = (game) => this.onFinished(game);
+    g.onYourTurn = (game, uid) => this.onYourTurn(game, uid);
+    g.onChat = (game, from, to, text) => this.onChat(game, from, to, text);
     this.live.set(g.id, g);
     return g;
   }
