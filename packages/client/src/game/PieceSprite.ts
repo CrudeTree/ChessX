@@ -29,32 +29,34 @@ export class PieceSprite extends Container {
 
     this.addChild(this.stanceMark);
     this.addChild(this.ring);
+    const k = SQ / 72; // everything was tuned for 72px squares; scale for phones
     this.glyph = new Text({
       text: def.glyph,
       style: standard
         ? {
             fontFamily: CHESS_FONT,
-            fontSize: 54,
+            fontSize: Math.round(54 * k),
             fill: piece.owner === 'white' ? COLORS.whitePiece : COLORS.blackPiece,
-            stroke: { color: piece.owner === 'white' ? COLORS.whiteOutline : COLORS.blackOutline, width: standard ? 2.5 : 0 },
+            stroke: { color: piece.owner === 'white' ? COLORS.whiteOutline : COLORS.blackOutline, width: Math.max(1.5, 2.5 * k) },
           }
-        : { fontFamily: EMOJI_FONT, fontSize: 40 },
+        : { fontFamily: EMOJI_FONT, fontSize: Math.round(40 * k) },
     });
     this.glyph.anchor.set(0.5);
-    this.glyph.y = standard ? -2 : -4;
+    this.glyph.y = standard ? -2 * k : -4 * k;
     this.addChild(this.glyph);
     this.addChild(this.badges);
 
-    const timerBg = new Graphics().circle(0, 0, 12).fill(COLORS.summon).stroke({ width: 2, color: 0xffffff, alpha: 0.9 });
-    this.timerText = new Text({ text: '', style: { fontFamily: UI_FONT, fontSize: 14, fontWeight: '800', fill: 0xffffff } });
+    const tr = Math.max(9, 12 * k);
+    const timerBg = new Graphics().circle(0, 0, tr).fill(COLORS.summon).stroke({ width: 2, color: 0xffffff, alpha: 0.9 });
+    this.timerText = new Text({ text: '', style: { fontFamily: UI_FONT, fontSize: Math.max(10, Math.round(14 * k)), fontWeight: '800', fill: 0xffffff } });
     this.timerText.anchor.set(0.5);
     this.timer.addChild(timerBg, this.timerText);
-    this.timer.position.set(SQ / 2 - 14, -SQ / 2 + 14);
+    this.timer.position.set(SQ / 2 - tr - 2, -SQ / 2 + tr + 2);
     this.addChild(this.timer);
 
-    this.lock = new Text({ text: '🔒', style: { fontFamily: EMOJI_FONT, fontSize: 14 } });
+    this.lock = new Text({ text: '🔒', style: { fontFamily: EMOJI_FONT, fontSize: Math.max(10, Math.round(14 * k)) } });
     this.lock.anchor.set(0.5);
-    this.lock.position.set(-SQ / 2 + 13, -SQ / 2 + 13);
+    this.lock.position.set(-SQ / 2 + tr + 1, -SQ / 2 + tr + 1);
     this.addChild(this.lock);
 
     this.eventMode = 'static';
@@ -76,12 +78,14 @@ export class PieceSprite extends Container {
         .stroke({ width: 3, color: COLORS.def, alpha: 0.95 });
     }
 
+    const k = SQ / 72;
+
     // Owner ring for summoned creatures (emoji have no colour of their own).
     this.ring.clear();
     if (!standard) {
       const fill = piece.owner === 'white' ? COLORS.whitePiece : COLORS.blackPiece;
       const line = piece.owner === 'white' ? COLORS.whiteOutline : COLORS.blackOutline;
-      this.ring.circle(0, -2, 27).fill({ color: fill, alpha: 0.85 }).stroke({ width: 2, color: line, alpha: 0.8 });
+      this.ring.circle(0, -2 * k, 27 * k).fill({ color: fill, alpha: 0.85 }).stroke({ width: 2, color: line, alpha: 0.8 });
     }
 
     // Stat badges: only shown when a stat is non-default so the board stays readable.
@@ -94,16 +98,17 @@ export class PieceSprite extends Container {
     if (showAtk) items.push({ color: COLORS.atk, text: `${piece.atk}` });
     if (showDef) items.push({ color: COLORS.def, text: piece.def === piece.maxDef ? `${piece.def}` : `${piece.def}/${piece.maxDef}` });
     if (showHp) items.push({ color: COLORS.hp, text: piece.hp === piece.maxHp ? `${piece.hp}` : `${piece.hp}/${piece.maxHp}` });
-    const gap = 22;
+    const bh = Math.max(12, 16 * k);
+    const gap = bh + 6;
     const startX = -((items.length - 1) * gap) / 2;
     items.forEach((it, i) => {
       const b = new Container();
-      const w = it.text.length > 1 ? 26 : 20;
-      b.addChild(new Graphics().roundRect(-w / 2, -8, w, 16, 6).fill(it.color).stroke({ width: 1.5, color: 0x111111, alpha: 0.7 }));
-      const t = new Text({ text: it.text, style: { fontFamily: UI_FONT, fontSize: 11, fontWeight: '800', fill: 0xffffff } });
+      const w = (it.text.length > 1 ? 26 : 20) * Math.max(0.75, k);
+      b.addChild(new Graphics().roundRect(-w / 2, -bh / 2, w, bh, bh / 2.6).fill(it.color).stroke({ width: 1.5, color: 0x111111, alpha: 0.7 }));
+      const t = new Text({ text: it.text, style: { fontFamily: UI_FONT, fontSize: Math.max(9, Math.round(11 * k)), fontWeight: '800', fill: 0xffffff } });
       t.anchor.set(0.5);
       b.addChild(t);
-      b.position.set(startX + i * gap, SQ / 2 - 12);
+      b.position.set(startX + i * gap, SQ / 2 - bh / 2 - 4 * k);
       this.badges.addChild(b);
     });
 

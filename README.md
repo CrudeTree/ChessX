@@ -118,6 +118,10 @@ Example: DEF 3 / HP 1 in Defense mode, hit by ATK 4 → shield wiped out, 1 dama
 - Your **first finished match** (win or lose) unlocks a brand-new reward card. After that, every win by **checkmate** rolls a reward: a 50/50 between a reward card you don't own yet and a spare copy of a card you do.
 - The **Binder** shows your whole collection (new cards are flagged) and holds up to **3 named decks**. Click a card to add it, use −/+ in the deck list, rename, Save. A deck needs 25–40 cards, max 3 copies of anything, and only cards you own. Pick which deck to play with on the home page before creating, joining or practising.
 
+### Phones
+
+The whole site is responsive. In a game on a phone the board fills the width, your hand is a swipeable strip beneath it (swipe sideways to scroll, drag a card up onto the board to play it, tap it to read it), and the side panels become bottom sheets behind the **Card / Game / Chat** tabs. Tap a piece, then tap a highlighted square to move — it's easier than dragging on a small screen, and both work.
+
 ### Friends and challenges
 
 Find people by display name, email, or their 6-character **friend code** (shown on your home page), send a request, and once accepted you'll see them in the Friends panel with an online dot. **Challenge** a friend and a game is created with you seated; they get a notification and an Accept/Decline card on their home page. Accepting starts the game with their chosen deck — no invite codes needed. Declining (or withdrawing) removes the pending game.

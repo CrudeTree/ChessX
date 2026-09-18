@@ -13,12 +13,18 @@ import {
   CARD_W,
   COLORS,
   DECK_H,
+  DECK_SCALE,
   DECK_W,
+  HAND_X0,
+  HAND_X1,
   HAND_Y,
+  MOBILE,
   MY_DECK,
   OPP_CARD_H,
   OPP_CARD_W,
   OPP_DECK,
+  OPP_HAND_X0,
+  OPP_HAND_X1,
   OPP_HAND_Y,
   SQ,
   UI_FONT,
@@ -88,6 +94,14 @@ export class GameView {
   private selection: Selection | null = null;
   private inspected: string | null = null;
   private inspectedCard: string | null = null;
+  /** A finger/pointer went down on a hand card; we decide tap / swipe / drag once it moves. */
+  private pendingCard: { sprite: CardSprite; homeX: number; homeY: number; startX: number; startY: number; scrollStart: number } | null = null;
+  private handScrolling = false;
+  /** Horizontal scroll offset of the hand strip (phones). */
+  private handScroll = 0;
+  private handMaxScroll = 0;
+  /** Fired on a tap (no drag) on a hand card. */
+  onCardTap: (cardId: string) => void = () => {};
   private pulse = 0;
   /** The current set of target-square highlights, faded in and out by the ticker. */
   private pulsingHighlights: Graphics | null = null;
@@ -123,6 +137,12 @@ export class GameView {
 
     this.myDeck.position.set(MY_DECK.x, MY_DECK.y);
     this.oppDeck.position.set(OPP_DECK.x, OPP_DECK.y);
+    this.myDeck.scale.set(DECK_SCALE);
+    this.oppDeck.scale.set(DECK_SCALE);
+    // Cards scroll horizontally inside the hand strip; keep them out of the deck column.
+    const handMask = new Graphics().rect(HAND_X0 - 6, HAND_Y - 30, HAND_X1 - HAND_X0 + 12, CARD_H + 60).fill(0xffffff);
+    this.app.stage.addChild(handMask);
+    this.handLayer.mask = handMask;
     this.myDeck.onDraw = () => this.onAction({ type: 'draw' });
     this.oppDeck.onDraw = () => this.onAction({ type: 'draw' });
     this.deckLayer.addChild(this.oppDeck, this.myDeck);
@@ -476,7 +496,7 @@ export class GameView {
       if (ev.type !== 'drew') continue;
       const fromBottom = ev.color === bottom;
       const from = fromBottom ? MY_DECK : OPP_DECK;
-      const to = fromBottom ? { x: CANVAS_W / 2, y: HAND_Y + CARD_H / 2 } : { x: BOARD_X + BOARD_SIZE / 2, y: OPP_HAND_Y };
+      const to = fromBottom ? { x: (HAND_X0 + HAND_X1) / 2, y: HAND_Y + CARD_H / 2 } : { x: (OPP_HAND_X0 + OPP_HAND_X1) / 2, y: OPP_HAND_Y };
       for (let i = 0; i < ev.count; i++) this.flyCard(from, to, i * 120);
     }
   }
@@ -484,12 +504,13 @@ export class GameView {
   private flyCard(from: { x: number; y: number }, to: { x: number; y: number }, delay: number): void {
     const card = new Graphics().roundRect(-DECK_W / 2, -DECK_H / 2, DECK_W, DECK_H, 8).fill(COLORS.deckBack).stroke({ width: 2, color: COLORS.deckEdge });
     card.position.set(from.x, from.y);
+    card.scale.set(DECK_SCALE);
     card.zIndex = 100;
     this.dragLayer.addChild(card);
     this.tweens.run(420, (t) => {
       card.position.set(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t - Math.sin(t * Math.PI) * 60);
       card.rotation = t * Math.PI * 0.5;
-      card.scale.set(1 + 0.25 * Math.sin(t * Math.PI));
+      card.scale.set(DECK_SCALE * (1 + 0.25 * Math.sin(t * Math.PI)));
       card.alpha = t > 0.8 ? 1 - (t - 0.8) / 0.2 : 1;
     }, { ease: easeInOutQuad, delay, done: () => card.destroy() });
   }
@@ -506,8 +527,10 @@ export class GameView {
     const oppColor = opposite(this.bottomColor());
     const n = view.players[oppColor].handCount;
     const g = new Graphics();
-    const spacing = n <= 1 ? 0 : Math.min(OPP_CARD_W + 6, (BOARD_SIZE - 40 - OPP_CARD_W) / (n - 1));
-    const startX = BOARD_X + BOARD_SIZE / 2 - ((n - 1) * spacing) / 2;
+    const span = OPP_HAND_X1 - OPP_HAND_X0;
+    const labelRoom = MOBILE ? 70 : 120;
+    const spacing = n <= 1 ? 0 : Math.min(OPP_CARD_W + 6, (span - labelRoom - OPP_CARD_W) / (n - 1));
+    const startX = MOBILE ? OPP_HAND_X0 + OPP_CARD_W / 2 : BOARD_X + BOARD_SIZE / 2 - ((n - 1) * spacing) / 2;
     for (let i = 0; i < n; i++) {
       const x = startX + i * spacing;
       g.roundRect(x - OPP_CARD_W / 2, OPP_HAND_Y - OPP_CARD_H / 2, OPP_CARD_W, OPP_CARD_H, 4)
@@ -518,11 +541,11 @@ export class GameView {
     }
     this.oppHandLayer.addChild(g);
     const label = new Text({
-      text: n === 0 ? 'No cards in hand' : `${n} card${n === 1 ? '' : 's'} in hand`,
+      text: n === 0 ? 'No cards in hand' : MOBILE ? `${n} in hand` : `${n} card${n === 1 ? '' : 's'} in hand`,
       style: { fontFamily: UI_FONT, fontSize: 11, fontWeight: '700', fill: 0xbdb8d6, letterSpacing: 1 },
     });
     label.anchor.set(0, 0.5);
-    label.position.set(n === 0 ? BOARD_X + BOARD_SIZE / 2 - 50 : startX + (n - 1) * spacing + OPP_CARD_W / 2 + 10, OPP_HAND_Y);
+    label.position.set(n === 0 ? OPP_HAND_X0 + (MOBILE ? 0 : span / 2 - 50) : startX + (n - 1) * spacing + OPP_CARD_W / 2 + 10, OPP_HAND_Y);
     this.oppHandLayer.addChild(label);
     this.oppHandLayer.eventMode = 'none';
   }
@@ -535,8 +558,14 @@ export class GameView {
     const playable = new Set(view.legalActions.filter((a): a is CardAction => a.type === 'playCard').map((a) => a.cardInstanceId));
     const n = hand.length;
     if (n === 0) return;
-    const spacing = n <= 1 ? 0 : Math.min(CARD_W + 6, (CANVAS_W - 40 - CARD_W) / (n - 1));
-    const startX = CANVAS_W / 2 - ((n - 1) * spacing) / 2;
+    const span = HAND_X1 - HAND_X0;
+    // Desktop: centred, allowed to overlap when crowded. Phone: fixed spacing, scrollable strip.
+    const spacing = MOBILE ? CARD_W + 8 : n <= 1 ? 0 : Math.min(CARD_W + 6, (span - CARD_W) / (n - 1));
+    const contentW = CARD_W + (n - 1) * spacing;
+    const startX = MOBILE ? HAND_X0 + CARD_W / 2 : (HAND_X0 + HAND_X1) / 2 - ((n - 1) * spacing) / 2;
+    this.handMaxScroll = Math.max(0, contentW - span);
+    this.handScroll = Math.min(this.handScroll, this.handMaxScroll);
+    this.handLayer.x = -this.handScroll;
     hand.forEach((inst, i) => {
       const sprite = new CardSprite(inst, playable.has(inst.instanceId));
       const hx = startX + i * spacing;
@@ -682,24 +711,38 @@ export class GameView {
     this.drawHighlights(targets, piece.square);
   }
 
+  /**
+   * A pointer went down on a hand card. We don't know yet whether this is a
+   * tap (read the card), a horizontal swipe (scroll the hand) or a drag (play
+   * it), so remember it and decide in onPointerMove / onPointerUp.
+   */
   private onCardPointerDown(e: FederatedPointerEvent, sprite: CardSprite, homeX: number, homeY: number): void {
     if (!this.view || this.drag) return;
-    this.inspectCard(sprite.cardId);
-    if (!sprite.playable || !this.myTurn) {
-      e.stopPropagation();
-      return;
-    }
-    const targets = this.cardTargets(sprite.instanceId);
-    if (targets.bySquare.size === 0 && !targets.anywhere) return;
     e.stopPropagation();
+    this.inspectCard(sprite.cardId);
+    this.pendingCard = { sprite, homeX, homeY, startX: e.global.x, startY: e.global.y, scrollStart: this.handScroll };
+  }
+
+  /** Lift a card out of the hand and start dragging it toward the board. */
+  private beginCardDrag(p: NonNullable<typeof this.pendingCard>, e: FederatedPointerEvent): boolean {
+    const { sprite, homeX, homeY } = p;
+    if (!sprite.playable || !this.myTurn) return false;
+    const targets = this.cardTargets(sprite.instanceId);
+    if (targets.bySquare.size === 0 && !targets.anywhere) return false;
     this.selection = null;
-    this.drag = { kind: 'card', sprite, homeX, homeY, targets, startX: e.global.x, startY: e.global.y, moved: false };
+    this.drag = { kind: 'card', sprite, homeX, homeY, targets, startX: p.startX, startY: p.startY, moved: true };
     sprite.zIndex = 50;
     sprite.scale.set(1.08);
     this.handLayer.removeChild(sprite);
     this.dragLayer.addChild(sprite);
     sprite.position.set(e.global.x, e.global.y);
     this.drawHighlights(targets);
+    return true;
+  }
+
+  private setHandScroll(x: number): void {
+    this.handScroll = Math.max(0, Math.min(this.handMaxScroll, x));
+    this.handLayer.x = -this.handScroll;
   }
 
   private onStagePointerDown(e: FederatedPointerEvent): void {
@@ -715,6 +758,28 @@ export class GameView {
   }
 
   private onPointerMove(e: FederatedPointerEvent): void {
+    const p = this.pendingCard;
+    if (p && !this.drag) {
+      const dx = e.global.x - p.startX;
+      const dy = e.global.y - p.startY;
+      if (this.handScrolling) {
+        this.setHandScroll(p.scrollStart - dx);
+        return;
+      }
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return; // still a tap
+      // Mostly sideways on a scrollable hand = swipe; otherwise lift the card.
+      if (this.handMaxScroll > 0 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+        this.handScrolling = true;
+        this.setHandScroll(p.scrollStart - dx);
+        return;
+      }
+      if (!this.beginCardDrag(p, e)) {
+        // Not playable right now: treat the gesture as a swipe on phones, else ignore.
+        if (this.handMaxScroll > 0) this.handScrolling = true;
+        else this.pendingCard = null;
+      }
+      return;
+    }
     const d = this.drag;
     if (!d) return;
     if (Math.hypot(e.global.x - d.startX, e.global.y - d.startY) > 4) d.moved = true;
@@ -722,6 +787,15 @@ export class GameView {
   }
 
   private onPointerUp(e: FederatedPointerEvent): void {
+    const p = this.pendingCard;
+    this.pendingCard = null;
+    if (p && !this.drag) {
+      const wasScroll = this.handScrolling;
+      this.handScrolling = false;
+      if (!wasScroll) this.onCardTap(p.sprite.cardId);
+      return;
+    }
+    this.handScrolling = false;
     const d = this.drag;
     if (!d) return;
     this.drag = null;
@@ -770,8 +844,10 @@ export class GameView {
       this.dragLayer.removeChild(d.sprite);
       this.handLayer.addChild(d.sprite);
       d.sprite.zIndex = 0;
-      const sx = d.sprite.x;
+      // The hand layer may be scrolled: convert the drop point into its local space.
+      const sx = d.sprite.x + this.handScroll;
       const sy = d.sprite.y;
+      d.sprite.x = sx;
       this.tweens.run(180, (t) => {
         d.sprite.position.set(sx + (d.homeX - sx) * t, sy + (d.homeY - sy) * t);
         d.sprite.scale.set(1.08 - 0.08 * t);
@@ -796,6 +872,8 @@ export class GameView {
   }
 
   private cancelDrag(): void {
+    this.pendingCard = null;
+    this.handScrolling = false;
     const d = this.drag;
     if (!d) return;
     this.drag = null;

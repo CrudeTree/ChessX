@@ -71,14 +71,17 @@ export class CardSprite extends Container {
       this.addChild(kind);
     }
 
-    // Rules text
+    // Rules text, clipped to the card (tap/hover the card for the full text).
+    const textTop = -CARD_H / 2 + 84;
     const text = new Text({
       text: card.text,
       style: { fontFamily: UI_FONT, fontSize: 8, fill: 0xd8d8e6, wordWrap: true, wordWrapWidth: CARD_W - 14, lineHeight: 10 },
     });
     text.anchor.set(0.5, 0);
-    text.position.set(0, -CARD_H / 2 + 84);
-    this.addChild(text);
+    text.position.set(0, textTop);
+    const textMask = new Graphics().rect(-CARD_W / 2, textTop, CARD_W, CARD_H / 2 - 84 + CARD_H / 2 - 6).fill(0xffffff);
+    text.mask = textMask;
+    this.addChild(textMask, text);
 
     if (!playable) this.alpha = 0.6;
     this.eventMode = 'static';

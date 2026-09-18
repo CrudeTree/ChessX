@@ -14,6 +14,7 @@ import {
 import { Binder, cardElement } from './binder.js';
 import { FriendsPanel } from './friends.js';
 import { GameView } from './game/GameView.js';
+import { configureLayout, MOBILE } from './game/layout.js';
 import { InspectPanel } from './inspect.js';
 import { describeEvents } from './log.js';
 import { ApiError, authApi, Net, openGameId, profileApi, rememberOpenGame } from './net.js';
@@ -380,6 +381,7 @@ function leaveGameUi(): void {
 }
 
 function goHome(): void {
+  setSheet(null);
   leaveGameUi();
   rememberOpenGame(null);
   show('home');
@@ -390,10 +392,73 @@ async function showGame(): Promise<void> {
   show('game');
   if (!viewReady) {
     viewReady = true;
+    configureLayout(window.innerWidth);
     await gameView.init($('board-mount'));
     gameView.onAction = (action) => net.send({ type: 'action', action });
     inspect.render(null);
+    setupMobileChrome();
   }
+}
+
+// ---------------------------------------------------------------------------
+// Phone chrome: top bar mirrors + bottom sheets. No-ops on desktop.
+
+const mStatus = $('m-status');
+const mEnd = $<HTMLButtonElement>('m-end');
+const mOpp = $('m-opp');
+const mMe = $('m-me');
+let openSheet: string | null = null;
+
+function setSheet(id: string | null): void {
+  for (const s of ['inspect', 'side', 'chat']) $(s).classList.toggle('open', MOBILE && id === s);
+  for (const b of document.querySelectorAll<HTMLButtonElement>('#mtabs button')) b.classList.toggle('active', b.dataset.sheet === id);
+  $('sheet-backdrop').classList.toggle('hidden', !MOBILE || id === null);
+  openSheet = id;
+  if (id === 'chat') $('m-chat-badge').textContent = '';
+}
+
+function setupMobileChrome(): void {
+  if (!MOBILE) return;
+  mEnd.onclick = () => endTurnBtn.click();
+  for (const b of document.querySelectorAll<HTMLButtonElement>('#mtabs button')) {
+    b.onclick = () => setSheet(openSheet === b.dataset.sheet ? null : b.dataset.sheet!);
+  }
+  $('sheet-backdrop').onclick = () => setSheet(null);
+  // Tapping a hand card opens its full text; tapping a piece just selects it (the Card tab shows its name).
+  gameView.onCardTap = () => setSheet('inspect');
+  const origInspect = gameView.onInspect;
+  gameView.onInspect = (t) => {
+    origInspect(t);
+    $('m-card-name').textContent = !t ? '' : t.kind === 'card' ? getCardDef(t.cardId).name : t.piece.kind.replace(/_/g, ' ');
+  };
+  // Acting on the board closes whatever sheet is open so the result is visible.
+  const origAction = gameView.onAction;
+  gameView.onAction = (a) => {
+    setSheet(null);
+    origAction(a);
+  };
+}
+
+function renderMobileBar(view: PlayerView | null): void {
+  if (!MOBILE) return;
+  mStatus.textContent = statusEl.textContent;
+  mStatus.className = `mstatus ${statusEl.classList.contains('check') ? 'check' : ''}`;
+  mEnd.disabled = endTurnBtn.disabled;
+  mEnd.classList.toggle('ready', endTurnBtn.classList.contains('ready'));
+  const { me, opp } = panelColors();
+  const who = (id: 'me' | 'opp', color: Color) => {
+    const el = $(id);
+    const name = el.querySelector('.pname')?.textContent ?? '';
+    const clock = el.querySelector('.clock')?.textContent ?? '';
+    const turn = !!view && view.status.kind === 'playing' && view.turn === color;
+    return { html: `<b>${name}</b>${clock ? ` · ${clock}` : ''}`, turn };
+  };
+  const o = who('opp', opp);
+  const m = who('me', me);
+  mOpp.innerHTML = o.html;
+  mMe.innerHTML = m.html;
+  mOpp.classList.toggle('turn', o.turn);
+  mMe.classList.toggle('turn', m.turn);
 }
 
 function names(): Record<Color, string> {
@@ -453,7 +518,10 @@ function renderClocks(): void {
   }
 }
 setInterval(() => {
-  if (currentClocks && !gameScreen.classList.contains('hidden')) renderClocks();
+  if (currentClocks && !gameScreen.classList.contains('hidden')) {
+    renderClocks();
+    renderMobileBar(currentView);
+  }
 }, 1000);
 
 function renderStatus(view: PlayerView): void {
@@ -628,10 +696,13 @@ net.onMessage = async (msg: ServerMessage) => {
       gameView.hotseat = solo;
       renderRoom();
       renderClocks();
+      renderMobileBar(currentView);
+      setSheet(null);
       return;
     case 'room':
       room = msg.room;
       renderRoom();
+      renderMobileBar(currentView);
       return;
     case 'state':
       if (!viewReady) await showGame();
@@ -641,9 +712,11 @@ net.onMessage = async (msg: ServerMessage) => {
       renderStatus(msg.view);
       renderClocks();
       appendLog(msg.view);
+      renderMobileBar(msg.view);
       return;
     case 'chat':
       appendChat(msg.messages);
+      if (MOBILE && openSheet !== 'chat' && msg.messages.length === 1) $('m-chat-badge').textContent = 'new';
       return;
     case 'rewards':
       // Let the game-over banner land first, then celebrate.

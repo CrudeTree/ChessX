@@ -2,7 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#12121a" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <title>ChessX</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
@@ -152,6 +154,17 @@
 
     <!-- The game -->
     <div id="game" class="screen hidden">
+      <!-- Phone-only top bar: opponent, status, End Turn -->
+      <div id="mbar" class="mbar">
+        <div class="mrow">
+          <span id="m-opp" class="mwho"></span>
+          <span id="m-me" class="mwho me"></span>
+        </div>
+        <div class="mrow">
+          <span id="m-status" class="mstatus"></span>
+          <button id="m-end" class="primary" disabled>End Turn</button>
+        </div>
+      </div>
       <aside id="inspect">
         <div id="zoom" class="zoom empty">
           <div class="zoom-empty">Click a piece, or hover a card, to see it here.</div>
@@ -192,6 +205,13 @@
           <button id="leave">Back to games</button>
         </div>
       </aside>
+      <!-- Phone-only bottom tabs; each opens one of the panels above as a sheet -->
+      <div id="mtabs" class="mtabs">
+        <button data-sheet="inspect"><span>Card</span><small id="m-card-name"></small></button>
+        <button data-sheet="side"><span>Game</span><small>log · menu</small></button>
+        <button data-sheet="chat"><span>Chat</span><small id="m-chat-badge"></small></button>
+      </div>
+      <div id="sheet-backdrop" class="sheet-backdrop hidden"></div>
     </div>
 
     <div id="chat" class="chat faded hidden">
