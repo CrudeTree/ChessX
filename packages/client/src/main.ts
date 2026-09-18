@@ -58,6 +58,7 @@ let games: GameSummary[] = [];
 let profile: Profile | null = null;
 let lastSocialCounts: { challenges: number; requests: number } | null = null;
 let wasMyTurn = false;
+let booted = false;
 
 const inspect = new InspectPanel({
   gameView,
@@ -140,11 +141,64 @@ async function signedIn(u: UserInfo): Promise<void> {
   void initPush($('push-banner'), $('push-enable'), $('push-dismiss'));
 }
 
-/** A game id from the URL (?game=...) — set by notification clicks. Consumed once. */
-function deepLinkedGame(): string | null {
-  const id = new URLSearchParams(location.search).get('game');
-  if (id) history.replaceState(null, '', '/');
-  return id;
+// ---------------------------------------------------------------------------
+// Routing: the browser's back button moves within the app (game -> home,
+// binder -> home) instead of leaving the site. Screens push history entries;
+// popstate applies whatever entry we land on.
+
+type Route = { screen: 'home' } | { screen: 'binder' } | { screen: 'game'; id: string };
+
+function routeFromLocation(): Route {
+  const m = location.pathname.match(/^\/game\/([A-Za-z0-9_-]+)/);
+  if (m) return { screen: 'game', id: m[1]! };
+  const q = new URLSearchParams(location.search).get('game'); // notification deep links
+  if (q) return { screen: 'game', id: q };
+  if (location.pathname === '/binder') return { screen: 'binder' };
+  return { screen: 'home' };
+}
+
+const routePath = (r: Route): string => (r.screen === 'game' ? `/game/${r.id}` : r.screen === 'binder' ? '/binder' : '/');
+
+/** Record that we are now on `route` (no-op if history already says so). */
+function pushRoute(route: Route): void {
+  const cur = history.state as Route | null;
+  if (cur && cur.screen === route.screen && (cur.screen !== 'game' || cur.id === (route as { id: string }).id)) return;
+  history.pushState(route, '', routePath(route));
+}
+
+let applyingRoute = false;
+function applyRoute(route: Route): void {
+  applyingRoute = true;
+  try {
+    if (route.screen === 'game') openGame(route.id);
+    else if (route.screen === 'binder') void openBinder();
+    else goHome();
+  } finally {
+    applyingRoute = false;
+  }
+}
+
+window.addEventListener('popstate', () => {
+  if (!user) return;
+  applyRoute((history.state as Route | null) ?? routeFromLocation());
+});
+
+/** Leave the current screen the way the back button would. */
+function goBack(): void {
+  const cur = history.state as Route | null;
+  if (cur && cur.screen !== 'home') history.back();
+  else {
+    goHome();
+    history.replaceState({ screen: 'home' } satisfies Route, '', '/');
+  }
+}
+
+/** On first load: make sure there is a home entry beneath any deep link, then return the target. */
+function initialRoute(): Route {
+  const route = routeFromLocation();
+  history.replaceState({ screen: 'home' } satisfies Route, '', '/');
+  if (route.screen !== 'home') history.pushState(route, '', routePath(route));
+  return route;
 }
 
 // ---------------------------------------------------------------------------
@@ -198,20 +252,20 @@ function chosenDeckSlot(): number | null {
   return Number(opt.value);
 }
 
-const binder = new Binder(() => {
-  show('home');
-  net.send({ type: 'listGames' });
-});
+const binder = new Binder(() => goBack());
 binder.onProfileChanged = (p) => setProfile(p);
 
 const friends = new FriendsPanel((m) => net.send(m), () => chosenDeckSlot());
 
-$('open-binder').onclick = async () => {
+async function openBinder(): Promise<void> {
   await refreshProfile();
   if (!profile) return;
   show('binder');
   binder.open(profile);
-};
+  if (!applyingRoute) pushRoute({ screen: 'binder' });
+}
+
+$('open-binder').onclick = () => void openBinder();
 
 // Reward popup
 const rewardEl = $('reward');
@@ -242,8 +296,10 @@ $('logout').onclick = async () => {
   net.close();
   await authApi.logout();
   user = null;
+  booted = false;
   rememberOpenGame(null);
   leaveGameUi();
+  history.replaceState({ screen: 'home' } satisfies Route, '', '/');
   await showAuth();
 };
 
@@ -374,10 +430,8 @@ $('resign').onclick = () => {
   if (confirm('Resign this game?')) net.send({ type: 'action', action: { type: 'resign' } });
 };
 
-$('leave').onclick = () => {
-  net.send({ type: 'leave' });
-  goHome();
-};
+$('leave').onclick = () => goBack();
+$('m-back').onclick = () => goBack();
 
 function leaveGameUi(): void {
   you = null;
@@ -395,6 +449,7 @@ function leaveGameUi(): void {
 
 function goHome(): void {
   setSheet(null);
+  if (currentGameId) net.send({ type: 'leave' });
   leaveGameUi();
   rememberOpenGame(null);
   show('home');
@@ -681,11 +736,28 @@ net.onUnauthorized = () => {
 net.onMessage = async (msg: ServerMessage) => {
   switch (msg.type) {
     case 'welcome': {
-      // Fresh socket (first connect or reconnect): a notification deep link wins,
-      // then this tab's remembered game, otherwise the games list.
-      const reopen = deepLinkedGame() ?? currentGameId ?? openGameId();
-      if (reopen) net.send({ type: 'openGame', gameId: reopen });
-      else net.send({ type: 'listGames' });
+      // Fresh socket (first connect or reconnect). On first connect the URL decides
+      // (deep link / bookmarked game / binder); on reconnect, whatever was open.
+      if (!booted) {
+        booted = true;
+        const route = initialRoute();
+        if (route.screen === 'game') net.send({ type: 'openGame', gameId: route.id });
+        else {
+          const remembered = openGameId();
+          if (remembered) {
+            // Refresh while in a game: stay there and give it a history entry.
+            pushRoute({ screen: 'game', id: remembered });
+            net.send({ type: 'openGame', gameId: remembered });
+          } else {
+            net.send({ type: 'listGames' });
+            if (route.screen === 'binder') void openBinder();
+          }
+        }
+      } else if (currentGameId) {
+        net.send({ type: 'openGame', gameId: currentGameId });
+      } else {
+        net.send({ type: 'listGames' });
+      }
       net.send({ type: 'getSocial' });
       return;
     }
@@ -715,6 +787,7 @@ net.onMessage = async (msg: ServerMessage) => {
       solo = msg.solo;
       currentGameId = msg.gameId;
       rememberOpenGame(msg.gameId);
+      if (!applyingRoute) pushRoute({ screen: 'game', id: msg.gameId });
       await showGame();
       gameView.hotseat = solo;
       renderRoom();
@@ -757,6 +830,7 @@ net.onMessage = async (msg: ServerMessage) => {
         // The remembered game is gone or not ours: fall back to the list.
         if (/not yours|No game/i.test(msg.message)) {
           rememberOpenGame(null);
+          history.replaceState({ screen: 'home' } satisfies Route, '', '/');
           net.send({ type: 'listGames' });
         }
       } else {
@@ -764,6 +838,12 @@ net.onMessage = async (msg: ServerMessage) => {
       }
       return;
     case 'left':
+      // The server closed our view (e.g. a pending challenge was declined): back to the list.
+      if (currentGameId) {
+        currentGameId = null;
+        goHome();
+        history.replaceState({ screen: 'home' } satisfies Route, '', '/');
+      }
       return;
   }
 };
