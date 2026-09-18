@@ -1,6 +1,6 @@
-import { allCards, getPieceDef, STANDARD_PIECES, type Color, type Piece, type PlayerView, type SummonCardDef } from '@chessx/engine';
+import { allCards, getCardDef, getPieceDef, STANDARD_PIECES, type Color, type Piece, type PlayerView, type SummonCardDef } from '@chessx/engine';
 import type { RoomInfo, ServerMessage } from '@chessx/protocol';
-import { GameView } from './game/GameView.js';
+import { GameView, type InspectTarget } from './game/GameView.js';
 import { describeEvents } from './log.js';
 import { Net, saveSession } from './net.js';
 
@@ -92,7 +92,7 @@ async function showGame(): Promise<void> {
     viewReady = true;
     await gameView.init($('board-mount'));
     gameView.onAction = (action) => net.send({ type: 'action', action });
-    gameView.onInspect = (piece) => renderInspect(piece);
+    gameView.onInspect = (target) => renderInspect(target);
     stanceBtn.onclick = () => gameView.toggleInspectedStance();
   }
 }
@@ -105,17 +105,72 @@ const summonCardFor = (kind: string): SummonCardDef | undefined =>
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
-function renderInspect(piece: Piece | null): void {
-  if (!piece) {
+function resetStanceButton(hint = ''): void {
+  stanceBtn.disabled = true;
+  stanceBtn.className = '';
+  stanceBtn.textContent = 'Switch to Defense mode';
+  stanceHint.textContent = hint;
+}
+
+function renderInspect(target: InspectTarget | null): void {
+  if (!target) {
     zoomEl.className = 'zoom empty';
-    zoomEl.innerHTML = '<div class="zoom-empty">Click any piece to see its card.</div>';
-    stanceBtn.disabled = true;
-    stanceBtn.className = '';
-    stanceBtn.textContent = 'Switch to Defense mode';
-    stanceHint.textContent = '';
+    zoomEl.innerHTML = '<div class="zoom-empty">Click any piece, or hover a card, to see it here.</div>';
+    resetStanceButton();
     return;
   }
+  if (target.kind === 'card') {
+    renderCardZoom(target.cardId);
+    return;
+  }
+  renderPieceZoom(target.piece);
+}
 
+/** Zoomed view of a card in hand. Summon cards also show the creature's stats. */
+function renderCardZoom(cardId: string): void {
+  const card = getCardDef(cardId);
+  const isSummon = card.type === 'summon';
+  const typeLine = isSummon
+    ? `Summon · Tier ${card.tier} · arrives in ${card.summonTurns} turn${card.summonTurns === 1 ? '' : 's'}`
+    : `Spell · ${describeTarget(card.target)}`;
+  const stats = isSummon
+    ? `<div class="zoom-stats">
+        <div class="stat atk">ATK<b>${card.piece.atk}</b></div>
+        <div class="stat def">DEF<b>${card.piece.def === 0 ? '—' : card.piece.def}</b></div>
+        <div class="stat hp">HP<b>${card.piece.hp}</b></div>
+      </div>`
+    : '';
+  const needs = isSummon ? `Sacrifice one of your Tier ${card.sacrificeTier ?? card.tier - 1} pieces to summon.` : '';
+
+  zoomEl.className = `zoom ${isSummon ? 'summon' : 'basic'} card`;
+  zoomEl.innerHTML = `
+    <div class="zoom-head">
+      <div class="zoom-name">${esc(card.name)}</div>
+      <div class="zoom-owner">${isSummon ? 'CREATURE' : 'SPELL'}</div>
+    </div>
+    <div class="zoom-type">${esc(typeLine)}</div>
+    <div class="zoom-art"><span class="glyph emoji">${card.glyph}</span></div>
+    ${stats}
+    <div class="zoom-text">${esc(card.text)}</div>
+    <div class="zoom-status">${esc(needs)}</div>
+  `;
+  zoomEl.classList.add('fresh');
+  setTimeout(() => zoomEl.classList.remove('fresh'), 180);
+  resetStanceButton('Drag the card onto a highlighted target to play it.');
+}
+
+function describeTarget(rule: string): string {
+  switch (rule) {
+    case 'none': return 'no target';
+    case 'ownPiece': return 'targets a friendly piece';
+    case 'enemyPiece': return 'targets an enemy piece';
+    case 'anyPiece': return 'targets any piece';
+    case 'ownSummoning': return 'targets a friendly piece being sacrificed';
+    default: return rule;
+  }
+}
+
+function renderPieceZoom(piece: Piece): void {
   const def = getPieceDef(piece.kind);
   const isBasic = piece.kind in STANDARD_PIECES;
   const card = isBasic ? undefined : summonCardFor(piece.kind);

@@ -44,6 +44,9 @@ interface Selection {
   targets: Targets;
 }
 
+/** What the side panel should show: a piece on the board or a card in hand. */
+export type InspectTarget = { kind: 'piece'; piece: Piece } | { kind: 'card'; cardId: string };
+
 /**
  * Renders the board + hand with PixiJS and turns pointer input into engine
  * Actions. It never decides legality itself: everything it offers the player
@@ -52,8 +55,8 @@ interface Selection {
 export class GameView {
   readonly app = new Application();
   onAction: (a: Action) => void = () => {};
-  /** Fired whenever the inspected piece changes or its data refreshes (null = nothing inspected). */
-  onInspect: (piece: Piece | null) => void = () => {};
+  /** Fired whenever the inspected piece/card changes or its data refreshes (null = nothing inspected). */
+  onInspect: (target: InspectTarget | null) => void = () => {};
   /** Practice mode: one player controls both sides, board stays white-at-bottom. */
   hotseat = false;
 
@@ -79,6 +82,7 @@ export class GameView {
   private drag: Drag | null = null;
   private selection: Selection | null = null;
   private inspected: string | null = null;
+  private inspectedCard: string | null = null;
   private pulse = 0;
 
   async init(mount: HTMLElement): Promise<void> {
@@ -144,6 +148,7 @@ export class GameView {
     for (const layer of [this.highlightLayer, this.lastMoveLayer, this.inspectLayer, this.fxLayer, this.banner]) layer.removeChildren();
     for (const old of this.handLayer.removeChildren()) old.destroy();
     this.view = null;
+    this.inspectedCard = null;
     this.setInspected(null);
   }
 
@@ -155,11 +160,24 @@ export class GameView {
     this.inspectLayer.removeChildren();
     const piece = pieceId && this.view ? this.view.pieces[pieceId] : undefined;
     if (piece) {
+      this.inspectedCard = null;
       const { x, y } = squareToXY(piece.square, this.flipped);
       const g = new Graphics().roundRect(x - SQ / 2 + 2, y - SQ / 2 + 2, SQ - 4, SQ - 4, 6).stroke({ width: 3, color: COLORS.select, alpha: 0.9 });
       this.inspectLayer.addChild(g);
+      this.onInspect({ kind: 'piece', piece });
+    } else if (this.inspectedCard) {
+      this.onInspect({ kind: 'card', cardId: this.inspectedCard });
+    } else {
+      this.onInspect(null);
     }
-    this.onInspect(piece ?? null);
+  }
+
+  /** Show a hand card in the side panel (hover or grab). Replaces any inspected piece. */
+  private inspectCard(cardId: string): void {
+    this.inspectedCard = cardId;
+    this.inspected = null;
+    this.inspectLayer.removeChildren();
+    this.onInspect({ kind: 'card', cardId });
   }
 
   /** The legal stance-change for a piece, if any (only exists on its owner's turn). */
@@ -481,6 +499,7 @@ export class GameView {
       sprite.position.set(hx, hy);
       sprite.on('pointerover', () => {
         if (this.drag) return;
+        this.inspectCard(inst.cardId);
         sprite.zIndex = 20;
         this.tweens.run(120, (t) => {
           if (sprite.destroyed || this.drag?.sprite === sprite) return;
@@ -619,7 +638,12 @@ export class GameView {
   }
 
   private onCardPointerDown(e: FederatedPointerEvent, sprite: CardSprite, homeX: number, homeY: number): void {
-    if (!this.view || this.drag || !sprite.playable || !this.myTurn) return;
+    if (!this.view || this.drag) return;
+    this.inspectCard(sprite.cardId);
+    if (!sprite.playable || !this.myTurn) {
+      e.stopPropagation();
+      return;
+    }
     const targets = this.cardTargets(sprite.instanceId);
     if (targets.bySquare.size === 0 && !targets.anywhere) return;
     e.stopPropagation();
