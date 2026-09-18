@@ -280,6 +280,53 @@ button.danger {
   font-weight: 700;
 }
 
+.turn-track {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.track {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--muted);
+  border: 1px solid #33334a;
+}
+
+.track.ok {
+  color: #9ef0bd;
+  border-color: rgba(79, 201, 120, 0.4);
+}
+
+.track.used {
+  color: #ffb3b0;
+  border-color: rgba(217, 83, 79, 0.4);
+  text-decoration: line-through;
+}
+
+.end-turn {
+  font-size: 16px;
+  padding: 12px;
+}
+
+.end-turn:disabled {
+  opacity: 0.4;
+  cursor: default;
+  filter: none;
+}
+
+.end-turn.ready {
+  box-shadow: 0 0 0 3px rgba(212, 162, 76, 0.35), 0 8px 24px rgba(212, 162, 76, 0.25);
+  animation: endturn-pulse 2s ease-in-out infinite;
+}
+
+@keyframes endturn-pulse {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.2); }
+}
+
 #log {
   flex: 1;
   overflow-y: auto;

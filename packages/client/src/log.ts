@@ -75,6 +75,9 @@ export function describeEvents(view: PlayerView, names: Record<'white' | 'black'
       case 'check':
         lines.push({ text: `${names[e.color]} is in check!`, important: true });
         break;
+      case 'turnEnded':
+        lines.push({ text: `— ${names[e.color]} ends the turn —`, color: e.color });
+        break;
       case 'gameOver': {
         const s = e.status;
         const winnerName = 'winner' in s ? names[s.winner] : null;

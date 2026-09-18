@@ -202,8 +202,9 @@ export class GameView {
     if (action) this.onAction(action);
   }
 
+  /** Cannot act right now: frozen in Defense, being sacrificed, or switched stance this turn. */
   isLocked(piece: Piece): boolean {
-    return !canAct(piece);
+    return !canAct(piece) || (this.view?.turnInfo.stanceChanged.includes(piece.id) ?? false);
   }
 
   // -------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 import type { CardInstance } from './cards/types.js';
 import { isInCheck } from './movement.js';
 import { legalActions } from './rules.js';
-import type { GameState, RuleConstants } from './state.js';
+import type { GameState, RuleConstants, TurnInfo } from './state.js';
 import type { Action, Color, GameEvent, GameStatus, Piece, Square } from './types.js';
 
 export interface PlayerViewSide {
@@ -22,6 +22,8 @@ export interface PlayerView {
   ply: number;
   seq: number;
   status: GameStatus;
+  /** What the side to move has done so far this turn. */
+  turnInfo: TurnInfo;
   rules: RuleConstants;
   board: (string | null)[];
   pieces: Record<string, Piece>;
@@ -51,6 +53,7 @@ export function viewFor(state: GameState, you: Color): PlayerView {
     ply: state.ply,
     seq: state.seq,
     status: state.status,
+    turnInfo: state.turnInfo,
     rules: state.rules,
     board: state.board,
     pieces: state.pieces,

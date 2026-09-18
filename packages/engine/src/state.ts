@@ -31,8 +31,21 @@ export interface PlayerState {
   pendingDraws: number;
 }
 
+/** What the side to move has done so far this turn. Reset by `endTurn`. */
+export interface TurnInfo {
+  /** The one big thing per turn: a piece move/attack, or a summon. */
+  majorAction: 'move' | 'summon' | null;
+  /** Pieces that changed stance this turn; they cannot act or switch again until the turn ends. */
+  stanceChanged: string[];
+  /** En passant square created by a double pawn push this turn (handed to the opponent at end of turn). */
+  enPassant: Square | null;
+}
+
+export const freshTurnInfo = (): TurnInfo => ({ majorAction: null, stanceChanged: [], enPassant: null });
+
 export interface GameState {
   rules: RuleConstants;
+  turnInfo: TurnInfo;
   pieces: Record<string, Piece>;
   /** 64 entries; pieceId or null. */
   board: (string | null)[];
@@ -85,6 +98,7 @@ export function createGame(config: GameConfig): GameState {
 
   const state: GameState = {
     rules,
+    turnInfo: freshTurnInfo(),
     pieces: {},
     board: new Array<string | null>(64).fill(null),
     players: {
@@ -187,6 +201,7 @@ export function cloneState(state: GameState): GameState {
   });
   return {
     rules: state.rules,
+    turnInfo: { ...state.turnInfo, stanceChanged: state.turnInfo.stanceChanged.slice() },
     pieces,
     board: state.board.slice(),
     players: { white: clonePlayer(state.players.white), black: clonePlayer(state.players.black) },

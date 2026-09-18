@@ -30,7 +30,12 @@ const toast = $('toast');
 const zoomEl = $('zoom');
 const stanceBtn = $<HTMLButtonElement>('stance');
 const stanceHint = $('stance-hint');
+const endTurnBtn = $<HTMLButtonElement>('end-turn');
+const turnTrack = $('turn-track');
+const trackMajor = $('track-major');
 let currentView: PlayerView | null = null;
+
+endTurnBtn.onclick = () => net.send({ type: 'action', action: { type: 'endTurn' } });
 
 nameInput.value = localStorage.getItem('chessx.name') ?? '';
 
@@ -223,8 +228,11 @@ function renderPieceZoom(piece: Piece): void {
     const c = summonCardFor(piece.summon.cardId) ?? allCards().find((x) => x.id === piece.summon!.cardId);
     status.push(`Being sacrificed: ${c?.name ?? 'summon'} arrives in ${piece.summon.turnsRemaining} turn${piece.summon.turnsRemaining === 1 ? '' : 's'}.`);
   } else if (piece.stance === 'defense') {
-    status.push('Cannot move or attack while in Defense mode. Switching back to Attack mode uses a turn.');
+    status.push('Cannot move or attack while in Defense mode. Switch it back to Attack mode to free it (it can act from the following turn).');
     if (piece.maxDef === 0) status.push('No DEF to shield with — raise DEF (e.g. Shield Wall) to make Defense mode count.');
+  }
+  if (currentView?.turnInfo.stanceChanged.includes(piece.id)) {
+    status.push('Changed stance this turn: cannot act or switch again until the turn ends.');
   }
 
   zoomEl.className = `zoom ${card ? 'summon' : 'basic'} owner-${piece.owner}`;
@@ -254,18 +262,22 @@ function renderPieceZoom(piece: Piece): void {
   stanceBtn.disabled = !action;
   if (action) {
     stanceHint.textContent = toDefense
-      ? 'Uses your turn. The piece cannot move or attack until switched back.'
-      : 'Uses your turn. The piece can move again from your next turn.';
+      ? 'Free action. The piece is frozen until you switch it back (from a later turn).'
+      : 'Free action. The piece sits out the rest of this turn, then may act as normal.';
   } else if (isKing) {
     stanceHint.textContent = 'The King cannot change stance.';
   } else if (piece.summon) {
     stanceHint.textContent = 'A piece being sacrificed cannot change stance.';
+  } else if (currentView?.turnInfo.stanceChanged.includes(piece.id)) {
+    stanceHint.textContent = 'Already switched this turn.';
   } else if (currentView && currentView.turn !== piece.owner) {
     stanceHint.textContent = solo ? `It is not ${ownerName}'s turn.` : 'Not your piece or not your turn.';
   } else if (currentView && currentView.status.kind !== 'playing') {
     stanceHint.textContent = 'The game is over.';
+  } else if (currentView && currentView.players[currentView.turn].pendingDraws > 0) {
+    stanceHint.textContent = 'Draw a card first.';
   } else {
-    stanceHint.textContent = currentView?.inCheck ? 'You must answer the check first.' : '';
+    stanceHint.textContent = '';
   }
 }
 
@@ -312,6 +324,11 @@ function renderRoom(): void {
 function renderStatus(view: PlayerView): void {
   const mine = view.turn === view.you;
   statusEl.className = 'status';
+  const canEnd = view.legalActions.some((a) => a.type === 'endTurn');
+  endTurnBtn.disabled = !canEnd;
+  endTurnBtn.classList.toggle('ready', canEnd && view.turnInfo.majorAction !== null);
+  turnTrack.classList.toggle('hidden', !mine || view.status.kind !== 'playing');
+
   if (view.status.kind !== 'playing') {
     statusEl.classList.add('over');
     const s = view.status;
@@ -324,22 +341,28 @@ function renderStatus(view: PlayerView): void {
   }
   if (mine) statusEl.classList.add('mine');
   if (view.inCheck) statusEl.classList.add('check');
+
+  const major = view.turnInfo.majorAction;
+  trackMajor.className = `track ${major ? 'used' : 'ok'}`;
+  trackMajor.textContent = major === 'move' ? 'Moved' : major === 'summon' ? 'Summoned' : 'Move / Summon';
+
   const turnNo = view.players[view.turn].turnsTaken;
   const drawIn = view.rules.drawEvery - (turnNo % view.rules.drawEvery);
   const mustDraw = view.players[view.turn].pendingDraws > 0;
-  if (solo) {
-    const side = view.turn === 'white' ? 'White' : 'Black';
-    statusEl.textContent = mustDraw
-      ? `${side}: the draw timer is full — click ${side}'s deck to draw a card.`
-      : `${side} to move (turn ${turnNo}). Move a piece or play a card.${view.inCheck ? ` ${side} is in CHECK!` : ''}`;
-  } else if (mine) {
-    statusEl.textContent = mustDraw
-      ? 'Your draw timer is full — click your deck to draw a card.'
-      : `Your turn (${turnNo}). Move a piece or play a card.${view.inCheck ? ' You are in CHECK!' : ''}`;
+  const side = view.turn === 'white' ? 'White' : 'Black';
+  const who = solo ? side : mine ? 'You' : 'Opponent';
+  const whose = solo ? `${side}'s` : mine ? 'your' : "the opponent's";
+
+  if (mustDraw) {
+    statusEl.textContent = mine || solo ? `${who}: the draw timer is full — click ${whose} deck to draw a card.` : 'Opponent is drawing a card…';
+  } else if (view.inCheck) {
+    statusEl.textContent = mine || solo ? `${who} ${solo ? 'is' : 'are'} in CHECK! Get the King to safety before ending the turn.` : 'Opponent is in check.';
+  } else if (mine || solo) {
+    statusEl.textContent = major
+      ? `${who} ${major === 'move' ? 'moved' : 'summoned'} (turn ${turnNo}). Play spells or switch stances, then End Turn.`
+      : `${who}: turn ${turnNo}. Move or summon, play spells, switch stances — then End Turn.`;
   } else {
-    statusEl.textContent = mustDraw
-      ? 'Opponent is drawing a card…'
-      : `Opponent's turn (${turnNo}).${view.inCheck ? ' They are in check.' : ''}`;
+    statusEl.textContent = `Opponent's turn (${turnNo}).`;
   }
   statusEl.title = `Next draw in ${drawIn === view.rules.drawEvery ? 0 : drawIn} turns`;
 
