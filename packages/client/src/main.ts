@@ -205,11 +205,9 @@ const rewardEl = $('reward');
 $('reward-close').onclick = () => rewardEl.classList.add('hidden');
 
 function showRewards(r: RewardReport): void {
-  $('reward-title').textContent =
-    r.reason === 'firstMatch' ? 'First match complete!' : r.leveledUp ? `Level ${r.level}!` : r.cards.length ? 'Victory spoils!' : 'Match complete';
+  $('reward-title').textContent = r.cards.length ? 'Reward' : r.leveledUp ? `Level ${r.level}!` : 'Match complete';
   const parts = [`+${r.xpGained} XP`];
-  if (r.leveledUp) parts.push(`you reached level ${r.level}`);
-  if (r.reason === 'firstMatch') parts.push("here's a taste of what's out there — win by checkmate to unlock more");
+  if (r.leveledUp) parts.push(`Level ${r.level}`);
   $('reward-xp').textContent = parts.join(' · ');
   const wrap = $('reward-cards');
   wrap.innerHTML = '';
