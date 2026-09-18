@@ -649,17 +649,36 @@ let gameInit: Promise<void> | null = null;
 function showGame(): Promise<void> {
   show('game');
   if (!gameInit) {
-    viewReady = true;
     gameInit = (async () => {
       configureLayout(window.innerWidth);
       // Desktop: park the chat under the card panel so it never overlaps anything.
       if (!MOBILE) $('inspect').appendChild(chatEl);
-      await gameView.init($('board-mount'));
+      const mount = $('board-mount');
+      try {
+        await gameView.init(mount);
+      } catch (err) {
+        // Starting the renderer failed (no WebGL, a stalled asset...). Say so where the
+        // board should be, and let the next attempt try again instead of staying broken.
+        console.error('board renderer failed to start', err);
+        const message = err instanceof Error ? err.message : String(err);
+        mount.innerHTML = `<div class="board-error"><b>Couldn't start the board.</b><span>${message.replace(/[<>&]/g, '')}</span><button id="board-retry">Try again</button></div>`;
+        $('board-retry').onclick = () => {
+          mount.innerHTML = '';
+          gameInit = null;
+          if (currentGameId) net.send({ type: 'openGame', gameId: currentGameId });
+        };
+        statusEl.textContent = 'The board could not be drawn. Press "Try again" or reload the page.';
+        throw err;
+      }
+      viewReady = true;
       gameView.onAction = (action) => net.send({ type: 'action', action });
       gameView.onOpenDiscard = (color) => openDiscard(color);
       inspect.render(null);
       setupMobileChrome();
     })();
+    gameInit.catch(() => {
+      gameInit = null; // allow a retry on the next open
+    });
   }
   return gameInit;
 }
@@ -1089,12 +1108,16 @@ net.onMessage = async (msg: ServerMessage) => {
       currentGameId = msg.gameId;
       rememberOpenGame(msg.gameId);
       if (!applyingRoute) pushRoute({ screen: 'game', id: msg.gameId });
-      await showGame();
       gameView.hotseat = solo;
       renderRoom();
       renderClocks();
       renderMobileBar(currentView);
       setSheet(null);
+      try {
+        await showGame();
+      } catch {
+        /* reported by showGame() */
+      }
       return;
     case 'room':
       room = msg.room;
@@ -1102,7 +1125,11 @@ net.onMessage = async (msg: ServerMessage) => {
       renderMobileBar(currentView);
       return;
     case 'state':
-      await showGame(); // waits for the renderer if it is still starting up
+      try {
+        await showGame(); // waits for the renderer if it is still starting up
+      } catch {
+        return; // the board could not start; showGame() has put a message and a retry button in its place
+      }
       enqueueState(msg.view, msg.clocks);
       return;
     case 'chat':

@@ -159,7 +159,13 @@ function serveStatic(req: IncomingMessage, res: ServerResponse, url: URL): void 
     return;
   }
   if (!existsSync(path) || statSync(path).isDirectory()) path = join(clientDist, 'index.html');
-  res.writeHead(200, { 'content-type': MIME[extname(path)] ?? 'application/octet-stream' });
+  // Vite names bundles by content hash, so they can be cached forever; everything else
+  // (index.html, sw.js, art) must be re-checked so a deploy is picked up on the next load.
+  const hashed = /\/assets\/[^/]+-[A-Za-z0-9_-]{8,}\.[a-z0-9]+$/.test(path.replace(/\\/g, '/'));
+  res.writeHead(200, {
+    'content-type': MIME[extname(path)] ?? 'application/octet-stream',
+    'cache-control': hashed ? 'public, max-age=31536000, immutable' : 'no-cache',
+  });
   res.end(readFileSync(path));
 }
 

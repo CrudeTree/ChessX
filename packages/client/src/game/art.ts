@@ -14,13 +14,19 @@ function artUrls(): string[] {
   return [...urls];
 }
 
+/** A request that never answers must not hold up the board: give each image this long. */
+const LOAD_TIMEOUT_MS = 8000;
+
 /** Load any textures not loaded yet. Safe to call repeatedly (e.g. after the admin uploads new art). */
 export async function preloadArt(): Promise<void> {
   const missing = artUrls().filter((u) => !artTextures.has(u));
   await Promise.all(
     missing.map(async (url) => {
       try {
-        const tex = await Assets.load<Texture>(url);
+        const tex = await Promise.race([
+          Assets.load<Texture>(url),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`timed out loading ${url}`)), LOAD_TIMEOUT_MS)),
+        ]);
         // The art is 512px and is always drawn much smaller (cards ~46px, board ~80px);
         // nearest-neighbour at those ratios speckles, so let the GPU filter it.
         tex.source.scaleMode = 'linear';

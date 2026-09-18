@@ -70,7 +70,7 @@ export type InspectTarget = { kind: 'piece'; piece: Piece } | { kind: 'card'; ca
  * comes from `view.legalActions` sent by the server.
  */
 export class GameView {
-  readonly app = new Application();
+  app = new Application();
   onAction: (a: Action) => void = () => {};
   /** Fired whenever the inspected piece/card changes or its data refreshes (null = nothing inspected). */
   onInspect: (target: InspectTarget | null) => void = () => {};
@@ -129,14 +129,15 @@ export class GameView {
   private pulsingHighlights: Graphics | null = null;
 
   async init(mount: HTMLElement): Promise<void> {
-    await this.app.init({
-      width: CANVAS_W,
-      height: CANVAS_H,
-      backgroundAlpha: 0,
-      antialias: true,
-      resolution: Math.min(2, window.devicePixelRatio || 1),
-      autoDensity: true,
-    });
+    const base = { width: CANVAS_W, height: CANVAS_H, backgroundAlpha: 0, autoDensity: true } as const;
+    try {
+      await this.app.init({ ...base, antialias: true, resolution: Math.min(2, window.devicePixelRatio || 1), preference: 'webgl' });
+    } catch (err) {
+      // Some GPUs/drivers refuse an antialiased or high-resolution context; try the plainest one.
+      console.warn('renderer init failed, retrying with conservative settings', err);
+      this.app = new Application();
+      await this.app.init({ ...base, antialias: false, resolution: 1, preference: 'webgl' });
+    }
     mount.appendChild(this.app.canvas);
     // Logical size for the stylesheet: it scales the canvas down to fit but never above this.
     this.app.canvas.style.setProperty('--canvas-w', `${CANVAS_W}px`);

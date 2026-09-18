@@ -1710,6 +1710,23 @@ button.danger {
   min-width: 0;
 }
 
+/* Shown where the board should be if the renderer could not start. */
+.board-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 32px;
+  max-width: 420px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.board-error b {
+  color: var(--text);
+  font-size: 18px;
+}
+
 /* The board is drawn at a fixed logical size and scaled down to whatever room the
    window leaves after the two panels, both horizontally and vertically. */
 #board-mount canvas {
