@@ -10,7 +10,10 @@ export async function preloadArt(): Promise<void> {
     urls.map(async (url) => {
       try {
         const tex = await Assets.load<Texture>(url);
-        tex.source.scaleMode = 'nearest'; // keep the pixel art crisp
+        // The art is 512px and is always drawn much smaller (cards ~46px, board ~80px);
+        // nearest-neighbour at those ratios speckles, so let the GPU filter it.
+        tex.source.scaleMode = 'linear';
+        tex.source.autoGenerateMipmaps = true;
         artTextures.set(url, tex);
       } catch {
         /* missing art just falls back to the glyph */

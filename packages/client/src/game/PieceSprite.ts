@@ -1,8 +1,15 @@
-import { getPieceDef, STANDARD_PIECES, type Piece } from '@chessx/engine';
-import { Container, Graphics, Text } from 'pixi.js';
+import { allCards, getPieceDef, STANDARD_PIECES, type Piece } from '@chessx/engine';
+import { Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
+import { artTextures } from './art.js';
 import { CHESS_FONT, COLORS, EMOJI_FONT, SQ, UI_FONT } from './layout.js';
 
 const isStandard = (kind: string) => kind in STANDARD_PIECES;
+
+/** The card artwork for a summoned creature, if the card has any and it loaded. */
+function artFor(kind: string): Texture | undefined {
+  const card = allCards().find((c) => c.type === 'summon' && c.piece.kind === kind);
+  return card?.art ? artTextures.get(card.art) : undefined;
+}
 
 /**
  * Visual for one piece: glyph, owner ring (for summoned creatures), stat
@@ -15,6 +22,8 @@ export class PieceSprite extends Container {
   private ring = new Graphics();
   private stanceMark = new Graphics();
   private glyph: Text;
+  /** Card artwork standing in for the glyph (summoned creatures with art). */
+  private art: Sprite | null = null;
   private badges = new Container();
   private timer = new Container();
   private timerText: Text;
@@ -44,6 +53,21 @@ export class PieceSprite extends Container {
     this.glyph.anchor.set(0.5);
     this.glyph.y = standard ? -2 * k : -4 * k;
     this.addChild(this.glyph);
+
+    // Creatures with card art: show the art itself (the emoji is only the fallback).
+    // Black's creatures are mirrored so the two armies face each other.
+    const tex = standard ? undefined : artFor(piece.kind);
+    if (tex) {
+      this.art = new Sprite(tex);
+      this.art.anchor.set(0.5);
+      // The art has ~10% empty margin inside its frame, so a little over a square
+      // reads as square-sized; lifted so it stands on the plinth above the badges.
+      const size = SQ * 1.12;
+      this.art.scale.set((size / tex.height) * (piece.owner === 'black' ? -1 : 1), size / tex.height);
+      this.art.y = -8 * k;
+      this.glyph.visible = false;
+      this.addChild(this.art);
+    }
     this.addChild(this.badges);
 
     const tr = Math.max(9, 12 * k);
@@ -80,12 +104,22 @@ export class PieceSprite extends Container {
 
     const k = SQ / 72;
 
-    // Owner ring for summoned creatures (emoji have no colour of their own).
+    // Owner marker for summoned creatures (their art has no side colour of its own):
+    // a full disc behind emoji, a low plinth under artwork so the creature stays visible.
     this.ring.clear();
     if (!standard) {
       const fill = piece.owner === 'white' ? COLORS.whitePiece : COLORS.blackPiece;
       const line = piece.owner === 'white' ? COLORS.whiteOutline : COLORS.blackOutline;
-      this.ring.circle(0, -2 * k, 27 * k).fill({ color: fill, alpha: 0.85 }).stroke({ width: 2, color: line, alpha: 0.8 });
+      if (this.art) {
+        // A tinted backdrop in the owner's colour behind the artwork, plus a plinth under its feet.
+        this.ring
+          .roundRect(-SQ / 2 + 3, -SQ / 2 + 3, SQ - 6, SQ - 6, 9 * k)
+          .fill({ color: fill, alpha: piece.owner === 'white' ? 0.42 : 0.5 })
+          .stroke({ width: 2, color: line, alpha: 0.7 });
+        this.ring.ellipse(0, SQ / 2 - 20 * k, 27 * k, 9 * k).fill({ color: fill, alpha: 0.9 }).stroke({ width: 2, color: line, alpha: 0.9 });
+      } else {
+        this.ring.circle(0, -2 * k, 27 * k).fill({ color: fill, alpha: 0.85 }).stroke({ width: 2, color: line, alpha: 0.8 });
+      }
     }
 
     // Stat badges: only shown when a stat is non-default so the board stays readable.
@@ -121,6 +155,7 @@ export class PieceSprite extends Container {
       this.timer.visible = false;
       this.glyph.alpha = locked ? 0.8 : 1;
     }
+    if (this.art) this.art.alpha = this.glyph.alpha;
 
     // Stance lock (not shown for sacrifices, which already have the timer).
     this.lock.visible = locked && !piece.summon;
