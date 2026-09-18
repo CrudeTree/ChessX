@@ -91,7 +91,7 @@ These are placeholders to exercise the engine — they live in `packages/engine/
 | The Ox         | Summon | Tier 2, 3 turns. Moves ≤2 orthogonally. 2 ATK / 0 DEF / 2 HP           |
 | Stone Sentinel | Summon | Tier 2, 2 turns. Moves 1 any direction. 1 ATK / 1 DEF / 3 HP           |
 | War Chariot    | Summon | Tier 3, 3 turns. Moves like Rook or Knight. 2 ATK / 0 DEF / 2 HP       |
-| Elder Wyrm     | Summon | Tier 4, 4 turns. Moves ≤3 any direction. 3 ATK / 1 DEF / 3 HP          |
+| Elder Wyrm     | Summon | Tier 4, 4 turns, **costs a Tier 4** (a beefed-up Queen). Moves ≤3 any direction. 3 ATK / 1 DEF / 3 HP |
 | Iron Hide      | Spell  | Friendly piece +2 HP                                                    |
 | Whetstone      | Spell  | Friendly piece +1 ATK (kings allowed)                                   |
 | Shield Wall    | Spell  | Friendly piece +1 DEF                                                   |

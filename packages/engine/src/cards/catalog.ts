@@ -70,8 +70,9 @@ export const CATALOG: CardDef[] = [
     name: 'Elder Wyrm',
     glyph: '🐉',
     tier: 4,
+    sacrificeTier: 4,
     summonTurns: 4,
-    text: 'Sacrifice a Tier 3 piece. Summons in 4 turns. Moves up to 3 squares in any direction. 3 ATK / 1 DEF / 3 HP.',
+    text: 'Sacrifice a Tier 4 piece. Summons in 4 turns. Moves up to 3 squares in any direction. 3 ATK / 1 DEF / 3 HP.',
     piece: {
       kind: 'elder_wyrm',
       name: 'Elder Wyrm',

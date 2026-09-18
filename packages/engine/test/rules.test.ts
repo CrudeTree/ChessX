@@ -364,14 +364,21 @@ describe('cards', () => {
     expect(Object.values(g.pieces).some((p) => p.kind === 'the_ox')).toBe(false);
   });
 
-  it('tier requirements are enforced', () => {
+  it('tier requirements are enforced (including per-card overrides)', () => {
     const g = newGame();
-    const wyrm = giveCard(g, 'white', 'elder_wyrm'); // tier 4 needs a rook
-    const targets = legalActions(g)
+    // War Chariot is tier 3: sacrifice a tier 2 (knight or bishop).
+    const chariot = giveCard(g, 'white', 'war_chariot');
+    const chariotTargets = legalActions(g)
+      .filter((a): a is Extract<Action, { type: 'playCard' }> => a.type === 'playCard' && a.cardInstanceId === chariot)
+      .map((a) => a.target);
+    expect(chariotTargets.sort()).toEqual([s('b1'), s('c1'), s('f1'), s('g1')].sort());
+    // Elder Wyrm overrides the default: it is a beefed-up queen, so it costs a tier 4 (the queen).
+    const wyrm = giveCard(g, 'white', 'elder_wyrm');
+    const wyrmTargets = legalActions(g)
       .filter((a): a is Extract<Action, { type: 'playCard' }> => a.type === 'playCard' && a.cardInstanceId === wyrm)
       .map((a) => a.target);
-    expect(targets.sort()).toEqual([s('a1'), s('h1')].sort());
-    expect(() => act(g, { type: 'playCard', cardInstanceId: wyrm, target: s('e2') })).toThrow(IllegalActionError);
+    expect(wyrmTargets).toEqual([s('d1')]);
+    expect(() => act(g, { type: 'playCard', cardInstanceId: wyrm, target: s('a1') })).toThrow(IllegalActionError);
   });
 
   it('spells modify stats, deal damage and draw', () => {
