@@ -19,7 +19,7 @@ Email/password needs no setup. Google and Facebook sign-in switch on when their 
 
 | variable | purpose |
 | --- | --- |
-| `PUBLIC_URL` | The URL players use, e.g. `https://chessx.example.com` (dev default `http://localhost:5173`). Used to build OAuth redirect URIs. |
+| `PUBLIC_URL` | The URL players use, e.g. `https://playchessx.com` (dev default `http://localhost:5173`). Used to build OAuth redirect URIs. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | From [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → OAuth client (Web). Add `PUBLIC_URL/api/auth/google/callback` as an authorised redirect URI. |
 | `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET` | From [Meta for Developers](https://developers.facebook.com/) → app → Facebook Login. Add `PUBLIC_URL/api/auth/facebook/callback` as a valid OAuth redirect URI. |
 | `DB_PATH` | SQLite file location (default `packages/server/data/chessx.sqlite`). |
@@ -52,7 +52,9 @@ cp /opt/chessx/deploy/.env.example /opt/chessx/deploy/.env   # set PUBLIC_URL to
 /opt/chessx/deploy/deploy.sh                                  # builds the image, starts the container
 ```
 
-The container listens on `127.0.0.1:8080` only. Point your existing reverse proxy at it — `deploy/nginx.conf.example` (with the WebSocket headers) or `deploy/Caddyfile.example` — and add a DNS record for the domain. Re-run `deploy.sh` to update. The database lives in the `chessx_data` Docker volume.
+The container listens on `127.0.0.1:8080` only. Point your existing reverse proxy at it — `deploy/nginx.conf.example` (with the WebSocket headers and Cloudflare real-IP settings) or `deploy/Caddyfile.example`. Re-run `deploy.sh` to update. The database lives in the `chessx_data` Docker volume.
+
+DNS on Cloudflare for `playchessx.com`: an **A** record `@` → droplet IP and a **CNAME** `www` → `playchessx.com`, both proxied (orange cloud). Under SSL/TLS pick **Full (strict)** and either install a Cloudflare Origin Certificate in the proxy or use certbot; WebSockets are on by default in Cloudflare's Network settings.
 
 Managed hosts, if you'd rather not run it yourself:
 

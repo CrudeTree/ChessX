@@ -1,5 +1,5 @@
 # If the droplet runs Caddy instead of nginx: add this site block.
 # Caddy handles HTTPS certificates and WebSocket upgrades automatically.
-chessx.example.com {
+playchessx.com, www.playchessx.com {
     reverse_proxy 127.0.0.1:8080
 }
