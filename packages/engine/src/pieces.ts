@@ -37,7 +37,8 @@ export const STANDARD_PIECES: Record<string, PieceDef> = {
     tier: 1,
     movement: { pawn: true },
     ...BASE_STATS,
-    description: 'Moves one square forward (two from its starting square). Attacks diagonally forward. Promotes when it reaches the last rank.',
+    description:
+      'Moves one square forward (two from its starting square). Attacks diagonally forward. En passant: if an enemy pawn just double-stepped past you, you may capture it on the very next turn as if it had moved one square. Promotes when it reaches the last rank.',
   },
   knight: {
     kind: 'knight',
@@ -83,7 +84,7 @@ export const STANDARD_PIECES: Record<string, PieceDef> = {
     movement: { leaps: ALL_DIRS },
     ...BASE_STATS,
     description:
-      "Moves one square in any direction. Royal strike: the King's attack destroys any piece outright, no matter its HP or DEF. Has no HP itself: any enemy piece reaching its square captures it. Cannot enter Defense mode.",
+      "Moves one square in any direction. Castling: if neither the King nor that Rook has moved, the squares between are empty and none are attacked, the King may move two squares toward the Rook and the Rook hops over it. Royal strike: the King's attack destroys any piece outright, no matter its HP or DEF. Has no HP itself: any enemy piece reaching its square captures it. Cannot enter Defense mode.",
   },
 };
 
