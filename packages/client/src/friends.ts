@@ -4,7 +4,7 @@ import type { ClientMessage, Social, UserSearchResult } from '@chessx/protocol';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
-async function searchUsers(q: string): Promise<UserSearchResult[]> {
+export async function searchUsers(q: string): Promise<UserSearchResult[]> {
   const res = await fetch(`/api/users/search?q=${encodeURIComponent(q)}`, { credentials: 'same-origin' });
   if (!res.ok) return [];
   return ((await res.json()) as { results: UserSearchResult[] }).results;

@@ -18,6 +18,7 @@ import { join } from 'node:path';
 import type { Db, UserRow } from './db.js';
 
 const ADMIN_ID_KEY = 'admin_user_id';
+const DEVELOPERS_KEY = 'developer_user_ids';
 const BALANCE_KEY = 'balance';
 /** Uploaded art is re-encoded by the browser to a 512px PNG before upload; allow headroom. */
 const MAX_UPLOAD_BYTES = 3 * 1024 * 1024;
@@ -109,7 +110,11 @@ export class Admin {
     return { balance: currentBalance(), removedCards };
   }
 
-  isAdmin(user: UserRow): boolean {
+  /**
+   * The owner: the pinned account (or anyone in ADMIN_USER_IDS). Owners can edit
+   * cards *and* decide who else may.
+   */
+  isOwner(user: UserRow): boolean {
     if (this.extraIds.has(user.id)) return true;
     let pinned = this.db.getKv(ADMIN_ID_KEY);
     if (!pinned && this.bootstrapName) {
@@ -121,5 +126,33 @@ export class Admin {
       }
     }
     return pinned === user.id;
+  }
+
+  /** Anyone allowed into the card editor: the owner plus the developers they have added. */
+  isAdmin(user: UserRow): boolean {
+    return this.isOwner(user) || this.developerIds().includes(user.id);
+  }
+
+  developerIds(): string[] {
+    const raw = this.db.getKv(DEVELOPERS_KEY);
+    if (!raw) return [];
+    try {
+      const ids = JSON.parse(raw) as unknown;
+      return Array.isArray(ids) ? ids.filter((x): x is string => typeof x === 'string') : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** Grant or revoke editor access. Owners cannot be revoked (they are not on this list). */
+  setDeveloper(userId: string, grant: boolean): string[] {
+    const target = this.db.userById(userId);
+    if (!target) throw new AdminError('No such player.');
+    if (grant && this.isOwner(target)) throw new AdminError(`${target.name} is already the owner.`);
+    const ids = new Set(this.developerIds());
+    if (grant) ids.add(userId);
+    else ids.delete(userId);
+    this.db.setKv(DEVELOPERS_KEY, JSON.stringify([...ids]));
+    return [...ids];
   }
 }

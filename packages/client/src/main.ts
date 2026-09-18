@@ -279,6 +279,7 @@ $('open-binder').onclick = () => void openBinder();
 
 const editor = new BalanceEditor(() => goBack());
 editor.onApplied = () => rerenderAfterBalance();
+editor.isOwner = () => !!user?.owner;
 
 function openEditor(): void {
   if (!user?.admin) return;
@@ -1023,6 +1024,12 @@ net.onMessage = async (msg: ServerMessage) => {
     case 'balance':
       takeBalance(msg.balance);
       if (!user?.admin) showToast('Card values were updated by the game admin.', 'info');
+      return;
+    case 'user':
+      // Roles changed (made a developer, or removed): show/hide the editor button.
+      user = msg.user;
+      $('open-editor').classList.toggle('hidden', !msg.user.admin);
+      if (!msg.user.admin && !editorScreen.classList.contains('hidden')) goHome();
       return;
     case 'welcome': {
       takeBalance(msg.balance);

@@ -48,6 +48,21 @@ describe('admin', () => {
     expect(admin.isAdmin(other)).toBe(false);
   });
 
+  it('the owner can make other players developers (editor access) and revoke it', () => {
+    const { admin, mk } = setup();
+    const owner = mk('Djabooty');
+    const bob = mk('Bob');
+    expect(admin.isOwner(owner)).toBe(true);
+    expect(admin.isAdmin(bob)).toBe(false);
+    expect(admin.setDeveloper(bob.id, true)).toEqual([bob.id]);
+    expect(admin.isAdmin(bob)).toBe(true);
+    expect(admin.isOwner(bob)).toBe(false); // developers do not get to appoint others
+    expect(() => admin.setDeveloper(owner.id, true)).toThrow(AdminError);
+    expect(() => admin.setDeveloper('nope', true)).toThrow(AdminError);
+    expect(admin.setDeveloper(bob.id, false)).toEqual([]);
+    expect(admin.isAdmin(bob)).toBe(false);
+  });
+
   it('created cards reach every player; deleting one removes it from collections, decks and the catalog', () => {
     const { db, admin, progression, mk } = setup();
     const alice = mk('Alice');

@@ -24,7 +24,7 @@ const DB_PATH = process.env.DB_PATH ?? join(here, '..', 'data', 'chessx.sqlite')
 
 const db = new Db(DB_PATH);
 const admin = new Admin(db, dirname(DB_PATH));
-setAdminCheck((u) => admin.isAdmin(u));
+setAdminCheck((u) => admin.isAdmin(u), (u) => admin.isOwner(u));
 admin.loadBalance(); // before any game is loaded or created
 const auth = new Auth(db, configFromEnv(process.env));
 const games = new GameManager(db, (id) => db.userById(id)?.name ?? 'Player');
@@ -197,6 +197,35 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 
     // ---- balance (card/piece numbers). Reading is public: every client needs it to render cards.
     if (req.method === 'GET' && path === '/api/balance') return json(res, 200, { balance: currentBalance() });
+    // ---- developers (owner only): who else may use the card editor
+    if (path === '/api/admin/developers') {
+      const user = auth.userFromRequest(req);
+      if (!user) return json(res, 401, { error: 'Not signed in.' });
+      if (!admin.isOwner(user)) return json(res, 403, { error: 'Only the owner can manage developers.' });
+      const list = (ids: string[]) =>
+        ids
+          .map((id) => db.userById(id))
+          .filter((u): u is NonNullable<typeof u> => !!u)
+          .map((u) => ({ id: u.id, name: u.name, email: u.email }));
+      if (req.method === 'GET') return json(res, 200, { developers: list(admin.developerIds()) });
+      if (req.method === 'POST') {
+        const b = await readJson(req);
+        const target = str(b.userId);
+        const grant = b.grant !== false;
+        const ids = admin.setDeveloper(target, grant);
+        console.log(`[admin] ${user.name} ${grant ? 'added' : 'removed'} developer ${nameOf(target)}`);
+        // Tell the player straight away so the Card editor button appears/disappears without a reload.
+        const t = db.userById(target);
+        if (t) {
+          for (const s of socketsByUser.get(t.id) ?? []) {
+            s.send({ type: 'user', user: toUserInfo(t) });
+            s.send({ type: 'notice', message: grant ? `${user.name} made you a developer — the Card editor is now on your home page.` : 'Your developer access was removed.' });
+          }
+        }
+        return json(res, 200, { developers: list(ids) });
+      }
+    }
+
     if ((path === '/api/balance' && req.method === 'PUT') || (path === '/api/admin/upload' && req.method === 'POST')) {
       const user = auth.userFromRequest(req);
       if (!user) return json(res, 401, { error: 'Not signed in.' });

@@ -27,6 +27,8 @@ import {
   type PiecePatch,
   type RulesPatch,
 } from '@chessx/engine';
+import type { DeveloperInfo } from '@chessx/protocol';
+import { searchUsers } from './friends.js';
 import { pickImageFile, prepareImage } from './imageprep.js';
 import { movementMap } from './inspect.js';
 import { ApiError, balanceApi } from './net.js';
@@ -35,7 +37,12 @@ const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
-type Selection = { kind: 'card'; id: string } | { kind: 'piece'; id: string } | { kind: 'rules'; id: 'rules' } | { kind: 'custom'; id: string };
+type Selection =
+  | { kind: 'card'; id: string }
+  | { kind: 'piece'; id: string }
+  | { kind: 'rules'; id: 'rules' }
+  | { kind: 'custom'; id: string }
+  | { kind: 'developers'; id: 'developers' };
 
 function defaultEffect(kind: Effect['kind']): Effect {
   switch (kind) {
@@ -65,6 +72,8 @@ const DIRS8: ReadonlyArray<readonly [number, number, string]> = [
 
 export class BalanceEditor {
   onApplied: (b: Balance) => void = () => {};
+  /** Set by main.ts: is the signed-in user the owner (may manage developers)? */
+  isOwner: () => boolean = () => false;
   private draft: Balance = { cards: {}, pieces: {} };
   private saved = '';
   private selected: Selection | null = null;
@@ -156,6 +165,7 @@ export class BalanceEditor {
     };
     section('Game');
     item({ kind: 'rules', id: 'rules' }, 'Game rules', 'starting mana, hand size, draws', !!(this.draft.rules && Object.keys(this.draft.rules).length));
+    if (this.isOwner()) item({ kind: 'developers', id: 'developers' }, 'Developers', 'who else may use this editor', false);
     section('Chess pieces');
     for (const kind of STANDARD_KINDS) {
       const p = basePieceDef(kind);
@@ -217,6 +227,7 @@ export class BalanceEditor {
     form.innerHTML = '';
     if (!this.selected) return;
     if (this.selected.kind === 'rules') this.renderRulesForm(form);
+    else if (this.selected.kind === 'developers') void this.renderDevelopers(form);
     else if (this.selected.kind === 'piece') this.renderPieceForm(form, this.selected.id);
     else if (this.selected.kind === 'custom') {
       const card = this.draft.customCards?.find((c) => c.id === this.selected!.id);
@@ -292,6 +303,109 @@ export class BalanceEditor {
     col.append(row, knock);
     wrap.append(preview, col);
     return wrap;
+  }
+
+  // ---- developers (owner only)
+
+  private async renderDevelopers(form: HTMLElement): Promise<void> {
+    this.header(form, 'Developers', 'Players who may open the Card editor. Only you can change this list.', '<span class="glyph">🛠</span>', false, () => {});
+    const list = this.group(form, 'Current developers');
+    const listBody = document.createElement('div');
+    listBody.className = 'devlist';
+    listBody.textContent = 'Loading…';
+    list.appendChild(listBody);
+
+    const add = this.group(form, 'Add a developer');
+    const row = document.createElement('div');
+    row.className = 'eimage-row';
+    const input = document.createElement('input');
+    input.placeholder = 'Name, friend code or email';
+    input.style.minWidth = '260px';
+    const find = document.createElement('button');
+    find.textContent = 'Find';
+    row.append(input, find);
+    const results = document.createElement('div');
+    results.className = 'devlist';
+    const note = document.createElement('p');
+    note.className = 'hint';
+    note.textContent = 'Developers can change every card, piece and rule, upload pictures and create cards — the same as you, except they cannot add or remove other developers.';
+    add.append(row, results, note);
+
+    const status = (text: string, error = false) => {
+      $('editor-msg').textContent = text;
+      $('editor-msg').className = `hint editor-msg ${error ? 'error' : 'ok'}`;
+    };
+    const renderList = (devs: DeveloperInfo[]) => {
+      listBody.innerHTML = '';
+      if (!devs.length) {
+        listBody.innerHTML = '<span class="muted">Nobody yet — just you.</span>';
+        return;
+      }
+      for (const d of devs) {
+        const r = document.createElement('div');
+        r.className = 'devrow';
+        r.innerHTML = `<b>${esc(d.name)}</b><span class="muted">${esc(d.email ?? '')}</span>`;
+        const rm = document.createElement('button');
+        rm.className = 'danger';
+        rm.textContent = 'Remove';
+        rm.onclick = async () => {
+          if (!confirm(`Remove ${d.name}'s developer access?`)) return;
+          try {
+            renderList(await balanceApi.setDeveloper(d.id, false));
+            status(`${d.name} is no longer a developer.`);
+          } catch (e) {
+            status(e instanceof ApiError ? e.message : 'Could not update.', true);
+          }
+        };
+        r.appendChild(rm);
+        listBody.appendChild(r);
+      }
+    };
+    const search = async () => {
+      const q = input.value.trim();
+      results.innerHTML = '';
+      if (q.length < 2) return;
+      const found = await searchUsers(q);
+      const devs = new Set((await balanceApi.developers()).map((d) => d.id));
+      if (!found.length) results.innerHTML = '<span class="muted">No players found.</span>';
+      for (const u of found) {
+        const r = document.createElement('div');
+        r.className = 'devrow';
+        r.innerHTML = `<b>${esc(u.name)}</b><span class="muted">${esc(u.friendCode)} · Lv ${u.level}</span>`;
+        if (u.relation === 'you') r.insertAdjacentHTML('beforeend', '<span class="muted">that is you</span>');
+        else if (devs.has(u.id)) r.insertAdjacentHTML('beforeend', '<span class="muted">already a developer</span>');
+        else {
+          const b = document.createElement('button');
+          b.className = 'primary';
+          b.textContent = 'Make developer';
+          b.onclick = async () => {
+            try {
+              renderList(await balanceApi.setDeveloper(u.id, true));
+              status(`${u.name} can now open the Card editor.`);
+              results.innerHTML = '';
+              input.value = '';
+            } catch (e) {
+              status(e instanceof ApiError ? e.message : 'Could not update.', true);
+            }
+          };
+          r.appendChild(b);
+        }
+        results.appendChild(r);
+      }
+    };
+    find.onclick = () => void search();
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        void search();
+      }
+    };
+
+    try {
+      renderList(await balanceApi.developers());
+    } catch (e) {
+      listBody.textContent = e instanceof ApiError ? e.message : 'Could not load.';
+    }
   }
 
   // ---- game rules

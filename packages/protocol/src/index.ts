@@ -15,6 +15,15 @@ export interface UserInfo {
   avatarUrl: string | null;
   /** May edit card/piece balance from inside the app. */
   admin: boolean;
+  /** The game's owner: may also choose who else is a developer. */
+  owner: boolean;
+}
+
+/** A player with editor access, as listed for the owner. */
+export interface DeveloperInfo {
+  id: string;
+  name: string;
+  email: string | null;
 }
 
 export interface AuthProviders {
@@ -193,6 +202,8 @@ export type ServerMessage =
   | { type: 'welcome'; version: number; user: UserInfo; balance: Balance }
   /** The admin changed card/piece numbers: apply and redraw. */
   | { type: 'balance'; balance: Balance }
+  /** Your account changed (e.g. you were made a developer). */
+  | { type: 'user'; user: UserInfo }
   | { type: 'games'; games: GameSummary[] }
   /** This tab is now attached to a game. */
   | { type: 'seated'; gameId: string; code: string; color: Color; room: RoomInfo; solo: boolean }

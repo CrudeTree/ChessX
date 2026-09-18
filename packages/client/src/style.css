@@ -1269,6 +1269,26 @@ button.danger {
   min-width: 180px;
 }
 
+.devlist {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-basis: 100%;
+}
+
+.devrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.devrow > button {
+  margin-left: auto;
+}
+
 .editor-form textarea {
   width: 100%;
   resize: vertical;

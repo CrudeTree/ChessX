@@ -33,11 +33,13 @@ export function configFromEnv(env: NodeJS.ProcessEnv): AuthConfig {
 
 /** Set by the server at startup (see admin.ts); until then nobody is an admin. */
 let isAdminUser: (u: UserRow) => boolean = () => false;
-export function setAdminCheck(fn: (u: UserRow) => boolean): void {
-  isAdminUser = fn;
+let isOwnerUser: (u: UserRow) => boolean = () => false;
+export function setAdminCheck(admin: (u: UserRow) => boolean, owner: (u: UserRow) => boolean): void {
+  isAdminUser = admin;
+  isOwnerUser = owner;
 }
 
-export const toUserInfo = (u: UserRow): UserInfo => ({ id: u.id, name: u.name, email: u.email, avatarUrl: u.avatar_url, admin: isAdminUser(u) });
+export const toUserInfo = (u: UserRow): UserInfo => ({ id: u.id, name: u.name, email: u.email, avatarUrl: u.avatar_url, admin: isAdminUser(u), owner: isOwnerUser(u) });
 
 // ---------------------------------------------------------------------------
 // Passwords
