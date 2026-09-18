@@ -27,7 +27,7 @@ export const COLORS = {
   whiteOutline: 0x2b2420,
   blackPiece: 0x1c1b24,
   blackOutline: 0xd8d2e6,
-  move: 0x3dd68c,
+  move: 0x22d3ee,
   attack: 0xe0503c,
   card: 0x8f6cff,
   select: 0xf0c75e,

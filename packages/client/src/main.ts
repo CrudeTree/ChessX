@@ -1,4 +1,15 @@
-import { allCards, getCardDef, getPieceDef, STANDARD_PIECES, type Color, type Piece, type PlayerView, type SummonCardDef } from '@chessx/engine';
+import {
+  allCards,
+  getCardDef,
+  getPieceDef,
+  movementPattern,
+  STANDARD_PIECES,
+  type Color,
+  type MovementSpec,
+  type Piece,
+  type PlayerView,
+  type SummonCardDef,
+} from '@chessx/engine';
 import type { RoomInfo, ServerMessage } from '@chessx/protocol';
 import { GameView, type InspectTarget } from './game/GameView.js';
 import { describeEvents } from './log.js';
@@ -149,7 +160,7 @@ function renderCardZoom(cardId: string): void {
       <div class="zoom-owner">${isSummon ? 'CREATURE' : 'SPELL'}</div>
     </div>
     <div class="zoom-type">${esc(typeLine)}</div>
-    <div class="zoom-art"><span class="glyph emoji">${card.glyph}</span></div>
+    ${isSummon ? movementMap(card.piece.movement, `<span class="glyph emoji">${card.piece.glyph}</span>`) : `<div class="zoom-art"><span class="glyph emoji">${card.glyph}</span></div>`}
     ${stats}
     <div class="zoom-text">${esc(card.text)}</div>
     <div class="zoom-status">${esc(needs)}</div>
@@ -157,6 +168,30 @@ function renderCardZoom(cardId: string): void {
   zoomEl.classList.add('fresh');
   setTimeout(() => zoomEl.classList.remove('fresh'), 180);
   resetStanceButton('Drag the card onto a highlighted target to play it.');
+}
+
+/**
+ * 7x7 mini board with the piece in the middle and dots on every square it
+ * could reach on an empty board. Black dot = move, red dot = attack-only.
+ */
+function movementMap(spec: MovementSpec, glyphHtml: string): string {
+  const R = 3;
+  const { moves, attacks, unbounded } = movementPattern(spec, R);
+  const key = (df: number, dr: number) => `${df},${dr}`;
+  const moveSet = new Set(moves.map(([f, r]) => key(f, r)));
+  const attackSet = new Set(attacks.map(([f, r]) => key(f, r)));
+  let cells = '';
+  for (let dr = R; dr >= -R; dr--) {
+    for (let df = -R; df <= R; df++) {
+      const light = (df + dr + 2 * R) % 2 === 0;
+      const isCenter = df === 0 && dr === 0;
+      const k = key(df, dr);
+      const dot = isCenter ? glyphHtml : moveSet.has(k) ? '<i class="dot"></i>' : attackSet.has(k) ? '<i class="dot atk"></i>' : '';
+      cells += `<div class="cell ${light ? 'l' : 'd'}${isCenter ? ' c' : ''}">${dot}</div>`;
+    }
+  }
+  const legend = `<div class="map-legend">${attacks.length ? '<span><i class="dot"></i> move</span><span><i class="dot atk"></i> attack</span>' : '<span><i class="dot"></i> move / attack</span>'}${unbounded ? '<span>… continues to the edge</span>' : ''}</div>`;
+  return `<div class="minimap">${cells}</div>${legend}`;
 }
 
 function describeTarget(rule: string): string {
@@ -199,7 +234,7 @@ function renderPieceZoom(piece: Piece): void {
       <div class="zoom-owner">${esc(ownerName)}</div>
     </div>
     <div class="zoom-type">${esc(typeLine)}</div>
-    <div class="zoom-art"><span class="glyph ${isBasic ? 'chess' : 'emoji'} ${piece.owner}">${def.glyph}</span></div>
+    ${movementMap(def.movement, `<span class="glyph ${isBasic ? 'chess' : 'emoji'} ${piece.owner}">${def.glyph}</span>`)}
     <div class="zoom-stats">
       <div class="stat atk">ATK<b>${piece.atk}</b></div>
       <div class="stat def">DEF<b>${piece.maxDef === 0 ? '—' : `${piece.def}/${piece.maxDef}`}</b></div>

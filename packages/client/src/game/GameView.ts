@@ -84,6 +84,8 @@ export class GameView {
   private inspected: string | null = null;
   private inspectedCard: string | null = null;
   private pulse = 0;
+  /** The current set of target-square highlights, faded in and out by the ticker. */
+  private pulsingHighlights: Graphics | null = null;
 
   async init(mount: HTMLElement): Promise<void> {
     await this.app.init({
@@ -134,6 +136,9 @@ export class GameView {
       }
       this.myDeck.tick(tk.deltaMS);
       this.oppDeck.tick(tk.deltaMS);
+      // Target highlights breathe on a 2 s cycle.
+      const hl = this.pulsingHighlights;
+      if (hl && !hl.destroyed) hl.alpha = 0.7 + 0.3 * Math.sin((this.pulse * 2 * Math.PI) / 2);
     });
   }
 
@@ -415,18 +420,16 @@ export class GameView {
       g.rect(BOARD_X, BOARD_Y, BOARD_SIZE, BOARD_SIZE).fill({ color: COLORS.card, alpha: 0.18 });
       g.rect(BOARD_X, BOARD_Y, BOARD_SIZE, BOARD_SIZE).stroke({ width: 4, color: COLORS.card, alpha: 0.9 });
     }
+    // Target squares: bright border + faded fill; the whole group pulses (see ticker).
+    const pulse = new Graphics();
     for (const [square, action] of targets.bySquare) {
       const { x, y } = squareToXY(square, this.flipped);
-      if (action.type === 'playCard') {
-        g.rect(x - SQ / 2 + 3, y - SQ / 2 + 3, SQ - 6, SQ - 6).fill({ color: COLORS.card, alpha: 0.35 });
-        g.rect(x - SQ / 2 + 3, y - SQ / 2 + 3, SQ - 6, SQ - 6).stroke({ width: 3, color: COLORS.card, alpha: 0.95 });
-      } else if (this.view?.board[square]) {
-        g.circle(x, y, SQ / 2 - 5).stroke({ width: 5, color: COLORS.attack, alpha: 0.85 });
-      } else {
-        g.circle(x, y, 10).fill({ color: COLORS.move, alpha: 0.85 });
-      }
+      const color = action.type === 'playCard' ? COLORS.card : this.view?.board[square] ? COLORS.attack : COLORS.move;
+      pulse.roundRect(x - SQ / 2 + 3, y - SQ / 2 + 3, SQ - 6, SQ - 6, 6).fill({ color, alpha: 0.28 });
+      pulse.roundRect(x - SQ / 2 + 3, y - SQ / 2 + 3, SQ - 6, SQ - 6, 6).stroke({ width: 3, color, alpha: 1 });
     }
-    this.highlightLayer.addChild(g);
+    this.highlightLayer.addChild(g, pulse);
+    this.pulsingHighlights = pulse;
   }
 
   /** Colour of the player sitting at the bottom of the screen. */

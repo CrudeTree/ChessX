@@ -1,6 +1,6 @@
 import { getPieceDef } from './pieces.js';
 import { findKing, pieceAt, piecesOf, type GameState } from './state.js';
-import { fileOf, inBounds, rankOf, sq, type Color, type Piece, type Square } from './types.js';
+import { fileOf, inBounds, rankOf, sq, type Color, type MovementSpec, type Piece, type Square } from './types.js';
 
 export interface MoveCandidate {
   from: Square;
@@ -139,6 +139,41 @@ function addCastling(state: GameState, king: Piece, out: MoveCandidate[]): void 
       rookTo: pass1,
     });
   }
+}
+
+export interface MovementPattern {
+  /** Offsets [dFile, dRank] the piece can move to on an empty board, "forward" = +rank. */
+  moves: [number, number][];
+  /** Offsets that are attack-only (pawn diagonals). */
+  attacks: [number, number][];
+  /** Any ray continues beyond `radius`. */
+  unbounded: boolean;
+}
+
+/**
+ * Abstract movement pattern for teaching UIs: where could this piece go from
+ * the centre of an empty board, within `radius` squares? Always drawn from
+ * the owner's perspective (forward is up), so no colour flipping is needed.
+ */
+export function movementPattern(spec: MovementSpec, radius = 3): MovementPattern {
+  const moves: [number, number][] = [];
+  const attacks: [number, number][] = [];
+  let unbounded = false;
+  const within = (df: number, dr: number) => Math.abs(df) <= radius && Math.abs(dr) <= radius;
+
+  if (spec.pawn) {
+    moves.push([0, 1]);
+    attacks.push([-1, 1], [1, 1]);
+  }
+  for (const [df, dr] of spec.leaps ?? []) if (within(df, dr)) moves.push([df, dr]);
+  for (const group of spec.slides ?? []) {
+    const range = group.range ?? Infinity;
+    if (range > radius) unbounded = true;
+    for (const [df, dr] of group.dirs) {
+      for (let step = 1; step <= Math.min(range, radius); step++) moves.push([df * step, dr * step]);
+    }
+  }
+  return { moves, attacks, unbounded };
 }
 
 /** True if any piece of `byColor` threatens `square`. */
