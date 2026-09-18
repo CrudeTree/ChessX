@@ -456,18 +456,24 @@ function goHome(): void {
   net.send({ type: 'listGames' });
 }
 
-async function showGame(): Promise<void> {
+let gameInit: Promise<void> | null = null;
+
+/** Show the game screen, initialising the board renderer the first time. Safe to call concurrently. */
+function showGame(): Promise<void> {
   show('game');
-  if (!viewReady) {
+  if (!gameInit) {
     viewReady = true;
-    configureLayout(window.innerWidth);
-    // Desktop: park the chat under the card panel so it never overlaps anything.
-    if (!MOBILE) $('inspect').appendChild(chatEl);
-    await gameView.init($('board-mount'));
-    gameView.onAction = (action) => net.send({ type: 'action', action });
-    inspect.render(null);
-    setupMobileChrome();
+    gameInit = (async () => {
+      configureLayout(window.innerWidth);
+      // Desktop: park the chat under the card panel so it never overlaps anything.
+      if (!MOBILE) $('inspect').appendChild(chatEl);
+      await gameView.init($('board-mount'));
+      gameView.onAction = (action) => net.send({ type: 'action', action });
+      inspect.render(null);
+      setupMobileChrome();
+    })();
   }
+  return gameInit;
 }
 
 // ---------------------------------------------------------------------------
@@ -820,7 +826,7 @@ net.onMessage = async (msg: ServerMessage) => {
       renderMobileBar(currentView);
       return;
     case 'state':
-      if (!viewReady) await showGame();
+      await showGame(); // waits for the renderer if it is still starting up
       currentView = msg.view;
       currentClocks = msg.clocks;
       gameView.sync(msg.view);

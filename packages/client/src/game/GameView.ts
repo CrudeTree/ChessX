@@ -90,6 +90,9 @@ export class GameView {
   private voids = new Map<string, Graphics>();
   private view: PlayerView | null = null;
   private flipped = false;
+  /** Set once init() has built the stage; a view arriving earlier is parked here. */
+  private ready = false;
+  private pendingView: PlayerView | null = null;
   private drag: Drag | null = null;
   private selection: Selection | null = null;
   private inspected: string | null = null;
@@ -169,6 +172,13 @@ export class GameView {
       const hl = this.pulsingHighlights;
       if (hl && !hl.destroyed) hl.alpha = 0.7 + 0.3 * Math.sin((this.pulse * 2 * Math.PI) / 2);
     });
+
+    this.ready = true;
+    if (this.pendingView) {
+      const v = this.pendingView;
+      this.pendingView = null;
+      this.sync(v);
+    }
   }
 
   /** Forget the current game (called when leaving a room). */
@@ -182,6 +192,7 @@ export class GameView {
     for (const layer of [this.highlightLayer, this.lastMoveLayer, this.inspectLayer, this.fxLayer, this.banner]) layer.removeChildren();
     for (const old of this.handLayer.removeChildren()) old.destroy();
     this.view = null;
+    this.pendingView = null;
     this.inspectedCard = null;
     this.setInspected(null);
   }
@@ -240,6 +251,11 @@ export class GameView {
   // Sync with server state
 
   sync(view: PlayerView): void {
+    if (!this.ready) {
+      // Stage not built yet (slow WebGL start / art still loading): apply once init() finishes.
+      this.pendingView = view;
+      return;
+    }
     const first = this.view === null;
     this.view = view;
     const flipped = !this.hotseat && view.you === 'black';
