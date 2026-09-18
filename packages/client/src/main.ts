@@ -348,17 +348,37 @@ function remaining(clocks: Clocks, color: Color, now = Date.now()): number {
   return clocks.running && clocks.turn === color ? base - (now - clocks.asOf) : base;
 }
 
+let homeTab: 'active' | 'finished' = 'active';
+$('tab-active').onclick = () => setHomeTab('active');
+$('tab-finished').onclick = () => setHomeTab('finished');
+
+function setHomeTab(tab: 'active' | 'finished'): void {
+  homeTab = tab;
+  $('tab-active').classList.toggle('active', tab === 'active');
+  $('tab-finished').classList.toggle('active', tab === 'finished');
+  $('games-active').classList.toggle('hidden', tab !== 'active');
+  $('games-finished').classList.toggle('hidden', tab !== 'finished');
+}
+
 function renderHome(): void {
-  const mine = $('games-mine');
-  const theirs = $('games-theirs');
-  const done = $('games-done');
-  mine.innerHTML = theirs.innerHTML = done.innerHTML = '';
+  const activeEl = $('games-active');
+  const finishedEl = $('games-finished');
+  activeEl.innerHTML = finishedEl.innerHTML = '';
   $('home-empty').classList.toggle('hidden', games.length > 0);
 
-  for (const g of games) {
+  const active = games.filter((g) => g.status.kind === 'playing');
+  const finished = games.filter((g) => g.status.kind !== 'playing');
+  $('active-count').textContent = active.length ? `${active.length}` : '';
+  $('finished-count').textContent = finished.length ? `${finished.length}` : '';
+
+  // Your move first, then games waiting on the other player, then invites without an opponent yet.
+  const rank = (g: GameSummary) => (g.yourTurn && !g.waitingForOpponent ? 0 : g.waitingForOpponent ? 2 : 1);
+  active.sort((a, b) => rank(a) - rank(b) || b.updatedAt - a.updatedAt);
+
+  for (const g of active) {
     const card = document.createElement('div');
-    const finished = g.status.kind !== 'playing';
-    card.className = `game-card ${g.yourTurn && !finished ? 'your-turn' : ''}`;
+    const yours = g.yourTurn && !g.waitingForOpponent;
+    card.className = `game-card ${yours ? 'your-turn' : 'waiting'}`;
     card.onclick = () => openGame(g.id);
 
     const opp = document.createElement('div');
@@ -366,15 +386,10 @@ function renderHome(): void {
     const oppName = document.createElement('span');
     oppName.textContent = g.solo ? 'Practice (both sides)' : g.opponentName ?? 'Waiting for an opponent';
     const badge = document.createElement('span');
-    if (finished) {
-      badge.className = 'badge done';
-      const s = g.status;
-      const winner = 'winner' in s ? s.winner : null;
-      badge.textContent = s.kind === 'stalemate' ? 'Draw' : g.solo ? `${colorName(winner!)} won` : winner === g.yourColor ? 'You won' : 'You lost';
-    } else if (g.waitingForOpponent) {
+    if (g.waitingForOpponent) {
       badge.className = 'badge wait';
-      badge.textContent = 'Waiting';
-    } else if (g.yourTurn) {
+      badge.textContent = 'Invite sent';
+    } else if (yours) {
       badge.className = 'badge';
       badge.textContent = g.solo ? `${colorName(g.turn)} to move` : 'Your move';
     } else {
@@ -393,15 +408,42 @@ function renderHome(): void {
     } else if (g.solo) {
       meta.innerHTML = `<span>Turn ${g.turn === 'white' ? 'White' : 'Black'}</span><span>${new Date(g.updatedAt).toLocaleDateString()}</span>`;
     } else {
-      const yours = remaining(g.clocks, g.yourColor);
+      const yoursMs = remaining(g.clocks, g.yourColor);
       const theirsMs = remaining(g.clocks, g.yourColor === 'white' ? 'black' : 'white');
       const low = (ms: number) => (ms < 6 * 3600_000 ? 'low' : '');
-      meta.innerHTML = `<span class="${low(yours)}">You: ${fmtClock(yours)}</span><span class="${low(theirsMs)}">Them: ${fmtClock(theirsMs)}</span>`;
+      meta.innerHTML = `<span class="${low(yoursMs)}">You: ${fmtClock(yoursMs)}</span><span class="${low(theirsMs)}">Them: ${fmtClock(theirsMs)}</span>`;
     }
 
     card.append(opp, canvas, meta);
-    (finished ? done : g.yourTurn || g.waitingForOpponent ? mine : theirs).appendChild(card);
+    activeEl.appendChild(card);
   }
+
+  // Finished: a compact list, newest first.
+  finished.sort((a, b) => b.updatedAt - a.updatedAt);
+  for (const g of finished) {
+    const row = document.createElement('div');
+    row.className = 'finished-row';
+    row.onclick = () => openGame(g.id);
+    const s = g.status;
+    const winner = 'winner' in s ? s.winner : null;
+    const how = s.kind === 'timeout' ? 'on time' : s.kind === 'resigned' ? 'by resignation' : s.kind === 'kingCaptured' ? 'king captured' : s.kind === 'checkmate' ? 'checkmate' : 'draw';
+    let result: string;
+    let cls = '';
+    if (s.kind === 'stalemate') result = 'Draw';
+    else if (g.solo) result = `${colorName(winner!)} won · ${how}`;
+    else if (winner === g.yourColor) {
+      result = `Won · ${how}`;
+      cls = 'won';
+    } else {
+      result = `Lost · ${how}`;
+      cls = 'lost';
+    }
+    const oppName = g.solo ? 'Practice (both sides)' : g.opponentName ?? 'Unknown';
+    row.innerHTML = `<span class="fr-opp">vs ${oppName}</span><span class="fr-result ${cls}">${result}</span><span class="fr-when">${new Date(g.updatedAt).toLocaleDateString()}</span>`;
+    finishedEl.appendChild(row);
+  }
+
+  setHomeTab(homeTab);
 }
 
 function openGame(id: string): void {

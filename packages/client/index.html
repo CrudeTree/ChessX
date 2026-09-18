@@ -100,18 +100,17 @@
             <div id="challenges" class="challenges"></div>
           </section>
           <section>
-            <h2 class="section-title">Your move</h2>
-            <div id="games-mine" class="games"></div>
+            <div class="games-head">
+              <h2 class="section-title">Games</h2>
+              <div class="tabs">
+                <button id="tab-active" class="active">Active <span id="active-count" class="tab-count"></span></button>
+                <button id="tab-finished">Finished <span id="finished-count" class="tab-count"></span></button>
+              </div>
+            </div>
+            <div id="games-active" class="games"></div>
+            <div id="games-finished" class="finished-list hidden"></div>
+            <p id="home-empty" class="hint hidden">No games yet. Challenge a friend, start one with an invite code, or try Practice.</p>
           </section>
-          <section>
-            <h2 class="section-title">Waiting on the opponent</h2>
-            <div id="games-theirs" class="games"></div>
-          </section>
-          <section>
-            <h2 class="section-title">Finished</h2>
-            <div id="games-done" class="games"></div>
-          </section>
-          <p id="home-empty" class="hint hidden">No games yet. Challenge a friend, start one with an invite code, or try Practice.</p>
         </div>
         <aside class="friends-panel">
           <h2 class="section-title">Friends</h2>

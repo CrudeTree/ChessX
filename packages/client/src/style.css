@@ -880,6 +880,52 @@ button.danger {
   margin: 26px 0 10px;
 }
 
+.games-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 26px 0 10px;
+}
+
+.games-head .section-title {
+  margin: 0;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--panel);
+  border: 1px solid #2f2f44;
+  border-radius: 999px;
+  padding: 3px;
+}
+
+.tabs button {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+}
+
+.tabs button.active {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.tab-count {
+  color: var(--muted);
+  font-weight: 400;
+  margin-left: 2px;
+}
+
+.tabs button.active .tab-count {
+  color: var(--accent);
+  font-weight: 700;
+}
+
 .games {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -887,9 +933,78 @@ button.danger {
 }
 
 .games:empty::after {
-  content: 'Nothing here.';
+  content: 'No active games.';
   color: var(--muted);
   font-size: 13px;
+}
+
+/* Games where you are waiting on the other player sit back; yours come forward. */
+.game-card.waiting {
+  opacity: 0.55;
+  filter: saturate(0.7);
+}
+
+.game-card.waiting:hover {
+  opacity: 0.85;
+}
+
+/* Finished games: a plain list. */
+.finished-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.finished-list:empty::after {
+  content: 'No finished games yet.';
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.finished-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 16px;
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px solid #2f2f44;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.finished-row:hover {
+  border-color: #4a4a66;
+}
+
+.finished-row .fr-opp {
+  font-weight: 600;
+}
+
+.finished-row .fr-result {
+  font-weight: 700;
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #33334a;
+  color: var(--muted);
+}
+
+.finished-row .fr-result.won {
+  background: rgba(63, 191, 111, 0.2);
+  color: #9ef0bd;
+}
+
+.finished-row .fr-result.lost {
+  background: rgba(217, 83, 79, 0.18);
+  color: #ffb3b0;
+}
+
+.finished-row .fr-when {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
 }
 
 .game-card {
