@@ -811,6 +811,63 @@ button.danger {
   padding: 10px 28px;
 }
 
+/* Discard browser */
+.discard-card {
+  width: 460px;
+}
+
+.discard-pos {
+  margin-top: -4px;
+}
+
+.discard-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  touch-action: pan-y;
+}
+
+.discard-stage .nav {
+  font-size: 28px;
+  line-height: 1;
+  padding: 10px 14px;
+  border-radius: 50%;
+}
+
+.discard-stage .nav:disabled {
+  opacity: 0.25;
+}
+
+.discard-view {
+  width: 220px;
+  min-height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+}
+
+.discard-view .bcard {
+  width: 210px;
+  cursor: grab;
+  animation: reveal 0.25s ease-out;
+}
+
+.discard-view .bcard .bart {
+  height: 120px;
+  font-size: 56px;
+}
+
+.discard-view .bcard .btext {
+  font-size: 12px;
+}
+
+.discard-view .empty {
+  color: var(--muted);
+}
+
 /* ------------------------------------------------------------------- Home */
 #home {
   overflow-y: auto;

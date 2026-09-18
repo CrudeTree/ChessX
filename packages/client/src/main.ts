@@ -267,6 +267,78 @@ async function openBinder(): Promise<void> {
 
 $('open-binder').onclick = () => void openBinder();
 
+// ---------------------------------------------------------------------------
+// Discard pile browser: newest card first; arrows, keyboard or swipe to go deeper.
+
+const discardEl = $('discard');
+const discardView = $('discard-view');
+let discardPile: string[] = []; // card ids, newest first
+let discardIndex = 0;
+let discardColor: Color | null = null;
+
+function openDiscard(color: Color, keepIndex = false): void {
+  if (!currentView) return;
+  const pile = currentView.players[color].graveyard.map((c) => c.cardId).reverse();
+  const owner = solo ? colorName(color) : color === currentView.you ? 'Your' : `${names()[color]}'s`;
+  $('discard-title').textContent = `${owner} discard pile`;
+  discardColor = color;
+  discardPile = pile;
+  discardIndex = keepIndex ? Math.min(discardIndex, Math.max(0, pile.length - 1)) : 0;
+  renderDiscard();
+  discardEl.classList.remove('hidden');
+}
+
+/** Called after each state change: keep an open viewer in step with the pile. */
+function refreshDiscardIfOpen(): void {
+  if (discardColor && !discardEl.classList.contains('hidden')) openDiscard(discardColor, true);
+}
+
+function renderDiscard(): void {
+  discardView.innerHTML = '';
+  if (!discardPile.length) {
+    $('discard-pos').textContent = '';
+    discardView.innerHTML = '<div class="empty">Nothing played yet.</div>';
+  } else {
+    $('discard-pos').textContent = `${discardIndex + 1} of ${discardPile.length}${discardIndex === 0 ? ' (top)' : ''}`;
+    discardView.appendChild(cardElement(getCardDef(discardPile[discardIndex]!)));
+  }
+  $<HTMLButtonElement>('discard-next').disabled = discardIndex <= 0;
+  $<HTMLButtonElement>('discard-prev').disabled = discardIndex >= discardPile.length - 1;
+}
+
+function stepDiscard(delta: number): void {
+  const next = Math.max(0, Math.min(discardPile.length - 1, discardIndex + delta));
+  if (next === discardIndex) return;
+  discardIndex = next;
+  renderDiscard();
+}
+
+$('discard-prev').onclick = () => stepDiscard(1); // older = deeper
+$('discard-next').onclick = () => stepDiscard(-1);
+$('discard-close').onclick = () => discardEl.classList.add('hidden');
+discardEl.addEventListener('pointerdown', (e) => {
+  if (e.target === discardEl) discardEl.classList.add('hidden');
+});
+document.addEventListener('keydown', (e) => {
+  if (discardEl.classList.contains('hidden')) return;
+  if (e.key === 'ArrowLeft') stepDiscard(1);
+  else if (e.key === 'ArrowRight') stepDiscard(-1);
+  else if (e.key === 'Escape') discardEl.classList.add('hidden');
+});
+// Swipe / drag through the pile.
+{
+  let startX: number | null = null;
+  discardView.addEventListener('pointerdown', (e) => {
+    startX = e.clientX;
+  });
+  discardView.addEventListener('pointerup', (e) => {
+    if (startX === null) return;
+    const dx = e.clientX - startX;
+    startX = null;
+    if (Math.abs(dx) > 30) stepDiscard(dx < 0 ? 1 : -1);
+  });
+}
+
 // Reward popup
 const rewardEl = $('reward');
 $('reward-close').onclick = () => rewardEl.classList.add('hidden');
@@ -488,6 +560,7 @@ function leaveGameUi(): void {
   currentClocks = null;
   lastSeq = -1;
   wasMyTurn = false;
+  stateQueue.length = 0;
   logEl.innerHTML = '';
   $('chat-log').innerHTML = '';
   if (viewReady) gameView.reset();
@@ -515,6 +588,7 @@ function showGame(): Promise<void> {
       if (!MOBILE) $('inspect').appendChild(chatEl);
       await gameView.init($('board-mount'));
       gameView.onAction = (action) => net.send({ type: 'action', action });
+      gameView.onOpenDiscard = (color) => openDiscard(color);
       inspect.render(null);
       setupMobileChrome();
     })();
@@ -717,6 +791,53 @@ function renderStatus(view: PlayerView): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// State queue. Your own actions apply instantly. The opponent's arrive one per
+// action and are replayed with pacing: a card play shows the reveal animation
+// first, then the effect; moves get a beat so they can be followed.
+
+const stateQueue: { view: PlayerView; clocks: Clocks }[] = [];
+let draining = false;
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+function enqueueState(view: PlayerView, clocks: Clocks): void {
+  stateQueue.push({ view, clocks });
+  if (!draining) void drainStates();
+}
+
+async function drainStates(): Promise<void> {
+  draining = true;
+  try {
+    while (stateQueue.length) {
+      const { view, clocks } = stateQueue.shift()!;
+      const opponentPlayed = !solo && view.events.find((e) => e.type === 'cardPlayed' && e.color !== view.you);
+      const opponentActed = !solo && view.events.some((e) => (e.type === 'moved' || e.type === 'attacked') && view.turn !== view.you);
+      if (opponentPlayed && opponentPlayed.type === 'cardPlayed') {
+        await gameView.revealCard(opponentPlayed.cardId, false, opponentPlayed.target);
+      }
+      applyState(view, clocks);
+      // Give a move a moment to be seen before the next queued action lands.
+      if (stateQueue.length && (opponentActed || opponentPlayed)) await sleep(opponentPlayed ? 500 : 700);
+    }
+  } finally {
+    draining = false;
+  }
+}
+
+function applyState(view: PlayerView, clocks: Clocks): void {
+  currentView = view;
+  currentClocks = clocks;
+  gameView.sync(view);
+  renderStatus(view);
+  renderClocks();
+  appendLog(view);
+  renderMobileBar(view);
+  refreshDiscardIfOpen();
+  const myTurn = !solo && view.turn === view.you && view.status.kind === 'playing';
+  if (myTurn && !wasMyTurn && view.ply > 0) attention('Your move');
+  wasMyTurn = myTurn;
+}
+
 function appendLog(view: PlayerView): void {
   if (view.seq === lastSeq) return;
   lastSeq = view.seq;
@@ -873,18 +994,7 @@ net.onMessage = async (msg: ServerMessage) => {
       return;
     case 'state':
       await showGame(); // waits for the renderer if it is still starting up
-      currentView = msg.view;
-      currentClocks = msg.clocks;
-      gameView.sync(msg.view);
-      renderStatus(msg.view);
-      renderClocks();
-      appendLog(msg.view);
-      renderMobileBar(msg.view);
-      {
-        const myTurn = !solo && msg.view.turn === msg.view.you && msg.view.status.kind === 'playing';
-        if (myTurn && !wasMyTurn && msg.view.ply > 0) attention('Your move');
-        wasMyTurn = myTurn;
-      }
+      enqueueState(msg.view, msg.clocks);
       return;
     case 'chat':
       appendChat(msg.messages);

@@ -35,6 +35,10 @@ export const DECK_RING_R = 74;
 export let DECK_SCALE = 1;
 export let MY_DECK = { x: 0, y: 0 };
 export let OPP_DECK = { x: 0, y: 0 };
+/** Face-up discard piles (played cards), one per player. Drawn as a scaled-down card. */
+export let DISCARD_SCALE = 0.5;
+export let MY_DISCARD = { x: 0, y: 0 };
+export let OPP_DISCARD = { x: 0, y: 0 };
 
 function desktop(): void {
   MOBILE = false;
@@ -58,6 +62,10 @@ function desktop(): void {
   DECK_SCALE = 1;
   MY_DECK = { x: BOARD_X + BOARD_SIZE + SIDE_W / 2, y: BOARD_Y + BOARD_SIZE - DECK_RING_R - 8 };
   OPP_DECK = { x: SIDE_W / 2, y: BOARD_Y + DECK_RING_R + 8 };
+  // Discards sit in the same column as the owner's deck, toward the middle of the board.
+  DISCARD_SCALE = 0.5;
+  MY_DISCARD = { x: MY_DECK.x, y: BOARD_Y + 150 };
+  OPP_DISCARD = { x: OPP_DECK.x, y: BOARD_Y + BOARD_SIZE - 150 };
 }
 
 /**
@@ -73,23 +81,26 @@ function mobile(viewportW: number): void {
   BOARD_X = Math.floor((W - BOARD_SIZE) / 2);
   SIDE_W = 0;
 
-  // Opponent row: their deck (small) at the left, their face-down hand beside it.
+  // Opponent row: their deck (small) at the left, their discard beside it, then their face-down hand.
   DECK_SCALE = 0.42;
+  DISCARD_SCALE = 0.3;
   const deckR = DECK_RING_R * DECK_SCALE;
   OPP_HAND_Y = deckR + 6;
   OPP_CARD_W = 22;
   OPP_CARD_H = 32;
   OPP_DECK = { x: deckR + 8, y: deckR + 6 };
-  OPP_HAND_X0 = deckR * 2 + 24;
+  OPP_DISCARD = { x: deckR * 2 + 16 + (92 * DISCARD_SCALE) / 2 + 6, y: deckR + 6 };
+  OPP_HAND_X0 = OPP_DISCARD.x + (92 * DISCARD_SCALE) / 2 + 14;
   OPP_HAND_X1 = W - 8;
   BOARD_Y = Math.round(deckR * 2 + 16);
 
-  // Hand strip below the board, your deck at the right end.
+  // Hand strip below the board; your discard above your deck at the right end.
   CARD_W = 84;
   CARD_H = 136;
   HAND_Y = BOARD_Y + BOARD_SIZE + 12;
   const myDeckColumn = deckR * 2 + 16;
-  MY_DECK = { x: W - myDeckColumn / 2 - 4, y: HAND_Y + CARD_H / 2 };
+  MY_DISCARD = { x: W - myDeckColumn / 2 - 4, y: HAND_Y + (150 * DISCARD_SCALE) / 2 + 2 };
+  MY_DECK = { x: W - myDeckColumn / 2 - 4, y: HAND_Y + CARD_H - deckR - 2 };
   HAND_X0 = 8;
   HAND_X1 = W - myDeckColumn - 8;
   CANVAS_H = HAND_Y + CARD_H + 10;

@@ -1,8 +1,9 @@
-import { canAct, opposite, type Action, type Color, type GameEvent, type Piece, type PlayerView, type Square } from '@chessx/engine';
+import { canAct, getCardDef, opposite, type Action, type Color, type GameEvent, type Piece, type PlayerView, type Square } from '@chessx/engine';
 import { Application, Container, Graphics, Text, type FederatedPointerEvent } from 'pixi.js';
 import { preloadArt } from './art.js';
 import { CardSprite } from './CardSprite.js';
 import { DeckSprite } from './DeckSprite.js';
+import { DiscardSprite } from './DiscardSprite.js';
 import {
   BOARD_SIZE,
   BOARD_X,
@@ -15,14 +16,17 @@ import {
   DECK_H,
   DECK_SCALE,
   DECK_W,
+  DISCARD_SCALE,
   HAND_X0,
   HAND_X1,
   HAND_Y,
   MOBILE,
   MY_DECK,
+  MY_DISCARD,
   OPP_CARD_H,
   OPP_CARD_W,
   OPP_DECK,
+  OPP_DISCARD,
   OPP_HAND_X0,
   OPP_HAND_X1,
   OPP_HAND_Y,
@@ -85,6 +89,10 @@ export class GameView {
   private banner = new Container();
   private myDeck = new DeckSprite();
   private oppDeck = new DeckSprite();
+  private myDiscard!: DiscardSprite;
+  private oppDiscard!: DiscardSprite;
+  /** Fired when a discard pile is clicked, with the colour whose pile it is. */
+  onOpenDiscard: (color: Color) => void = () => {};
 
   private sprites = new Map<string, PieceSprite>();
   private voids = new Map<string, Graphics>();
@@ -150,7 +158,13 @@ export class GameView {
     this.handLayer.mask = handMask;
     this.myDeck.onDraw = () => this.onAction({ type: 'draw' });
     this.oppDeck.onDraw = () => this.onAction({ type: 'draw' });
-    this.deckLayer.addChild(this.oppDeck, this.myDeck);
+    this.myDiscard = new DiscardSprite(DISCARD_SCALE);
+    this.oppDiscard = new DiscardSprite(DISCARD_SCALE);
+    this.myDiscard.position.set(MY_DISCARD.x, MY_DISCARD.y);
+    this.oppDiscard.position.set(OPP_DISCARD.x, OPP_DISCARD.y);
+    this.myDiscard.onOpen = () => this.onOpenDiscard(this.bottomColor());
+    this.oppDiscard.onOpen = () => this.onOpenDiscard(opposite(this.bottomColor()));
+    this.deckLayer.addChild(this.oppDeck, this.myDeck, this.oppDiscard, this.myDiscard);
 
     this.app.stage.eventMode = 'static';
     this.app.stage.hitArea = this.app.screen;
@@ -191,6 +205,10 @@ export class GameView {
     this.voids.clear();
     for (const layer of [this.highlightLayer, this.lastMoveLayer, this.inspectLayer, this.fxLayer, this.banner]) layer.removeChildren();
     for (const old of this.handLayer.removeChildren()) old.destroy();
+    if (this.ready) {
+      this.myDiscard.update([]);
+      this.oppDiscard.update([]);
+    }
     this.view = null;
     this.pendingView = null;
     this.inspectedCard = null;
@@ -488,6 +506,8 @@ export class GameView {
     const view = this.view;
     if (!view) return;
     const bottom = this.bottomColor();
+    this.myDiscard.update(view.players[bottom].graveyard);
+    this.oppDiscard.update(view.players[opposite(bottom)].graveyard);
     const canDraw = view.legalActions.some((a) => a.type === 'draw');
     for (const [deck, color] of [
       [this.myDeck, bottom],
@@ -517,6 +537,72 @@ export class GameView {
       const to = fromBottom ? { x: (HAND_X0 + HAND_X1) / 2, y: HAND_Y + CARD_H / 2 } : { x: (OPP_HAND_X0 + OPP_HAND_X1) / 2, y: OPP_HAND_Y };
       for (let i = 0; i < ev.count; i++) this.flyCard(from, to, i * 120);
     }
+  }
+
+  /** Promise wrapper around a tween. */
+  private tween(duration: number, update: (t: number) => void, ease = easeInOutQuad): Promise<void> {
+    return new Promise((done) => this.tweens.run(duration, update, { ease, done }));
+  }
+
+  /**
+   * Show the opponent playing a card: a face-down card rises from their hand
+   * row to the middle of the board, flips face-up, holds so it can be read,
+   * then glides onto their discard pile. Resolves when the card lands.
+   */
+  async revealCard(cardId: string, fromBottom: boolean, target?: Square): Promise<void> {
+    if (!this.ready) return;
+    const from = fromBottom ? { x: (HAND_X0 + HAND_X1) / 2, y: HAND_Y + CARD_H / 2 } : { x: (OPP_HAND_X0 + OPP_HAND_X1) / 2, y: OPP_HAND_Y };
+    const centre = { x: BOARD_X + BOARD_SIZE / 2, y: BOARD_Y + BOARD_SIZE / 2 };
+    // Spells go to the discard pile; a summon card sinks into the sacrificed piece's square.
+    const isSummon = getCardDef(cardId).type === 'summon';
+    const pile = isSummon && target !== undefined ? squareToXY(target, this.flipped) : fromBottom ? MY_DISCARD : OPP_DISCARD;
+    const landScale = isSummon ? 0.1 : DISCARD_SCALE;
+    const bigScale = MOBILE ? 1.35 : 1.6;
+
+    const holder = new Container();
+    holder.position.set(from.x, from.y);
+    holder.zIndex = 200;
+    const back = new Graphics()
+      .roundRect(-CARD_W / 2, -CARD_H / 2, CARD_W, CARD_H, 9)
+      .fill(COLORS.deckBack)
+      .stroke({ width: 2.5, color: COLORS.deckEdge });
+    const face = new CardSprite({ instanceId: `reveal-${cardId}`, cardId }, true);
+    face.alpha = 1;
+    face.eventMode = 'none';
+    face.visible = false;
+    const glow = new Graphics().roundRect(-CARD_W / 2 - 10, -CARD_H / 2 - 10, CARD_W + 20, CARD_H + 20, 14).fill({ color: COLORS.select, alpha: 0.35 });
+    glow.visible = false;
+    holder.addChild(glow, back, face);
+    holder.scale.set(fromBottom ? 1 : 0.5);
+    this.dragLayer.addChild(holder);
+
+    // 1. Rise to the centre, growing, spinning face-down -> face-up at the halfway point.
+    const s0 = holder.scale.x;
+    await this.tween(650, (t) => {
+      holder.position.set(from.x + (centre.x - from.x) * t, from.y + (centre.y - from.y) * t);
+      const s = s0 + (bigScale - s0) * t;
+      const flip = Math.cos(t * Math.PI); // 1 -> -1
+      holder.scale.set(s * Math.abs(flip), s);
+      if (flip < 0 && !face.visible) {
+        face.visible = true;
+        back.visible = false;
+        glow.visible = true;
+      }
+    });
+    holder.scale.set(bigScale);
+    // 2. Hold so it can be read; a gentle breathing glow.
+    await this.tween(1000, (t) => {
+      glow.alpha = 0.7 + 0.3 * Math.sin(t * Math.PI * 2);
+    });
+    // 3. Glide onto the discard pile, shrinking to pile size.
+    glow.visible = false;
+    await this.tween(450, (t) => {
+      holder.position.set(centre.x + (pile.x - centre.x) * t, centre.y + (pile.y - centre.y) * t);
+      holder.scale.set(bigScale + (landScale - bigScale) * t);
+      if (isSummon) holder.alpha = 1 - t * 0.6;
+    });
+    holder.destroy({ children: true });
+    this.burst(pile.x, pile.y, isSummon ? COLORS.summon : COLORS.card, isSummon ? 1.2 : 0.6);
   }
 
   private flyCard(from: { x: number; y: number }, to: { x: number; y: number }, delay: number): void {

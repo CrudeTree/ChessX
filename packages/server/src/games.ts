@@ -39,11 +39,18 @@ function randomCode(len = 5): string {
 
 // ---------------------------------------------------------------------------
 
+/** Per card the opponent must watch being revealed, plus a beat for the move itself. */
+const REVEAL_MS_PER_CARD = 2200;
+const TURN_GRACE_BASE_MS = 1000;
+const TURN_GRACE_MAX_MS = 15_000;
+
 export class LiveGame {
   state: GameState | null;
   chat: ChatMessage[];
   private watchers = new Set<Transport>();
   private lastChatAt = new Map<string, number>();
+  /** Cards played during the current turn (drives the opponent's clock grace). */
+  private cardsThisTurn = 0;
 
   /** Fired after anything that changes how the game appears on the home page. */
   onChanged: (game: LiveGame) => void = () => {};
@@ -124,13 +131,21 @@ export class LiveGame {
     };
   }
 
-  /** Bank the elapsed time against the side to move (called when the turn passes or the game ends). */
-  private settleClock(now: number): void {
+  /**
+   * Bank the elapsed time against the side to move (called when the turn passes
+   * or the game ends). The next clock starts after a grace period long enough
+   * for the opponent to watch the replay of what just happened.
+   */
+  private settleClock(now: number, graceMs = 0): void {
     if (!this.clockRunning() || !this.state) return;
     const elapsed = Math.max(0, now - this.row.turn_started_at!);
     if (this.state.turn === 'white') this.row.clock_white_ms -= elapsed;
     else this.row.clock_black_ms -= elapsed;
-    this.row.turn_started_at = now;
+    this.row.turn_started_at = now + graceMs;
+  }
+
+  private replayGrace(): number {
+    return Math.min(TURN_GRACE_MAX_MS, TURN_GRACE_BASE_MS + REVEAL_MS_PER_CARD * this.cardsThisTurn);
   }
 
   /** If the side to move has run out of time, end the game. Returns true if it did. */
@@ -245,7 +260,11 @@ export class LiveGame {
       if (e instanceof IllegalActionError) throw new GameError(e.message);
       throw e;
     }
-    if (next.turn !== before || next.status.kind !== 'playing') this.settleClock(now);
+    if (action.type === 'playCard') this.cardsThisTurn++;
+    if (next.turn !== before || next.status.kind !== 'playing') {
+      this.settleClock(now, next.turn !== before ? this.replayGrace() : 0);
+      this.cardsThisTurn = 0;
+    }
     this.state = next;
     this.save(now);
     this.broadcastState();
