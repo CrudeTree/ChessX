@@ -713,7 +713,9 @@ function panelColors(): { me: Color; opp: Color } {
 function renderRoom(): void {
   if (!room || !you) return;
   roomCode.textContent = solo ? 'PRACTICE' : room.code;
-  $('room-hint').textContent = solo ? 'You control both sides. The hand shown is always the side to move.' : 'Send this to a friend. They enter it under "Join".';
+  const hint = $('room-hint');
+  hint.textContent = solo ? '' : 'Send this to a friend. They enter it under "Join".';
+  hint.classList.toggle('hidden', solo);
   const { me, opp } = panelColors();
   for (const [id, color] of [
     ['me', me],
