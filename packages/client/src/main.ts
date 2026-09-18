@@ -1,4 +1,4 @@
-import { DEFAULT_RULES, getCardDef, type Color, type PlayerView } from '@chessx/engine';
+import { applyBalance, DEFAULT_RULES, EMPTY_BALANCE, getCardDef, type Balance, type Color, type PlayerView } from '@chessx/engine';
 import {
   levelFor,
   xpForLevel,
@@ -13,13 +13,14 @@ import {
 } from '@chessx/protocol';
 import { initAttention, notice as attention } from './attention.js';
 import { Binder, cardElement } from './binder.js';
+import { BalanceEditor } from './editor.js';
 import { FriendsPanel } from './friends.js';
 import { initPush, onServiceWorkerMessage } from './push.js';
 import { GameView } from './game/GameView.js';
 import { configureLayout, MOBILE } from './game/layout.js';
 import { InspectPanel } from './inspect.js';
 import { describeEvents } from './log.js';
-import { ApiError, authApi, Net, openGameId, profileApi, rememberOpenGame } from './net.js';
+import { ApiError, authApi, balanceApi, Net, openGameId, profileApi, rememberOpenGame } from './net.js';
 import { colorName, drawThumbnail } from './thumbnail.js';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -28,14 +29,16 @@ const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) 
 const authScreen = $('auth');
 const homeScreen = $('home');
 const binderScreen = $('binder');
+const editorScreen = $('editor');
 const gameScreen = $('game');
 const chatEl = $('chat');
 
-type Screen = 'auth' | 'home' | 'binder' | 'game';
+type Screen = 'auth' | 'home' | 'binder' | 'editor' | 'game';
 function show(screen: Screen): void {
   authScreen.classList.toggle('hidden', screen !== 'auth');
   homeScreen.classList.toggle('hidden', screen !== 'home');
   binderScreen.classList.toggle('hidden', screen !== 'binder');
+  editorScreen.classList.toggle('hidden', screen !== 'editor');
   gameScreen.classList.toggle('hidden', screen !== 'game');
   chatEl.classList.toggle('hidden', screen !== 'game');
 }
@@ -132,6 +135,7 @@ async function showAuth(): Promise<void> {
 async function signedIn(u: UserInfo): Promise<void> {
   user = u;
   $('me-name').textContent = u.name;
+  $('open-editor').classList.toggle('hidden', !u.admin);
   const avatar = $<HTMLImageElement>('avatar');
   avatar.classList.toggle('hidden', !u.avatarUrl);
   if (u.avatarUrl) avatar.src = u.avatarUrl;
@@ -146,7 +150,7 @@ async function signedIn(u: UserInfo): Promise<void> {
 // binder -> home) instead of leaving the site. Screens push history entries;
 // popstate applies whatever entry we land on.
 
-type Route = { screen: 'home' } | { screen: 'binder' } | { screen: 'game'; id: string };
+type Route = { screen: 'home' } | { screen: 'binder' } | { screen: 'editor' } | { screen: 'game'; id: string };
 
 function routeFromLocation(): Route {
   const m = location.pathname.match(/^\/game\/([A-Za-z0-9_-]+)/);
@@ -154,10 +158,11 @@ function routeFromLocation(): Route {
   const q = new URLSearchParams(location.search).get('game'); // notification deep links
   if (q) return { screen: 'game', id: q };
   if (location.pathname === '/binder') return { screen: 'binder' };
+  if (location.pathname === '/editor') return { screen: 'editor' };
   return { screen: 'home' };
 }
 
-const routePath = (r: Route): string => (r.screen === 'game' ? `/game/${r.id}` : r.screen === 'binder' ? '/binder' : '/');
+const routePath = (r: Route): string => (r.screen === 'game' ? `/game/${r.id}` : r.screen === 'binder' ? '/binder' : r.screen === 'editor' ? '/editor' : '/');
 
 /** Record that we are now on `route` (no-op if history already says so). */
 function pushRoute(route: Route): void {
@@ -172,6 +177,7 @@ function applyRoute(route: Route): void {
   try {
     if (route.screen === 'game') openGame(route.id);
     else if (route.screen === 'binder') void openBinder();
+    else if (route.screen === 'editor') openEditor();
     else goHome();
   } finally {
     applyingRoute = false;
@@ -266,6 +272,41 @@ async function openBinder(): Promise<void> {
 }
 
 $('open-binder').onclick = () => void openBinder();
+
+// ---------------------------------------------------------------------------
+// Card editor (admin only). Balance patches arrive with `welcome` and whenever
+// they change; applying them re-skins every card and piece definition in place.
+
+const editor = new BalanceEditor(() => goBack());
+editor.onApplied = () => rerenderAfterBalance();
+
+function openEditor(): void {
+  if (!user?.admin) return;
+  show('editor');
+  editor.open();
+  if (!applyingRoute) pushRoute({ screen: 'editor' });
+}
+$('open-editor').onclick = () => openEditor();
+
+let balanceJson = '';
+function takeBalance(b: Balance): void {
+  const json = JSON.stringify(b);
+  if (json === balanceJson) return;
+  balanceJson = json;
+  applyBalance(b);
+  rerenderAfterBalance();
+}
+
+/** Redraw whatever is on screen with the new numbers (no animations: the events are already spent). */
+function rerenderAfterBalance(): void {
+  if (currentView && viewReady) {
+    currentView = { ...currentView, events: [] };
+    gameView.sync(currentView);
+    renderStatus(currentView);
+  }
+  if (!binderScreen.classList.contains('hidden') && profile) binder.open(profile);
+  if (!discardEl.classList.contains('hidden')) renderDiscard();
+}
 
 // ---------------------------------------------------------------------------
 // Discard pile browser: newest card first; arrows, keyboard or swipe to go deeper.
@@ -979,7 +1020,12 @@ net.onUnauthorized = () => {
 
 net.onMessage = async (msg: ServerMessage) => {
   switch (msg.type) {
+    case 'balance':
+      takeBalance(msg.balance);
+      if (!user?.admin) showToast('Card values were updated by the game admin.', 'info');
+      return;
     case 'welcome': {
+      takeBalance(msg.balance);
       // Fresh socket (first connect or reconnect). On first connect the URL decides
       // (deep link / bookmarked game / binder); on reconnect, whatever was open.
       if (!booted) {
@@ -995,6 +1041,7 @@ net.onMessage = async (msg: ServerMessage) => {
           } else {
             net.send({ type: 'listGames' });
             if (route.screen === 'binder') void openBinder();
+            else if (route.screen === 'editor') openEditor();
           }
         }
       } else if (currentGameId && !net.hasPending) {
@@ -1107,6 +1154,8 @@ onServiceWorkerMessage((m) => {
 });
 
 (async () => {
+  // Card/piece numbers first, so nothing is ever drawn with stale values.
+  takeBalance(await balanceApi.get().catch(() => EMPTY_BALANCE));
   const u = await authApi.me();
   if (u) await signedIn(u);
   else await showAuth();

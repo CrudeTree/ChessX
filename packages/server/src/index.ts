@@ -3,13 +3,15 @@
 //  - /ws         game traffic, authenticated by the session cookie — WebSocket
 //  - everything else: the built client (production)
 
+import { currentBalance } from '@chessx/engine';
 import { PROTOCOL_VERSION, decode, encode, type ClientMessage, type ServerMessage } from '@chessx/protocol';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { dirname, extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocket, WebSocketServer } from 'ws';
-import { Auth, AuthError, configFromEnv, toUserInfo } from './auth.js';
+import { Admin, AdminError } from './admin.js';
+import { Auth, AuthError, configFromEnv, setAdminCheck, toUserInfo } from './auth.js';
 import { Db } from './db.js';
 import { GameError, GameManager, type LiveGame, type Transport } from './games.js';
 import { Notifier } from './notify.js';
@@ -21,6 +23,9 @@ const here = dirname(fileURLToPath(import.meta.url));
 const DB_PATH = process.env.DB_PATH ?? join(here, '..', 'data', 'chessx.sqlite');
 
 const db = new Db(DB_PATH);
+const admin = new Admin(db);
+setAdminCheck((u) => admin.isAdmin(u));
+admin.loadBalance(); // before any game is loaded or created
 const auth = new Auth(db, configFromEnv(process.env));
 const games = new GameManager(db, (id) => db.userById(id)?.name ?? 'Player');
 const progression = new Progression(db);
@@ -173,6 +178,20 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
     }
     if (req.method === 'GET' && path === '/api/auth/providers') return json(res, 200, auth.providers());
 
+    // ---- balance (card/piece numbers). Reading is public: every client needs it to render cards.
+    if (req.method === 'GET' && path === '/api/balance') return json(res, 200, { balance: currentBalance() });
+    if (req.method === 'PUT' && path === '/api/balance') {
+      const user = auth.userFromRequest(req);
+      if (!user) return json(res, 401, { error: 'Not signed in.' });
+      if (!admin.isAdmin(user)) return json(res, 403, { error: 'Only the game admin can edit cards.' });
+      const b = await readJson(req);
+      const balance = admin.saveBalance(b.balance);
+      console.log(`[admin] ${user.name} saved balance (${Object.keys(balance.cards).length} cards, ${Object.keys(balance.pieces).length} pieces patched)`);
+      // Everyone online picks up the new numbers immediately.
+      for (const set of socketsByUser.values()) for (const t of set) t.send({ type: 'balance', balance });
+      return json(res, 200, { balance });
+    }
+
     if (req.method === 'POST' && path === '/api/auth/register') {
       const b = await readJson(req);
       const user = auth.register(str(b.email), str(b.name), str(b.password));
@@ -239,7 +258,7 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 
     json(res, 404, { error: 'Not found.' });
   } catch (e) {
-    if (e instanceof AuthError || e instanceof ProgressionError) return json(res, 400, { error: e.message });
+    if (e instanceof AuthError || e instanceof ProgressionError || e instanceof AdminError) return json(res, 400, { error: e.message });
     console.error(e);
     json(res, 500, { error: 'Server error.' });
   }
@@ -435,7 +454,7 @@ httpServer.on('upgrade', (req, socket, head) => {
     if (!set) socketsByUser.set(user.id, (set = new Set()));
     const cameOnline = set.size === 0;
     set.add(t);
-    t.send({ type: 'welcome', version: PROTOCOL_VERSION, user: toUserInfo(user) });
+    t.send({ type: 'welcome', version: PROTOCOL_VERSION, user: toUserInfo(user), balance: currentBalance() });
     if (cameOnline) pushPresenceToFriends(user.id);
 
     ws.on('message', (raw) => {

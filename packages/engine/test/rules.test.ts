@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyAction,
+  applyBalance,
+  baseCardDef,
   createGame,
+  describeMovement,
+  DIRS,
+  EMPTY_BALANCE,
   getCardDef,
+  getPieceDef,
   IllegalActionError,
   isInCheck,
   legalActions,
@@ -12,10 +18,12 @@ import {
   REWARD_CARDS,
   STARTER_CARDS,
   starterDeck,
+  validateBalance,
   validateDeck,
   viewFor,
   type Action,
   type GameState,
+  type SummonCardDef,
 } from '../src/index.js';
 
 /** A game with a deep mana pool so card tests can play cards straight away. */
@@ -611,6 +619,50 @@ describe('cards', () => {
     expect(pieceAt(g, s('e2'))!.summon?.turnsRemaining).toBe(2);
     g = act(g, { type: 'playCard', cardInstanceId: ritual, target: s('e2') });
     expect(pieceAt(g, s('e2'))!.kind).toBe('the_ox');
+  });
+});
+
+describe('balance patches', () => {
+  it('apply on top of the shipped catalog and can be removed again', () => {
+    applyBalance({ cards: { stone_sentinel: { cost: 250, piece: { hp: 2 } }, hex: { effects: [{ kind: 'damage', amount: 2 }] } }, pieces: { pawn: { manaYield: 2, atk: 2 } } });
+    expect(getCardDef('stone_sentinel').cost).toBe(250);
+    expect((getCardDef('stone_sentinel') as SummonCardDef).piece.hp).toBe(2);
+    expect((getCardDef('stone_sentinel') as SummonCardDef).piece.def).toBe(1); // untouched field follows the code
+    expect(getCardDef('stone_sentinel').text).toMatch(/1 ATK \/ 1 DEF \/ 2 HP/);
+    expect(getPieceDef('stone_sentinel').hp).toBe(2); // the creature registry follows the card
+    expect(getCardDef('hex').text).toBe('Deal 2 damage to target enemy Tier 1 piece.');
+    expect(getPieceDef('pawn').atk).toBe(2);
+    expect(getPieceDef('knight').atk).toBe(1);
+
+    // The patched numbers drive the game: pawns now make 2 mana each (8 more per turn), and hit for 2.
+    let g = realGame();
+    expect(viewFor(g, 'white').players.white.manaIncome).toBe(40);
+    g = move(g, 'e2', 'e4');
+    expect(g.players.white.mana).toBe(40);
+    expect(pieceAt(g, s('e4'))!.atk).toBe(2); // new pieces read the live definition
+
+    applyBalance(EMPTY_BALANCE);
+    expect(getCardDef('stone_sentinel').cost).toBe(200);
+    expect((getCardDef('stone_sentinel') as SummonCardDef).piece.hp).toBe(3);
+    expect(getCardDef('stone_sentinel').text).toBe(baseCardDef('stone_sentinel').text);
+    expect(getPieceDef('pawn').atk).toBe(1);
+    expect(viewFor(realGame(), 'white').players.white.manaIncome).toBe(32);
+  });
+
+  it('rejects nonsense', () => {
+    expect(validateBalance({ cards: { nope: { cost: 1 } }, pieces: {} })).toEqual([expect.stringMatching(/Unknown card/)]);
+    expect(validateBalance({ cards: { hex: { cost: -5 } }, pieces: {} })).toEqual([expect.stringMatching(/cost/)]);
+    expect(validateBalance({ cards: { the_ox: { piece: { hp: 0 } } }, pieces: {} })).toEqual([expect.stringMatching(/HP/)]);
+    expect(validateBalance({ cards: {}, pieces: { king: { movement: { pawn: true } } } })).toEqual([expect.stringMatching(/King/)]);
+    expect(validateBalance({ cards: {}, pieces: { rook: { movement: { leaps: [] } } } })).toEqual([expect.stringMatching(/not be able to move/)]);
+    expect(validateBalance({ cards: { the_ox: { cost: 300, piece: { movement: { leaps: [[1, 2]], slides: [{ dirs: [[0, 1]], range: 2 }], relative: true } } } }, pieces: { queen: { manaYield: 10 } } })).toEqual([]);
+  });
+
+  it('describes movement and cards from their numbers', () => {
+    expect(describeMovement({ leaps: DIRS.KNIGHT })).toBe('Jumps like a Knight.');
+    expect(describeMovement({ slides: [{ dirs: DIRS.ORTHOGONAL, range: 2 }] })).toBe('Moves up to 2 squares orthogonally.');
+    expect(describeMovement({ slides: [{ dirs: DIRS.ALL }] })).toBe('Slides any distance in any direction.');
+    expect(describeMovement({ leaps: DIRS.ALL })).toBe('Moves 1 square in any direction.');
   });
 });
 

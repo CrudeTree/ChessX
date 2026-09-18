@@ -232,6 +232,11 @@ export class Db {
     return this.db.prepare('SELECT * FROM users WHERE friend_code = ?').get(code.toUpperCase()) as UserRow | undefined;
   }
 
+  /** The earliest-registered account with exactly this name (case-insensitive). */
+  oldestUserNamed(name: string): UserRow | undefined {
+    return this.db.prepare('SELECT * FROM users WHERE name = ? COLLATE NOCASE ORDER BY created_at ASC LIMIT 1').get(name) as UserRow | undefined;
+  }
+
   /** Name search for the "add friend" box (case-insensitive substring). */
   searchUsersByName(q: string, limit = 10): UserRow[] {
     return this.db.prepare('SELECT * FROM users WHERE name LIKE ? COLLATE NOCASE ORDER BY name LIMIT ?').all(`%${q}%`, limit) as unknown as UserRow[];

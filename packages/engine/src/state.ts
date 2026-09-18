@@ -194,9 +194,10 @@ export function piecesOf(state: GameState, color: Color): Piece[] {
   return Object.values(state.pieces).filter((p) => p.owner === color);
 }
 
-/** Mana a piece produces at the end of its owner's turn: its tier (King = 6). */
+/** Mana a piece produces at the end of its owner's turn: its tier (King = 6) unless the piece says otherwise. */
 export function manaFrom(piece: Piece): number {
-  return getPieceDef(piece.kind).tier;
+  const def = getPieceDef(piece.kind);
+  return def.manaYield ?? def.tier;
 }
 
 /** Total mana `color` will collect at the end of their turn with the board as it stands. */

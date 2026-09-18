@@ -73,6 +73,7 @@
             <button id="join" type="submit">Join</button>
           </form>
           <button id="open-binder" class="binder-btn">Binder <span id="binder-new" class="pill hidden"></span></button>
+          <button id="open-editor" class="binder-btn hidden" title="Admin: edit card and piece numbers">Card editor</button>
         </div>
         <div class="me">
           <img id="avatar" class="avatar hidden" alt="" />
@@ -146,6 +147,29 @@
           </div>
           <p id="deck-msg" class="hint"></p>
           <div id="deck-list" class="deck-list"></div>
+        </section>
+      </div>
+    </div>
+
+    <!-- Card editor (admin only): tweak any number on any card or piece -->
+    <div id="editor" class="screen hidden">
+      <header class="binder-header">
+        <button id="editor-back">← Back</button>
+        <h1>Card editor</h1>
+        <div class="editor-actions">
+          <span id="editor-dirty" class="muted"></span>
+          <button id="editor-reset-all" class="danger">Reset everything</button>
+          <button id="editor-save" class="primary" disabled>Save changes</button>
+        </div>
+      </header>
+      <p id="editor-msg" class="hint editor-msg"></p>
+      <div class="editor-body">
+        <aside class="editor-list">
+          <input id="editor-search" placeholder="Search cards and pieces…" />
+          <div id="editor-items"></div>
+        </aside>
+        <section id="editor-form" class="editor-form">
+          <p class="hint">Pick a card or piece on the left. Changes apply to every game the moment you save — pieces already on a board keep their current ATK/DEF/HP, but movement, mana and costs update at once.</p>
         </section>
       </div>
     </div>

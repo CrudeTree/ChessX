@@ -88,9 +88,18 @@ export const STANDARD_PIECES: Record<string, PieceDef> = {
   },
 };
 
+/** Definitions as shipped in code. `registry` is what the game actually uses (base + balance patches). */
+const base = new Map<string, PieceDef>(Object.entries(STANDARD_PIECES));
 const registry = new Map<string, PieceDef>(Object.entries(STANDARD_PIECES));
 
+/** Register a piece as shipped (used by the card catalog for creatures). */
 export function registerPieceDef(def: PieceDef): void {
+  base.set(def.kind, def);
+  registry.set(def.kind, def);
+}
+
+/** Replace the live definition without touching the shipped one (balance patches). */
+export function setPieceDef(def: PieceDef): void {
   registry.set(def.kind, def);
 }
 
@@ -100,6 +109,15 @@ export function getPieceDef(kind: string): PieceDef {
   return def;
 }
 
+/** The definition as shipped in code, before any balance patch. */
+export function basePieceDef(kind: string): PieceDef {
+  const def = base.get(kind);
+  if (!def) throw new Error(`Unknown piece kind: ${kind}`);
+  return def;
+}
+
 export function allPieceDefs(): PieceDef[] {
   return [...registry.values()];
 }
+
+export const STANDARD_KINDS = Object.keys(STANDARD_PIECES);

@@ -114,7 +114,7 @@ export class InspectPanel {
     const isKing = piece.kind === 'king';
     const ownerName = solo ? (piece.owner === 'white' ? 'White' : 'Black') : this.ctx.names()[piece.owner];
 
-    const typeLine = `${isKing ? `Tier ${def.tier} · royal piece` : card ? `Tier ${def.tier} creature · summoned by ${card.name}` : `Tier ${def.tier} · basic piece`} · +${def.tier} mana / turn`;
+    const typeLine = `${isKing ? `Tier ${def.tier} · royal piece` : card ? `Tier ${def.tier} creature · summoned by ${card.name}` : `Tier ${def.tier} · basic piece`} · +${def.manaYield ?? def.tier} mana / turn`;
 
     const status: string[] = [];
     if (piece.summon) {
@@ -181,7 +181,7 @@ const artBanner = (url: string | undefined): string => (url ? `<div class="zoom-
  * 7x7 mini board with the piece in the middle and dots on every square it
  * could reach on an empty board. Black dot = move, red dot = attack-only.
  */
-function movementMap(spec: MovementSpec, glyphHtml: string): string {
+export function movementMap(spec: MovementSpec, glyphHtml: string): string {
   const R = 3;
   const { moves, attacks, unbounded } = movementPattern(spec, R);
   const key = (df: number, dr: number) => `${df},${dr}`;

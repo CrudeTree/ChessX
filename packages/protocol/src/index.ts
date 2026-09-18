@@ -1,4 +1,4 @@
-import type { Action, Color, GameStatus, Piece, PlayerView } from '@chessx/engine';
+import type { Action, Balance, Color, GameStatus, Piece, PlayerView } from '@chessx/engine';
 
 export const PROTOCOL_VERSION = 2;
 
@@ -13,6 +13,8 @@ export interface UserInfo {
   name: string;
   email: string | null;
   avatarUrl: string | null;
+  /** May edit card/piece balance from inside the app. */
+  admin: boolean;
 }
 
 export interface AuthProviders {
@@ -188,7 +190,9 @@ export type ClientMessage =
 
 /** Messages the server sends to the browser. */
 export type ServerMessage =
-  | { type: 'welcome'; version: number; user: UserInfo }
+  | { type: 'welcome'; version: number; user: UserInfo; balance: Balance }
+  /** The admin changed card/piece numbers: apply and redraw. */
+  | { type: 'balance'; balance: Balance }
   | { type: 'games'; games: GameSummary[] }
   /** This tab is now attached to a game. */
   | { type: 'seated'; gameId: string; code: string; color: Color; room: RoomInfo; solo: boolean }

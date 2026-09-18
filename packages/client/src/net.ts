@@ -1,3 +1,4 @@
+import type { Balance } from '@chessx/engine';
 import { decode, encode, type AuthProviders, type ClientMessage, type DeckInfo, type Profile, type ServerMessage, type UserInfo } from '@chessx/protocol';
 
 // ---------------------------------------------------------------------------
@@ -34,6 +35,11 @@ export const authApi = {
   login: (email: string, password: string) =>
     api<{ user: UserInfo }>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }).then((r) => r.user),
   logout: () => api('/api/auth/logout', { method: 'POST' }),
+};
+
+export const balanceApi = {
+  get: () => api<{ balance: Balance }>('/api/balance').then((r) => r.balance),
+  save: (balance: Balance) => api<{ balance: Balance }>('/api/balance', { method: 'PUT', body: JSON.stringify({ balance }) }).then((r) => r.balance),
 };
 
 export const profileApi = {

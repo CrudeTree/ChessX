@@ -48,6 +48,8 @@ export interface PieceDef {
   atk: number;
   def: number;
   hp: number;
+  /** Mana produced at the end of the owner's turn. Defaults to the tier. */
+  manaYield?: number;
   description?: string;
 }
 
