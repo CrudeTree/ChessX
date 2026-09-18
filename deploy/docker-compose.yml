@@ -15,7 +15,8 @@ services:
     container_name: chessx
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8080:8080"
+      # Host port is configurable (HOST_PORT in deploy/.env) in case 8080 is taken on the box.
+      - "127.0.0.1:${HOST_PORT:-8080}:8080"
     env_file:
       - .env
     environment:
