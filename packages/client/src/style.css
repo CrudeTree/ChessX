@@ -997,26 +997,63 @@ button.danger {
   display: flex;
   align-items: stretch;
   justify-content: center;
-  gap: 18px;
+  gap: 16px;
   padding: 12px;
+  --inspect-w: 280px;
+  --side-w: 320px;
 }
 
 #board-mount {
   display: flex;
   align-items: center;
+  justify-content: center;
+  min-width: 0;
 }
 
+/* The board is drawn at a fixed logical size and scaled down to whatever room the
+   window leaves after the two panels, both horizontally and vertically. */
 #board-mount canvas {
   display: block;
+  width: auto;
+  height: auto;
+  max-width: calc(100vw - var(--inspect-w) - var(--side-w) - 24px - 32px);
+  max-height: calc(100vh - 24px);
+}
+
+/* Laptops: slimmer panels so the board keeps more of the width. */
+@media (min-width: 900px) and (max-width: 1400px) {
+  #game {
+    --inspect-w: 240px;
+    --side-w: 270px;
+  }
+
+  #inspect {
+    width: var(--inspect-w);
+  }
+
+  #side {
+    width: var(--side-w);
+  }
+
+  .zoom-name {
+    font-size: 17px;
+  }
+
+  .minimap {
+    max-width: 200px;
+    margin: 0 auto;
+  }
 }
 
 #side {
-  width: 320px;
+  width: var(--side-w, 320px);
   display: flex;
   flex-direction: column;
   gap: 12px;
-  align-self: center;
-  max-height: 100%;
+  align-self: stretch;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
 .side-block {
@@ -1204,11 +1241,32 @@ button.danger {
 
 /* ---------------------------------------------------------- Inspect panel */
 #inspect {
-  width: 280px;
-  align-self: center;
+  width: var(--inspect-w, 280px);
+  align-self: stretch;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-height: 0;
+}
+
+/* On desktop the chat lives at the bottom of the left column (moved there by main.ts),
+   so it can never sit on top of the card panel. */
+#inspect > #chat {
+  position: static;
+  width: auto;
+  margin-top: auto;
+  z-index: auto;
+}
+
+#inspect > #chat .chat-log {
+  max-height: 22vh;
+}
+
+#inspect > .zoom {
+  flex: 1 1 auto;
+  min-height: 240px;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
 .zoom {

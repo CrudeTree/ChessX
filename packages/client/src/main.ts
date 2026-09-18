@@ -461,6 +461,8 @@ async function showGame(): Promise<void> {
   if (!viewReady) {
     viewReady = true;
     configureLayout(window.innerWidth);
+    // Desktop: park the chat under the card panel so it never overlaps anything.
+    if (!MOBILE) $('inspect').appendChild(chatEl);
     await gameView.init($('board-mount'));
     gameView.onAction = (action) => net.send({ type: 'action', action });
     inspect.render(null);
