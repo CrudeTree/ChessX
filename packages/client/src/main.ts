@@ -524,7 +524,9 @@ function renderMobileBar(view: PlayerView | null): void {
   if (!MOBILE) return;
   mStatus.textContent = statusEl.textContent;
   mStatus.className = `mstatus ${statusEl.classList.contains('check') ? 'check' : ''}`;
+  mEnd.classList.toggle('hidden', endTurnBtn.classList.contains('hidden'));
   mEnd.disabled = endTurnBtn.disabled;
+  mEnd.textContent = endTurnBtn.textContent;
   mEnd.classList.toggle('ready', endTurnBtn.classList.contains('ready'));
   const { me, opp } = panelColors();
   const who = (id: 'me' | 'opp', color: Color) => {
@@ -609,7 +611,11 @@ function renderStatus(view: PlayerView): void {
   const mine = view.turn === view.you;
   statusEl.className = 'status';
   const canEnd = view.legalActions.some((a) => a.type === 'endTurn');
+  // Only the side to move sees End Turn at all; it enables once a move/summon has been made.
+  endTurnBtn.classList.toggle('hidden', !mine || view.status.kind !== 'playing');
   endTurnBtn.disabled = !canEnd;
+  endTurnBtn.textContent = canEnd && view.turnInfo.majorAction === null ? 'Pass' : 'End Turn';
+  endTurnBtn.title = canEnd ? '' : view.inCheck ? 'Get out of check first' : 'Move a piece or summon first';
   endTurnBtn.classList.toggle('ready', canEnd && view.turnInfo.majorAction !== null);
   turnTrack.classList.toggle('hidden', !mine || view.status.kind !== 'playing');
 
@@ -645,7 +651,7 @@ function renderStatus(view: PlayerView): void {
   } else if (mine || solo) {
     statusEl.textContent = major
       ? `${who} ${major === 'move' ? 'moved' : 'summoned'} (turn ${turnNo}). Play spells or switch stances, then End Turn.`
-      : `${who}: turn ${turnNo}. Move or summon, play spells, switch stances — then End Turn.`;
+      : `${who}: turn ${turnNo}. Move a piece or summon (required), play spells, switch stances.`;
   } else {
     statusEl.textContent = `Opponent's turn (${turnNo}).`;
   }

@@ -93,7 +93,7 @@ The server is authoritative: the client only ever offers the player actions from
 - **One major action**: move/attack a piece **or** play a summon card. Never both.
 - **Spells**: as many as you like.
 - **Stance switches**: as many pieces as you like, in either direction. A piece that switched this turn is frozen (can't move or switch again) until the turn ends.
-- You may end your turn without moving. You may **not** end it while in check.
+- **End Turn** only becomes available once you have moved or summoned (if neither is possible at all, you may pass). You may **not** end it while in check.
 
 **Combat.** Moving onto an enemy piece attacks it for the attacker's full ATK. If the defender is in **Defense mode**, its DEF acts as a shield that absorbs damage first; whatever is left comes off HP. In Attack mode DEF does nothing. If HP hits 0 the defender is destroyed and the attacker takes its square. If the defender survives, it stays and the attacker returns to its original square (the turn is still used). **Kings ignore HP**: any piece reaching the king's square captures it.
 
@@ -103,7 +103,7 @@ Example: DEF 3 / HP 1 in Defense mode, hit by ATK 4 → shield wiped out, 1 dama
 
 **Inspecting.** Click any piece (yours or the opponent's) to see its full card on the left: stats, stance, movement, lock/summon status.
 
-**Check and checkmate.** A move may never leave your own king in check. Because pieces can survive attacks, "capturing" the checking piece does not resolve check unless the capture actually destroys it. While in check you may still play spells and switch stances (a Hex that kills the attacker is a fine answer), but you cannot summon and you cannot end the turn. Checkmate = in check with no single action that gets the king out. There is no stalemate: a player who is not in check may simply end the turn.
+**Check and checkmate.** A move may never leave your own king in check. Because pieces can survive attacks, "capturing" the checking piece does not resolve check unless the capture actually destroys it. While in check you may still play spells and switch stances (a Hex that kills the attacker is a fine answer), but you cannot summon and you cannot end the turn. Checkmate = in check with no single action that gets the king out. A player with no possible move or summon simply passes, so there is no stalemate.
 
 **Deck and hand.** 25–40 cards, max 3 copies of any card. Draw 7 at the start. A green timer ring around your deck fills one segment per turn you take; on your 5th, 10th, 15th… turn it closes and pulses, and you **must click your deck to draw** before doing anything else that turn. Drawing does not use the turn. Cards can also grant extra draws directly. Your deck sits at the bottom-right of the board, the opponent's at the top-left (their right), and you can watch their ring fill too.
 

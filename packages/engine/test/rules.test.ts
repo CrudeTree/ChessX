@@ -174,8 +174,46 @@ describe('turn structure', () => {
     expect(g.turnInfo.majorAction).toBeNull();
   });
 
-  it('you may end your turn without moving', () => {
-    const g = end(newGame());
+  it('you cannot end your turn until you have moved or summoned', () => {
+    const g = newGame();
+    expect(has(legalActions(g), 'endTurn')).toBe(false);
+    expect(() => end(g)).toThrow(/Move a piece or summon/);
+    // Spells alone do not count.
+    const ws = giveCard(g, 'white', 'whetstone');
+    const afterSpell = act(g, { type: 'playCard', cardInstanceId: ws, target: s('e2') });
+    expect(has(legalActions(afterSpell), 'endTurn')).toBe(false);
+    // A summon counts as the major action.
+    const ox = giveCard(g, 'white', 'the_ox');
+    const afterSummon = act(g, { type: 'playCard', cardInstanceId: ox, target: s('e2') });
+    expect(has(legalActions(afterSummon), 'endTurn')).toBe(true);
+    expect(end(afterSummon).turn).toBe('black');
+  });
+
+  it('if no move or summon is possible at all, the turn may be passed', () => {
+    let g = newGame();
+    // Freeze every white piece that can act by putting them all in Defense mode
+    // over a few turns; when white has no legal move left, End Turn becomes a pass.
+    // Simpler: strip white down to a lone king boxed in by its own frozen pawns.
+    for (const id of Object.keys(g.pieces)) {
+      const p = g.pieces[id]!;
+      if (p.owner === 'white' && p.kind !== 'king' && p.kind !== 'pawn') {
+        delete g.pieces[id];
+        g.board[p.square] = null;
+      }
+    }
+    for (const p of Object.values(g.pieces)) if (p.owner === 'white' && p.kind === 'pawn') p.stance = 'defense';
+    // King on e1 is boxed by frozen pawns on d2/e2/f2 and empty d1/f1 — it can still move sideways.
+    // Occupy d1 and f1 with frozen pawns too so nothing can move.
+    for (const sqn of ['d1', 'f1']) {
+      const src = pieceAt(g, s(sqn === 'd1' ? 'a2' : 'h2'))!;
+      g.board[src.square] = null;
+      src.square = s(sqn);
+      g.board[src.square] = src.id;
+    }
+    g.players.white.hand = g.players.white.hand.filter((c) => getCardDef(c.cardId).type !== 'summon');
+    expect(legalMoves(g)).toHaveLength(0);
+    expect(has(legalActions(g), 'endTurn')).toBe(true);
+    g = end(g);
     expect(g.turn).toBe('black');
   });
 
@@ -388,12 +426,12 @@ describe('cards', () => {
   it('spells modify stats, deal damage and draw', () => {
     let g = newGame();
     const hide = giveCard(g, 'white', 'iron_hide');
-    g = end(act(g, { type: 'playCard', cardInstanceId: hide, target: s('e2') }));
+    g = move(act(g, { type: 'playCard', cardInstanceId: hide, target: s('e2') }), 'a2', 'a3');
     expect(pieceAt(g, s('e2'))!.hp).toBe(3);
     expect(pieceAt(g, s('e2'))!.maxHp).toBe(3);
 
     const hex = giveCard(g, 'black', 'hex');
-    g = end(act(g, { type: 'playCard', cardInstanceId: hex, target: s('e2') }));
+    g = move(act(g, { type: 'playCard', cardInstanceId: hex, target: s('e2') }), 'a7', 'a6');
     expect(pieceAt(g, s('e2'))!.hp).toBe(2);
 
     const before = g.players.white.hand.length;
@@ -453,7 +491,7 @@ describe('cards', () => {
     e7.maxHp = 3;
     g = act(g, { type: 'playCard', cardInstanceId: smite, target: s('e7') });
     expect(pieceAt(g, s('e7'))!.hp).toBe(1);
-    g = end(g);
+    g = move(g, 'a2', 'a3');
     const wind = giveCard(g, 'black', 'second_wind');
     g = act(g, { type: 'playCard', cardInstanceId: wind, target: s('e7') });
     expect(pieceAt(g, s('e7'))!.hp).toBe(3);
@@ -503,15 +541,15 @@ describe('stance', () => {
 
   it('pieces in Defense mode stay frozen until switched back; switching back freezes them for that turn only', () => {
     let g = newGame();
-    g = end(act(g, { type: 'setStance', square: s('e2'), stance: 'defense' }));
+    g = move(act(g, { type: 'setStance', square: s('e2'), stance: 'defense' }), 'a2', 'a3');
     g = move(g, 'a7', 'a6');
     expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(false);
-    g = move(g, 'a2', 'a3');
+    g = move(g, 'b2', 'b3');
     g = move(g, 'a6', 'a5');
     expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(false); // still frozen many turns later
     g = act(g, { type: 'setStance', square: s('e2'), stance: 'attack' });
     expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(false); // frozen for the rest of this turn
-    g = move(g, 'b2', 'b3'); // but another piece may move
+    g = move(g, 'c2', 'c3'); // but another piece may move
     g = move(g, 'a5', 'a4');
     expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(true); // free next turn
   });
@@ -523,10 +561,10 @@ describe('stance', () => {
     g = move(g, 'd1', 'h5'); // queen gives check on the h5-e8 diagonal
     expect(isInCheck(g, 'black')).toBe(true);
     g = move(g, 'g7', 'g6'); // block
-    g = end(act(g, { type: 'setStance', square: s('h5'), stance: 'defense' }));
+    g = move(act(g, { type: 'setStance', square: s('h5'), stance: 'defense' }), 'a2', 'a3');
     g = move(g, 'g6', 'g5'); // legal: a Defense-mode queen cannot attack
     expect(isInCheck(g, 'black')).toBe(false);
-    g = end(act(g, { type: 'setStance', square: s('h5'), stance: 'attack' }));
+    g = move(act(g, { type: 'setStance', square: s('h5'), stance: 'attack' }), 'a3', 'a4');
     expect(isInCheck(g, 'black')).toBe(true);
     expect(() => step(g, 'a7', 'a6')).toThrow(IllegalActionError);
   });

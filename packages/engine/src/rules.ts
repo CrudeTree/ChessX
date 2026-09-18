@@ -28,7 +28,8 @@ const PROMOTIONS: PromotionKind[] = ['queen', 'rook', 'bishop', 'knight'];
  *  - one *major action*: move/attack a piece OR play a summon card,
  *  - any number of spells,
  *  - any number of stance switches (a piece that switched is frozen for the rest of the turn),
- *  - `endTurn`, which is refused while in check or while a draw is owed.
+ *  - `endTurn`, which requires the major action to have been taken (unless none is
+ *    possible at all), and is refused while in check or while a draw is owed.
  *
  * Moves may never leave your own king in check. Cards and stance changes
  * cannot expose your king, so they are not filtered.
@@ -42,6 +43,7 @@ export function legalActions(state: GameState, color: Color = state.turn): Actio
   const inCheck = isInCheck(state, color);
   const { majorAction, stanceChanged } = state.turnInfo;
   const frozen = new Set(stanceChanged);
+  let majorAvailable = false;
 
   if (majorAction === null) {
     for (const piece of piecesOf(state, color)) {
@@ -50,7 +52,12 @@ export function legalActions(state: GameState, color: Color = state.turn): Actio
         const moves: Action[] = cand.promotion
           ? PROMOTIONS.map((promotion) => ({ type: 'move', from: cand.from, to: cand.to, promotion }))
           : [{ type: 'move', from: cand.from, to: cand.to }];
-        for (const m of moves) if (leavesKingSafe(state, m, color)) out.push(m);
+        for (const m of moves) {
+          if (leavesKingSafe(state, m, color)) {
+            out.push(m);
+            majorAvailable = true;
+          }
+        }
       }
     }
   }
@@ -61,6 +68,7 @@ export function legalActions(state: GameState, color: Color = state.turn): Actio
     if (card.type === 'summon' && (majorAction !== null || inCheck)) continue;
     for (const target of cardTargets(state, inst, color)) {
       out.push({ type: 'playCard', cardInstanceId: inst.instanceId, target });
+      if (card.type === 'summon') majorAvailable = true;
     }
   }
 
@@ -70,8 +78,25 @@ export function legalActions(state: GameState, color: Color = state.turn): Actio
     }
   }
 
-  if (!inCheck) out.push({ type: 'endTurn' });
+  // You must do something with your turn: end it only after moving or summoning.
+  // If neither is possible at all (everything frozen, no legal moves), passing is allowed.
+  if (!inCheck && (majorAction !== null || !majorAvailable)) out.push({ type: 'endTurn' });
   return out;
+}
+
+/** Why `endTurn` is not allowed right now, for error messages. */
+function endTurnBlocker(state: GameState, color: Color): string | null {
+  if (state.players[color].pendingDraws > 0) return 'Draw a card first (click your deck).';
+  if (isInCheck(state, color)) return 'You cannot end your turn while in check.';
+  if (state.turnInfo.majorAction === null && legalActions(state, color).some((a) => a.type === 'move' || (a.type === 'playCard' && isSummon(state, color, a.cardInstanceId)))) {
+    return 'Move a piece or summon before ending your turn.';
+  }
+  return null;
+}
+
+function isSummon(state: GameState, color: Color, instanceId: string): boolean {
+  const inst = state.players[color].hand.find((c) => c.instanceId === instanceId);
+  return !!inst && getCardDef(inst.cardId).type === 'summon';
 }
 
 export function legalMoves(state: GameState, color: Color = state.turn): Extract<Action, { type: 'move' }>[] {
@@ -104,11 +129,12 @@ export function applyAction(state: GameState, action: Action): GameState {
       if (player.pendingDraws === 0) evaluateMate(next);
       return next;
 
-    case 'endTurn':
-      if (player.pendingDraws > 0) throw new IllegalActionError('Draw a card first (click your deck).');
-      if (isInCheck(next, color)) throw new IllegalActionError('You cannot end your turn while in check.');
+    case 'endTurn': {
+      const blocker = endTurnBlocker(next, color);
+      if (blocker) throw new IllegalActionError(blocker);
       endTurn(next);
       return next;
+    }
 
     default:
       break;
