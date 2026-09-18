@@ -142,7 +142,8 @@ export const CATALOG: CardDef[] = [
     name: 'Hex',
     glyph: '💀',
     target: 'enemyPiece',
-    text: 'Deal 1 damage to target enemy piece (not the King).',
+    targetTier: 1,
+    text: 'Deal 1 damage to target enemy Tier 1 piece.',
     effects: [{ kind: 'damage', amount: 1 }],
   },
   {

@@ -107,7 +107,7 @@ Example: DEF 3 / HP 1 in Defense mode, hit by ATK 4 → shield wiped out, 1 dama
 
 **Deck and hand.** 25–40 cards, max 3 copies of any card. Draw 7 at the start. A green timer ring around your deck fills one segment per turn you take; on your 5th, 10th, 15th… turn it closes and pulses, and you **must click your deck to draw** before doing anything else that turn. Drawing does not use the turn. Cards can also grant extra draws directly. Your deck sits at the bottom-right of the board, the opponent's at the top-left (their right), and you can watch their ring fill too.
 
-**Summon cards.** Pieces have tiers: Pawn = 1, Knight/Bishop = 2, Rook = 3, Queen = 4. A tier-N summon card is played by dropping it on one of your pieces of tier N−1, which becomes the sacrifice. A void opens beneath it with a timer. While the timer runs the sacrificed piece cannot move or attack. The timer ticks down at the start of each of your turns; when it reaches 0 the piece is replaced by the summoned creature. If the sacrifice is destroyed first, the summon fails and the card is lost.
+**Summon cards.** Pieces have tiers: Pawn = 1, Knight/Bishop = 2, Rook = 3, Queen = 4, King = 6 (never sacrificable). A tier-N summon card is played by dropping it on one of your pieces of tier N−1, which becomes the sacrifice. A void opens beneath it with a timer. While the timer runs the sacrificed piece cannot move or attack. The timer ticks down at the start of each of your turns; when it reaches 0 the piece is replaced by the summoned creature. If the sacrifice is destroyed first, the summon fails and the card is lost.
 
 **Spell cards** resolve immediately: stat buffs, damage, heals, draws, and hastening a summon. Kings can't be targeted unless a card says so.
 
@@ -140,7 +140,7 @@ Cards live in `packages/engine/src/cards/catalog.ts` and are pure data. Starter 
 | Whetstone      | Spell  | Friendly piece +1 ATK (kings allowed)                                   |
 | Shield Wall    | Spell  | Friendly piece +1 DEF                                                   |
 | Foresight      | Spell  | Draw 2                                                                  |
-| Hex            | Spell  | 1 damage to an enemy piece                                              |
+| Hex            | Spell  | 1 damage to an enemy Tier 1 piece                                       |
 | Dark Ritual    | Spell  | A friendly summon timer drops by 2                                      |
 
 Reward cards (unlocked through play):

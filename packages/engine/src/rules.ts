@@ -171,6 +171,7 @@ export function cardTargets(state: GameState, inst: CardInstance, color: Color):
   if (card.target === 'none') return [undefined];
   return Object.values(state.pieces)
     .filter((p) => matchesTarget(p, card.target, color, card.allowKing ?? false))
+    .filter((p) => card.targetTier === undefined || getPieceDef(p.kind).tier === card.targetTier)
     .map((p) => p.square);
 }
 

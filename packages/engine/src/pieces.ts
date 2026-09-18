@@ -79,7 +79,7 @@ export const STANDARD_PIECES: Record<string, PieceDef> = {
     kind: 'king',
     name: 'King',
     glyph: '♚',
-    tier: 0,
+    tier: 6,
     movement: { leaps: ALL_DIRS },
     ...BASE_STATS,
     description: 'Moves one square in any direction. Has no HP: any enemy piece reaching its square captures it. Cannot enter Defense mode.',

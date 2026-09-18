@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyAction,
   createGame,
+  getCardDef,
   IllegalActionError,
   isInCheck,
   legalActions,
@@ -401,12 +402,32 @@ describe('cards', () => {
     expect(g.players.white.hand.length).toBe(before + 2); // +1 given, -1 played, +2 drawn
   });
 
-  it('Hex can destroy a piece and cannot target the king', () => {
+  it('Hex only targets enemy Tier 1 pieces (and can destroy one)', () => {
     let g = newGame();
     const hex = giveCard(g, 'white', 'hex');
-    expect(() => act(g, { type: 'playCard', cardInstanceId: hex, target: s('e8') })).toThrow(IllegalActionError);
+    const targets = legalActions(g)
+      .filter((a): a is Extract<Action, { type: 'playCard' }> => a.type === 'playCard' && a.cardInstanceId === hex)
+      .map((a) => a.target!)
+      .sort();
+    expect(targets).toEqual([...'abcdefgh'].map((f) => s(`${f}7`)).sort()); // the eight black pawns
+    expect(() => act(g, { type: 'playCard', cardInstanceId: hex, target: s('e8') })).toThrow(IllegalActionError); // king
+    expect(() => act(g, { type: 'playCard', cardInstanceId: hex, target: s('b8') })).toThrow(IllegalActionError); // knight (tier 2)
+    expect(() => act(g, { type: 'playCard', cardInstanceId: hex, target: s('e2') })).toThrow(IllegalActionError); // own pawn
     g = act(g, { type: 'playCard', cardInstanceId: hex, target: s('e7') });
     expect(pieceAt(g, s('e7'))).toBeUndefined();
+  });
+
+  it('the King is Tier 6 and still never a sacrifice', () => {
+    const g = newGame();
+    expect(pieceAt(g, s('e1'))!.kind).toBe('king');
+    // No summon card's sacrifice tier can reach it, and it is excluded explicitly anyway.
+    for (const id of ['the_ox', 'war_chariot', 'elder_wyrm', 'storm_drake']) giveCard(g, 'white', id);
+    const summonTargets = legalActions(g).filter((a) => {
+      if (a.type !== 'playCard') return false;
+      const inst = g.players.white.hand.find((c) => c.instanceId === a.cardInstanceId)!;
+      return getCardDef(inst.cardId).type === 'summon' && a.target === s('e1');
+    });
+    expect(summonTargets).toHaveLength(0);
   });
 
   it('reward spells: Battle Cry buffs all pawns, Second Wind restores, Battle Trance frees a defender, Smite hits for 2', () => {

@@ -42,7 +42,7 @@ export interface PieceDef {
   name: string;
   /** Glyph used by the renderer (unicode chess symbol or emoji). */
   glyph: string;
-  /** Sacrifice tier. Pawn=1, Knight/Bishop=2, Rook=3, Queen=4. King=0 (never sacrificable). */
+  /** Tier. Pawn=1, Knight/Bishop=2, Rook=3, Queen=4, King=6 (never sacrificable). */
   tier: number;
   movement: MovementSpec;
   atk: number;

@@ -58,6 +58,8 @@ export interface SpellCardDef extends CardBase {
   target: TargetRule;
   /** Spells cannot target kings unless this is set. */
   allowKing?: boolean;
+  /** Restrict targets to pieces of this tier (e.g. 1 = pawns and other Tier 1 units). */
+  targetTier?: number;
   effects: Effect[];
 }
 

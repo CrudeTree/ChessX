@@ -103,7 +103,7 @@ export class InspectPanel {
     const isKing = piece.kind === 'king';
     const ownerName = solo ? (piece.owner === 'white' ? 'White' : 'Black') : this.ctx.names()[piece.owner];
 
-    const typeLine = isKing ? 'Royal piece' : card ? `Tier ${def.tier} creature · summoned by ${card.name}` : `Tier ${def.tier} · basic piece`;
+    const typeLine = isKing ? `Tier ${def.tier} · royal piece` : card ? `Tier ${def.tier} creature · summoned by ${card.name}` : `Tier ${def.tier} · basic piece`;
 
     const status: string[] = [];
     if (piece.summon) {
