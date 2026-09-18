@@ -821,6 +821,8 @@ export function describeStatusNeutral(status: PlayerView['status']): string {
       return `King captured — ${w} wins!`;
     case 'resigned':
       return `${w} wins by resignation`;
+    case 'timeout':
+      return `${w} wins on time`;
   }
 }
 
@@ -836,5 +838,7 @@ export function describeStatus(status: PlayerView['status'], you: Color): string
       return status.winner === you ? 'King captured — you win!' : 'Your King was captured';
     case 'resigned':
       return status.winner === you ? 'Opponent resigned — you win!' : 'You resigned';
+    case 'timeout':
+      return status.winner === you ? 'Opponent ran out of time — you win!' : 'You ran out of time';
   }
 }

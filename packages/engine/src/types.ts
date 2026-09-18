@@ -99,7 +99,9 @@ export type GameStatus =
   | { kind: 'checkmate'; winner: Color }
   | { kind: 'stalemate' }
   | { kind: 'kingCaptured'; winner: Color }
-  | { kind: 'resigned'; winner: Color };
+  | { kind: 'resigned'; winner: Color }
+  /** The side to move ran out of turn clock. */
+  | { kind: 'timeout'; winner: Color };
 
 /** Events emitted while applying an action. The client uses these for animation and the log. */
 export type GameEvent =

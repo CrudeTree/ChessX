@@ -9,7 +9,27 @@ npm install
 npm run dev          # server on :8080 + hot-reloading client on :5173
 ```
 
-Open http://localhost:5173, create a game, send the 5-letter invite code to a friend, they join with it. To test alone, open a second tab and join your own code.
+Open http://localhost:5173, create an account (email + password works out of the box), then **New game** → send the 5-letter invite code to a friend → they **Join** with it. Your home page lists every game you're in with a live board thumbnail, the opponent's name, both clocks, and a gold highlight on the ones where it's your move. Open a game and everything comes back: board, hands, log and chat. **Practice** starts a game where you play both sides.
+
+To test with two accounts on one machine, use a normal window and a private/incognito window (accounts are cookie sessions, so two tabs in the same window share one sign-in).
+
+### Accounts and sign-in
+
+Email/password needs no setup. Google and Facebook sign-in switch on when their keys are present in the server's environment:
+
+| variable | purpose |
+| --- | --- |
+| `PUBLIC_URL` | The URL players use, e.g. `https://chessx.example.com` (dev default `http://localhost:5173`). Used to build OAuth redirect URIs. |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | From [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → OAuth client (Web). Add `PUBLIC_URL/api/auth/google/callback` as an authorised redirect URI. |
+| `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET` | From [Meta for Developers](https://developers.facebook.com/) → app → Facebook Login. Add `PUBLIC_URL/api/auth/facebook/callback` as a valid OAuth redirect URI. |
+| `DB_PATH` | SQLite file location (default `packages/server/data/chessx.sqlite`). |
+| `PORT` | Server port (default 8080). |
+
+If a Google/Facebook account shares an email with an existing password account, they are linked to the same player.
+
+### Turn clocks
+
+Each player has **3 days** per game. Your clock only runs while it's your turn, whether or not you're online. Run out and you lose on time; the server checks clocks on every load and every 30 seconds, so a timed-out game is settled even if nobody has it open.
 
 Other scripts:
 
@@ -27,9 +47,10 @@ To play over the internet, deploy `npm start` to any Node host (Fly.io, Render, 
 ```
 packages/
   engine/    Pure TypeScript rules engine. No UI, no network. Shared by server + client.
-  protocol/  Message types exchanged over the websocket.
-  server/    Node + ws. Rooms by invite code, authoritative game state, reconnect tokens.
-  client/    Vite + PixiJS. Board, hand, drag-and-drop, animations.
+  protocol/  Message types: HTTP (accounts) and websocket (games).
+  server/    Node + ws + SQLite (node:sqlite, no native deps). Accounts, persistent games,
+             turn clocks, chat history. Authoritative game state.
+  client/    Vite + PixiJS. Sign-in, home page, board, hand, drag-and-drop, animations, chat.
 ```
 
 The server is authoritative: the client only ever offers the player actions from the `legalActions` list the server sends, and the server re-validates everything.

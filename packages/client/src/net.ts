@@ -1,27 +1,39 @@
-import { decode, encode, type ClientMessage, type ServerMessage } from '@chessx/protocol';
+import { decode, encode, type AuthProviders, type ClientMessage, type ServerMessage, type UserInfo } from '@chessx/protocol';
 
-export interface Session {
-  code: string;
-  token: string;
+// ---------------------------------------------------------------------------
+// HTTP: accounts
+
+export class ApiError extends Error {}
+
+async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, { credentials: 'same-origin', headers: { 'content-type': 'application/json' }, ...init });
+  const body = (await res.json().catch(() => ({}))) as { error?: string } & T;
+  if (!res.ok) throw new ApiError(body.error ?? `Request failed (${res.status}).`);
+  return body;
 }
 
-const SESSION_KEY = 'chessx.session';
+export const authApi = {
+  me: () => api<{ user: UserInfo }>('/api/me').then((r) => r.user).catch(() => null),
+  providers: () => api<AuthProviders>('/api/auth/providers').catch(() => ({ google: false, facebook: false })),
+  register: (email: string, name: string, password: string) =>
+    api<{ user: UserInfo }>('/api/auth/register', { method: 'POST', body: JSON.stringify({ email, name, password }) }).then((r) => r.user),
+  login: (email: string, password: string) =>
+    api<{ user: UserInfo }>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }).then((r) => r.user),
+  logout: () => api('/api/auth/logout', { method: 'POST' }),
+};
 
-// sessionStorage is per-tab: a refresh rejoins your seat, but a second tab
-// in the same browser can join as the opponent (handy for local testing).
-export function loadSession(): Session | null {
-  try {
-    const raw = sessionStorage.getItem(SESSION_KEY);
-    return raw ? (JSON.parse(raw) as Session) : null;
-  } catch {
-    return null;
-  }
-}
+// ---------------------------------------------------------------------------
+// Per-tab memory of which game is open, so a refresh lands back in it.
 
-export function saveSession(s: Session | null): void {
-  if (s) sessionStorage.setItem(SESSION_KEY, JSON.stringify(s));
-  else sessionStorage.removeItem(SESSION_KEY);
-}
+const GAME_KEY = 'chessx.openGame';
+export const rememberOpenGame = (id: string | null): void => {
+  if (id) sessionStorage.setItem(GAME_KEY, id);
+  else sessionStorage.removeItem(GAME_KEY);
+};
+export const openGameId = (): string | null => sessionStorage.getItem(GAME_KEY);
+
+// ---------------------------------------------------------------------------
+// WebSocket: game traffic. Authenticated by the session cookie.
 
 function defaultUrl(): string {
   const env = (import.meta as unknown as { env: Record<string, string | undefined> }).env;
@@ -30,13 +42,15 @@ function defaultUrl(): string {
   return `${proto}://${location.host}/ws`;
 }
 
-/** WebSocket wrapper with automatic reconnect + rejoin. */
 export class Net {
   onMessage: (msg: ServerMessage) => void = () => {};
   onStatus: (connected: boolean) => void = () => {};
+  /** Called when the server refuses the socket (no valid session). */
+  onUnauthorized: () => void = () => {};
   private ws: WebSocket | null = null;
   private backoff = 500;
   private closedByUser = false;
+  private everOpened = false;
 
   constructor(private url = defaultUrl()) {}
 
@@ -44,16 +58,22 @@ export class Net {
     this.closedByUser = false;
     const ws = new WebSocket(this.url);
     this.ws = ws;
+    let opened = false;
     ws.onopen = () => {
+      opened = true;
+      this.everOpened = true;
       this.backoff = 500;
       this.onStatus(true);
-      const session = loadSession();
-      if (session) this.send({ type: 'rejoin', code: session.code, token: session.token });
     };
     ws.onmessage = (ev) => this.onMessage(decode<ServerMessage>(String(ev.data)));
-    ws.onclose = () => {
+    ws.onclose = async () => {
       this.onStatus(false);
       if (this.closedByUser) return;
+      if (!opened) {
+        // Likely a 401: confirm before retrying so we do not hammer the server while signed out.
+        const user = await authApi.me();
+        if (!user) return this.onUnauthorized();
+      }
       setTimeout(() => this.connect(), this.backoff);
       this.backoff = Math.min(this.backoff * 2, 8000);
     };
@@ -67,5 +87,10 @@ export class Net {
   close(): void {
     this.closedByUser = true;
     this.ws?.close();
+    this.ws = null;
+  }
+
+  get connected(): boolean {
+    return this.ws?.readyState === WebSocket.OPEN;
   }
 }

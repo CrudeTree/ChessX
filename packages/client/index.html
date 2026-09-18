@@ -7,29 +7,75 @@
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <div id="lobby" class="screen">
+    <!-- Sign in / register -->
+    <div id="auth" class="screen hidden">
       <div class="panel">
         <h1>Chess<span>X</span></h1>
-        <label>
-          Your name
-          <input id="name" maxlength="24" placeholder="Player" autocomplete="off" />
-        </label>
-        <button id="create" class="primary">Create game</button>
-        <button id="solo" class="secondary">Practice: play both sides</button>
-        <div class="or">or join with a code</div>
-        <div class="row">
-          <input id="code" maxlength="5" placeholder="CODE" autocomplete="off" />
-          <button id="join">Join</button>
+        <div id="providers" class="providers">
+          <a id="google" class="provider google hidden" href="/api/auth/google">Continue with Google</a>
+          <a id="facebook" class="provider facebook hidden" href="/api/auth/facebook">Continue with Facebook</a>
+          <div id="providers-or" class="or hidden">or use email</div>
         </div>
-        <p id="lobby-error" class="error"></p>
+        <form id="auth-form" autocomplete="on">
+          <label id="name-row" class="hidden">
+            Display name
+            <input id="reg-name" maxlength="24" placeholder="What your friends will see" autocomplete="nickname" />
+          </label>
+          <label>
+            Email
+            <input id="email" type="email" placeholder="you@example.com" autocomplete="email" required />
+          </label>
+          <label>
+            Password
+            <input id="password" type="password" placeholder="At least 8 characters" autocomplete="current-password" required minlength="8" />
+          </label>
+          <button id="auth-submit" class="primary" type="submit">Sign in</button>
+        </form>
+        <p class="switch"><span id="auth-switch-text">New here?</span> <a id="auth-switch" href="#">Create an account</a></p>
+        <p id="auth-error" class="error"></p>
         <p id="conn" class="conn">connecting…</p>
       </div>
     </div>
 
+    <!-- Home: your games -->
+    <div id="home" class="screen hidden">
+      <header class="home-header">
+        <h1>Chess<span>X</span></h1>
+        <div class="home-actions">
+          <button id="new-game" class="primary">New game</button>
+          <button id="practice">Practice</button>
+          <form id="join-form" class="row" autocomplete="off">
+            <input id="join-code" maxlength="5" placeholder="CODE" />
+            <button id="join" type="submit">Join</button>
+          </form>
+        </div>
+        <div class="me">
+          <img id="avatar" class="avatar hidden" alt="" />
+          <span id="me-name"></span>
+          <button id="logout">Sign out</button>
+        </div>
+      </header>
+      <p id="home-error" class="error"></p>
+      <section>
+        <h2 class="section-title">Your move</h2>
+        <div id="games-mine" class="games"></div>
+      </section>
+      <section>
+        <h2 class="section-title">Waiting on the opponent</h2>
+        <div id="games-theirs" class="games"></div>
+      </section>
+      <section>
+        <h2 class="section-title">Finished</h2>
+        <div id="games-done" class="games"></div>
+      </section>
+      <p id="home-empty" class="hint hidden">No games yet. Start one and send the invite code to a friend, or try Practice.</p>
+    </div>
+
+    <!-- The game -->
     <div id="game" class="screen hidden">
       <aside id="inspect">
         <div id="zoom" class="zoom empty">
-          <div class="zoom-empty">Click any piece to see its card.</div>
+          <div class="zoom-empty">Click a piece, or hover a card, to see it here.</div>
         </div>
         <button id="stance" disabled>Switch to Defense mode</button>
         <div id="stance-hint" class="hint"></div>
@@ -43,7 +89,7 @@
         </div>
         <div class="side-block players">
           <div id="opp" class="player">
-            <div class="who"><span class="dot"></span><span class="pname">Waiting for opponent…</span></div>
+            <div class="who"><span class="dot"></span><span class="pname">Waiting for opponent…</span><span class="clock"></span></div>
             <div class="counts"><span class="hand">Hand: –</span> <span class="deck">Deck: –</span></div>
           </div>
           <div id="status" class="status">Waiting for an opponent to join.</div>
@@ -54,7 +100,7 @@
           </div>
           <button id="end-turn" class="primary end-turn" disabled>End Turn</button>
           <div id="me" class="player">
-            <div class="who"><span class="dot"></span><span class="pname">You</span></div>
+            <div class="who"><span class="dot"></span><span class="pname">You</span><span class="clock"></span></div>
             <div class="counts"><span class="hand">Hand: –</span> <span class="deck">Deck: –</span></div>
           </div>
         </div>
@@ -64,7 +110,7 @@
         </div>
         <div class="side-block actions">
           <button id="resign" class="danger">Resign</button>
-          <button id="leave">Leave</button>
+          <button id="leave">Back to games</button>
         </div>
       </aside>
     </div>

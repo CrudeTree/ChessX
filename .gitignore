@@ -1,5 +1,7 @@
 node_modules/
 dist/
+# SQLite database (accounts + games)
+packages/server/data/
 .vite/
 *.log
 .env
