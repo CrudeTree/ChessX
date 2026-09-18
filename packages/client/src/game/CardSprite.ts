@@ -1,5 +1,6 @@
 import { getCardDef, type CardInstance } from '@chessx/engine';
-import { Container, Graphics, Text } from 'pixi.js';
+import { Container, Graphics, Sprite, Text } from 'pixi.js';
+import { artTextures } from './art.js';
 import { CARD_H, CARD_W, COLORS, EMOJI_FONT, UI_FONT } from './layout.js';
 
 export class CardSprite extends Container {
@@ -21,15 +22,29 @@ export class CardSprite extends Container {
       .stroke({ width: 2.5, color: playable ? COLORS.select : 0x4a4a5c, alpha: playable ? 1 : 0.7 });
     this.addChild(bg);
 
-    // Art area
-    const art = new Graphics()
-      .roundRect(-CARD_W / 2 + 6, -CARD_H / 2 + 22, CARD_W - 12, 46, 5)
-      .fill({ color: isSummon ? 0x5a2f3d : 0x2b3a66, alpha: 0.9 });
+    // Art area: pixel art when the card has it, otherwise the glyph.
+    const artX = -CARD_W / 2 + 6;
+    const artY = -CARD_H / 2 + 22;
+    const artW = CARD_W - 12;
+    const artH = 46;
+    const art = new Graphics().roundRect(artX, artY, artW, artH, 5).fill({ color: isSummon ? 0x5a2f3d : 0x2b3a66, alpha: 0.9 });
     this.addChild(art);
-    const glyph = new Text({ text: card.glyph, style: { fontFamily: EMOJI_FONT, fontSize: 28 } });
-    glyph.anchor.set(0.5);
-    glyph.position.set(0, -CARD_H / 2 + 45);
-    this.addChild(glyph);
+    const tex = card.art ? artTextures.get(card.art) : undefined;
+    if (tex) {
+      const img = new Sprite(tex);
+      const scale = artH / tex.height;
+      img.scale.set(scale);
+      img.anchor.set(0.5);
+      img.position.set(0, artY + artH / 2);
+      const mask = new Graphics().roundRect(artX, artY, artW, artH, 5).fill(0xffffff);
+      img.mask = mask;
+      this.addChild(mask, img);
+    } else {
+      const glyph = new Text({ text: card.glyph, style: { fontFamily: EMOJI_FONT, fontSize: 28 } });
+      glyph.anchor.set(0.5);
+      glyph.position.set(0, artY + artH / 2);
+      this.addChild(glyph);
+    }
 
     // Name
     const name = new Text({

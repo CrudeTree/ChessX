@@ -195,6 +195,448 @@ button.danger {
   color: var(--accent);
 }
 
+/* ------------------------------------------------------------ Auth artwork */
+#auth {
+  gap: 40px;
+}
+
+.tagline {
+  color: var(--muted);
+  margin: -14px 0 22px;
+  font-size: 14px;
+}
+
+.auth-art {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 260px;
+}
+
+.auth-art img {
+  width: 100%;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 18px 30px rgba(0, 0, 0, 0.6));
+}
+
+.auth-art.left { align-items: flex-end; }
+.auth-art.right { align-items: flex-start; }
+
+@keyframes floaty {
+  0%, 100% { transform: translateY(0) rotate(-1deg); }
+  50% { transform: translateY(-14px) rotate(1deg); }
+}
+
+.float { animation: floaty 6s ease-in-out infinite; }
+.float.a { animation-delay: 0s; width: 240px; }
+.float.b { animation-delay: -2s; width: 180px; margin-right: 40px; }
+.float.c { animation-delay: -1s; width: 200px; margin-left: 30px; }
+.float.d { animation-delay: -3.5s; width: 240px; }
+
+@media (max-width: 1100px) {
+  .auth-art { display: none; }
+}
+
+/* -------------------------------------------------------------- Home extras */
+.hero-strip {
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+  margin: 6px 0 4px;
+  pointer-events: none;
+}
+
+.hero-strip img {
+  width: 110px;
+  height: 110px;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.6));
+  opacity: 0.95;
+  animation: floaty 7s ease-in-out infinite;
+}
+
+.hero-strip img:nth-child(2n) { animation-delay: -2.3s; }
+.hero-strip img:nth-child(3n) { animation-delay: -4.1s; }
+
+.deck-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.deck-pick select {
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  border: 1px solid #3a3a52;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.binder-btn {
+  position: relative;
+  border-color: var(--accent-2);
+}
+
+.pill {
+  display: inline-block;
+  min-width: 18px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #1a1408;
+  font-size: 11px;
+  font-weight: 800;
+  margin-left: 4px;
+}
+
+.me-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text);
+}
+
+.xp {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.level {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-2);
+  color: #fff;
+}
+
+.xp-bar {
+  width: 120px;
+  height: 8px;
+  border-radius: 999px;
+  background: #2a2a3a;
+  overflow: hidden;
+}
+
+#xp-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, var(--accent-2), #b39cff);
+  transition: width 0.4s ease;
+}
+
+.xp-text {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* ----------------------------------------------------------------- Binder */
+#binder {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 32px 24px;
+}
+
+.binder-header {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 12px;
+}
+
+.binder-header h1 {
+  margin: 0;
+  font-size: 28px;
+}
+
+.binder-stats {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.binder-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 20px;
+  min-height: 0;
+}
+
+.collection,
+.deck-editor {
+  background: var(--panel);
+  border: 1px solid #2f2f44;
+  border-radius: 14px;
+  padding: 14px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.collection .section-title,
+.deck-editor .section-title {
+  margin: 0 0 10px;
+}
+
+.muted {
+  color: var(--muted);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 10px 4px 4px 10px;
+  align-content: start;
+}
+
+/* A card in the binder / deck editor (DOM version of the in-game card). */
+.bcard {
+  position: relative;
+  border-radius: 10px;
+  border: 2px solid #4a4a5c;
+  background: #1f2740;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+  user-select: none;
+}
+
+.bcard.summon { background: #3a1f2a; }
+.bcard:hover { transform: translateY(-2px); border-color: var(--accent); }
+.bcard.disabled { opacity: 0.4; cursor: default; }
+.bcard.disabled:hover { transform: none; border-color: #4a4a5c; }
+
+.bcard .bname {
+  font-weight: 700;
+  font-size: 12.5px;
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.bcard .bart {
+  height: 84px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  overflow: hidden;
+}
+
+.bcard .bart img {
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+.bcard .btype {
+  font-size: 10px;
+  color: #ffd9a0;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.bcard .btext {
+  font-size: 10.5px;
+  color: #d8d8e6;
+  line-height: 1.3;
+  min-height: 40px;
+}
+
+.bcard .count {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: var(--accent);
+  color: #1a1408;
+  font-weight: 800;
+  font-size: 12px;
+  border-radius: 999px;
+  min-width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--panel);
+}
+
+.bcard .newtag {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  background: #ff5fa2;
+  color: #fff;
+  font-weight: 800;
+  font-size: 10px;
+  letter-spacing: 1px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  border: 2px solid var(--panel);
+  animation: newpulse 1.4s ease-in-out infinite;
+}
+
+@keyframes newpulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.12); }
+}
+
+.deck-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.deck-tabs button {
+  flex: 1;
+  padding: 8px;
+  font-size: 13px;
+}
+
+.deck-tabs button.active {
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+  color: #fff;
+}
+
+.deck-tabs button.invalid {
+  border-color: var(--danger);
+}
+
+.deck-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.deck-head input {
+  margin: 0;
+  flex: 1;
+}
+
+.deck-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--ok);
+}
+
+.deck-count.bad { color: var(--danger); }
+
+.deck-head .primary {
+  width: auto;
+}
+
+#deck-msg {
+  min-height: 16px;
+  margin: 8px 0;
+}
+
+.deck-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.deck-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  font-size: 13px;
+}
+
+.deck-row .g { font-size: 18px; width: 26px; text-align: center; }
+.deck-row .n { flex: 1; font-weight: 600; }
+.deck-row .t { color: var(--muted); font-size: 11px; }
+.deck-row .x { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 700; }
+.deck-row button {
+  padding: 3px 9px;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.deck-list:empty::after {
+  content: 'Click cards in your collection to add them. A deck needs 25–40 cards, max 3 of each.';
+  color: var(--muted);
+  font-size: 13px;
+  padding: 10px;
+}
+
+/* ------------------------------------------------------------------ Modal */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+
+.modal-card {
+  background: linear-gradient(160deg, #2b2b3d, #1a1a26);
+  border: 2px solid var(--accent);
+  border-radius: 18px;
+  padding: 24px 28px;
+  width: 520px;
+  text-align: center;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7), 0 0 0 6px rgba(212, 162, 76, 0.15);
+  animation: chat-in 0.25s ease-out;
+}
+
+.modal-card h2 {
+  margin: 0 0 6px;
+  font-size: 26px;
+}
+
+.modal-card p {
+  color: var(--muted);
+  margin: 0 0 16px;
+}
+
+.reward-cards {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.reward-cards .bcard {
+  width: 170px;
+  cursor: default;
+  animation: reveal 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes reveal {
+  from { transform: rotateY(90deg) scale(0.8); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+.modal-card .primary {
+  width: auto;
+  padding: 10px 28px;
+}
+
 /* ------------------------------------------------------------------- Home */
 #home {
   overflow-y: auto;
@@ -685,6 +1127,22 @@ button.danger {
 .zoom .glyph.chess.black {
   color: #1c1b24;
   -webkit-text-stroke: 1px #d8d2e6;
+}
+
+.zoom-banner {
+  height: 120px;
+  border-radius: 10px;
+  background: radial-gradient(circle at 50% 60%, rgba(255, 255, 255, 0.1), rgba(0, 0, 0, 0.35));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.zoom-banner img {
+  height: 100%;
+  image-rendering: pixelated;
 }
 
 /* Movement mini-map */

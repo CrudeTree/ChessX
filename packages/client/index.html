@@ -9,8 +9,13 @@
   <body>
     <!-- Sign in / register -->
     <div id="auth" class="screen hidden">
+      <div class="auth-art left" aria-hidden="true">
+        <img src="/art/elder_wyrm.png" alt="" class="float a" />
+        <img src="/art/stone_sentinel.png" alt="" class="float b" />
+      </div>
       <div class="panel">
         <h1>Chess<span>X</span></h1>
+        <p class="tagline">Chess, but your pieces have HP and your deck decides the war.</p>
         <div id="providers" class="providers">
           <a id="google" class="provider google hidden" href="/api/auth/google">Continue with Google</a>
           <a id="facebook" class="provider facebook hidden" href="/api/auth/facebook">Continue with Facebook</a>
@@ -35,6 +40,10 @@
         <p id="auth-error" class="error"></p>
         <p id="conn" class="conn">connecting…</p>
       </div>
+      <div class="auth-art right" aria-hidden="true">
+        <img src="/art/the_ox.png" alt="" class="float c" />
+        <img src="/art/storm_drake.png" alt="" class="float d" />
+      </div>
     </div>
 
     <!-- Home: your games -->
@@ -42,19 +51,35 @@
       <header class="home-header">
         <h1>Chess<span>X</span></h1>
         <div class="home-actions">
+          <label class="deck-pick">
+            Deck
+            <select id="deck-select"></select>
+          </label>
           <button id="new-game" class="primary">New game</button>
           <button id="practice">Practice</button>
           <form id="join-form" class="row" autocomplete="off">
             <input id="join-code" maxlength="5" placeholder="CODE" />
             <button id="join" type="submit">Join</button>
           </form>
+          <button id="open-binder" class="binder-btn">Binder <span id="binder-new" class="pill hidden"></span></button>
         </div>
         <div class="me">
           <img id="avatar" class="avatar hidden" alt="" />
-          <span id="me-name"></span>
+          <div class="me-text">
+            <span id="me-name"></span>
+            <div class="xp"><span id="level-badge" class="level">Lv 1</span><div class="xp-bar"><div id="xp-fill"></div></div><span id="xp-text" class="xp-text"></span></div>
+          </div>
           <button id="logout">Sign out</button>
         </div>
       </header>
+      <div class="hero-strip" aria-hidden="true">
+        <img src="/art/war_chariot.png" alt="" />
+        <img src="/art/shadow_panther.png" alt="" />
+        <img src="/art/the_ox.png" alt="" />
+        <img src="/art/storm_drake.png" alt="" />
+        <img src="/art/stone_sentinel.png" alt="" />
+        <img src="/art/elder_wyrm.png" alt="" />
+      </div>
       <p id="home-error" class="error"></p>
       <section>
         <h2 class="section-title">Your move</h2>
@@ -69,6 +94,41 @@
         <div id="games-done" class="games"></div>
       </section>
       <p id="home-empty" class="hint hidden">No games yet. Start one and send the invite code to a friend, or try Practice.</p>
+    </div>
+
+    <!-- Binder: your collection and decks -->
+    <div id="binder" class="screen hidden">
+      <header class="binder-header">
+        <button id="binder-back">← Back</button>
+        <h1>Binder</h1>
+        <div class="binder-stats" id="binder-stats"></div>
+      </header>
+      <div class="binder-body">
+        <section class="collection">
+          <h2 class="section-title">Your collection <span id="collection-count" class="muted"></span></h2>
+          <div id="collection-grid" class="card-grid"></div>
+        </section>
+        <section class="deck-editor">
+          <div class="deck-tabs" id="deck-tabs"></div>
+          <div class="deck-head">
+            <input id="deck-name" maxlength="24" placeholder="Deck name" />
+            <span id="deck-count" class="deck-count"></span>
+            <button id="deck-save" class="primary">Save</button>
+          </div>
+          <p id="deck-msg" class="hint"></p>
+          <div id="deck-list" class="deck-list"></div>
+        </section>
+      </div>
+    </div>
+
+    <!-- Reward popup -->
+    <div id="reward" class="modal hidden">
+      <div class="modal-card">
+        <h2 id="reward-title">Match complete</h2>
+        <p id="reward-xp"></p>
+        <div id="reward-cards" class="reward-cards"></div>
+        <button id="reward-close" class="primary">Nice!</button>
+      </div>
     </div>
 
     <!-- The game -->

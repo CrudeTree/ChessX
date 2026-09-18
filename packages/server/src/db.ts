@@ -19,6 +19,23 @@ export interface UserRow {
   facebook_id: string | null;
   avatar_url: string | null;
   created_at: number;
+  xp: number;
+  games_played: number;
+  wins: number;
+}
+
+export interface CollectionRow {
+  user_id: string;
+  card_id: string;
+  count: number;
+  seen: number;
+}
+
+export interface DeckRow {
+  user_id: string;
+  slot: number;
+  name: string;
+  cards_json: string;
 }
 
 export interface GameRow {
@@ -36,6 +53,11 @@ export interface GameRow {
   /** When the current side's clock started ticking (null while waiting for an opponent). */
   turn_started_at: number | null;
   chat_json: string;
+  /** Card lists each seat brought to the game (null until that seat is taken). */
+  white_deck_json: string | null;
+  black_deck_json: string | null;
+  /** XP and card rewards were handed out for this finished game. */
+  rewarded: number;
   created_at: number;
   updated_at: number;
 }
@@ -88,20 +110,85 @@ export class Db {
       );
       CREATE INDEX IF NOT EXISTS games_white ON games(white_user_id);
       CREATE INDEX IF NOT EXISTS games_black ON games(black_user_id);
+      CREATE TABLE IF NOT EXISTS collection (
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        card_id TEXT NOT NULL,
+        count INTEGER NOT NULL DEFAULT 0,
+        seen INTEGER NOT NULL DEFAULT 1,
+        PRIMARY KEY (user_id, card_id)
+      );
+      CREATE TABLE IF NOT EXISTS decks (
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        slot INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        cards_json TEXT NOT NULL DEFAULT '[]',
+        PRIMARY KEY (user_id, slot)
+      );
     `);
+    // Columns added after the first release; safe to run on an existing database.
+    this.addColumn('users', 'xp', 'INTEGER NOT NULL DEFAULT 0');
+    this.addColumn('users', 'games_played', 'INTEGER NOT NULL DEFAULT 0');
+    this.addColumn('users', 'wins', 'INTEGER NOT NULL DEFAULT 0');
+    this.addColumn('games', 'white_deck_json', 'TEXT');
+    this.addColumn('games', 'black_deck_json', 'TEXT');
+    this.addColumn('games', 'rewarded', 'INTEGER NOT NULL DEFAULT 0');
+  }
+
+  private addColumn(table: string, column: string, decl: string): void {
+    const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    if (!cols.some((c) => c.name === column)) this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
   }
 
   // ------------------------------------------------------------------ users
 
-  createUser(u: Omit<UserRow, 'id' | 'created_at'>): UserRow {
-    const row: UserRow = { ...u, id: newId(), created_at: Date.now() };
+  createUser(u: Omit<UserRow, 'id' | 'created_at' | 'xp' | 'games_played' | 'wins'>): UserRow {
+    const row: UserRow = { ...u, id: newId(), created_at: Date.now(), xp: 0, games_played: 0, wins: 0 };
     this.db
       .prepare(
-        `INSERT INTO users (id, email, name, password_hash, google_id, facebook_id, avatar_url, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO users (id, email, name, password_hash, google_id, facebook_id, avatar_url, created_at, xp, games_played, wins)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0)`,
       )
       .run(row.id, row.email, row.name, row.password_hash, row.google_id, row.facebook_id, row.avatar_url, row.created_at);
     return row;
+  }
+
+  addProgress(userId: string, xp: number, played: number, wins: number): void {
+    this.db.prepare('UPDATE users SET xp = xp + ?, games_played = games_played + ?, wins = wins + ? WHERE id = ?').run(xp, played, wins, userId);
+  }
+
+  // ------------------------------------------------------------- collection
+
+  collectionFor(userId: string): CollectionRow[] {
+    return this.db.prepare('SELECT * FROM collection WHERE user_id = ? AND count > 0 ORDER BY card_id').all(userId) as unknown as CollectionRow[];
+  }
+
+  /** Add copies of a card. `seen = false` marks it as new in the binder. */
+  grantCard(userId: string, cardId: string, count: number, seen: boolean): void {
+    this.db
+      .prepare(
+        `INSERT INTO collection (user_id, card_id, count, seen) VALUES (?, ?, ?, ?)
+         ON CONFLICT(user_id, card_id) DO UPDATE SET count = count + excluded.count, seen = MIN(seen, excluded.seen)`,
+      )
+      .run(userId, cardId, count, seen ? 1 : 0);
+  }
+
+  markCollectionSeen(userId: string): void {
+    this.db.prepare('UPDATE collection SET seen = 1 WHERE user_id = ?').run(userId);
+  }
+
+  // ------------------------------------------------------------------ decks
+
+  decksFor(userId: string): DeckRow[] {
+    return this.db.prepare('SELECT * FROM decks WHERE user_id = ? ORDER BY slot').all(userId) as unknown as DeckRow[];
+  }
+
+  saveDeck(userId: string, slot: number, name: string, cards: string[]): void {
+    this.db
+      .prepare(
+        `INSERT INTO decks (user_id, slot, name, cards_json) VALUES (?, ?, ?, ?)
+         ON CONFLICT(user_id, slot) DO UPDATE SET name = excluded.name, cards_json = excluded.cards_json`,
+      )
+      .run(userId, slot, name, JSON.stringify(cards));
   }
 
   userById(id: string): UserRow | undefined {
@@ -151,12 +238,14 @@ export class Db {
     this.db
       .prepare(
         `INSERT INTO games (id, code, solo, white_user_id, black_user_id, state_json, status_kind, turn,
-           clock_white_ms, clock_black_ms, turn_started_at, chat_json, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           clock_white_ms, clock_black_ms, turn_started_at, chat_json, white_deck_json, black_deck_json, rewarded,
+           created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         g.id, g.code, g.solo, g.white_user_id, g.black_user_id, g.state_json, g.status_kind, g.turn,
-        g.clock_white_ms, g.clock_black_ms, g.turn_started_at, g.chat_json, g.created_at, g.updated_at,
+        g.clock_white_ms, g.clock_black_ms, g.turn_started_at, g.chat_json, g.white_deck_json, g.black_deck_json, g.rewarded,
+        g.created_at, g.updated_at,
       );
   }
 
@@ -164,12 +253,14 @@ export class Db {
     this.db
       .prepare(
         `UPDATE games SET white_user_id = ?, black_user_id = ?, state_json = ?, status_kind = ?, turn = ?,
-           clock_white_ms = ?, clock_black_ms = ?, turn_started_at = ?, chat_json = ?, updated_at = ?
+           clock_white_ms = ?, clock_black_ms = ?, turn_started_at = ?, chat_json = ?,
+           white_deck_json = ?, black_deck_json = ?, rewarded = ?, updated_at = ?
          WHERE id = ?`,
       )
       .run(
         g.white_user_id, g.black_user_id, g.state_json, g.status_kind, g.turn,
-        g.clock_white_ms, g.clock_black_ms, g.turn_started_at, g.chat_json, g.updated_at, g.id,
+        g.clock_white_ms, g.clock_black_ms, g.turn_started_at, g.chat_json,
+        g.white_deck_json, g.black_deck_json, g.rewarded, g.updated_at, g.id,
       );
   }
 

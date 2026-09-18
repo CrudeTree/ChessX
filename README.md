@@ -91,15 +91,22 @@ Example: DEF 3 / HP 1 in Defense mode, hit by ATK 4 → shield wiped out, 1 dama
 
 **Check and checkmate.** A move may never leave your own king in check. Because pieces can survive attacks, "capturing" the checking piece does not resolve check unless the capture actually destroys it. While in check you may still play spells and switch stances (a Hex that kills the attacker is a fine answer), but you cannot summon and you cannot end the turn. Checkmate = in check with no single action that gets the king out. There is no stalemate: a player who is not in check may simply end the turn.
 
-**Deck and hand.** 30 cards, max 3 copies of any card. Draw 7 at the start. A green timer ring around your deck fills one segment per turn you take; on your 5th, 10th, 15th… turn it closes and pulses, and you **must click your deck to draw** before doing anything else that turn. Drawing does not use the turn. Cards can also grant extra draws directly. Your deck sits at the bottom-right of the board, the opponent's at the top-left (their right), and you can watch their ring fill too.
+**Deck and hand.** 25–40 cards, max 3 copies of any card. Draw 7 at the start. A green timer ring around your deck fills one segment per turn you take; on your 5th, 10th, 15th… turn it closes and pulses, and you **must click your deck to draw** before doing anything else that turn. Drawing does not use the turn. Cards can also grant extra draws directly. Your deck sits at the bottom-right of the board, the opponent's at the top-left (their right), and you can watch their ring fill too.
 
 **Summon cards.** Pieces have tiers: Pawn = 1, Knight/Bishop = 2, Rook = 3, Queen = 4. A tier-N summon card is played by dropping it on one of your pieces of tier N−1, which becomes the sacrifice. A void opens beneath it with a timer. While the timer runs the sacrificed piece cannot move or attack. The timer ticks down at the start of each of your turns; when it reaches 0 the piece is replaced by the summoned creature. If the sacrifice is destroyed first, the summon fails and the card is lost.
 
 **Spell cards** resolve immediately: stat buffs, damage, heals, draws, and hastening a summon. Kings can't be targeted unless a card says so.
 
-### Sample cards
+### Progression, collection and decks
 
-These are placeholders to exercise the engine — they live in `packages/engine/src/cards/catalog.ts` and are pure data.
+- Every account starts with **3 copies of each of the 10 starter cards** and **Deck 1** built from them.
+- Finishing a two-player match gives **20 XP**; winning gives **30 more**. Levels need 100, 200, 300… XP each. Practice games don't count.
+- Your **first finished match** (win or lose) unlocks a brand-new reward card. After that, every win by **checkmate** rolls a reward: a 50/50 between a reward card you don't own yet and a spare copy of a card you do.
+- The **Binder** shows your whole collection (new cards are flagged) and holds up to **3 named decks**. Click a card to add it, use −/+ in the deck list, rename, Save. A deck needs 25–40 cards, max 3 copies of anything, and only cards you own. Pick which deck to play with on the home page before creating, joining or practising.
+
+### Cards
+
+Cards live in `packages/engine/src/cards/catalog.ts` and are pure data. Starter set:
 
 | card           | type   | effect                                                                  |
 | -------------- | ------ | ----------------------------------------------------------------------- |
@@ -114,7 +121,20 @@ These are placeholders to exercise the engine — they live in `packages/engine/
 | Hex            | Spell  | 1 damage to an enemy piece                                              |
 | Dark Ritual    | Spell  | A friendly summon timer drops by 2                                      |
 
-Both players currently use the same starter deck (3 of each). A deck builder is the natural next step.
+Reward cards (unlocked through play):
+
+| card            | type   | effect                                                                           |
+| --------------- | ------ | -------------------------------------------------------------------------------- |
+| Thornback Boar  | Summon | Tier 2, 2 turns. Charges ≤2 forward or 1 sideways. 2 ATK / 0 DEF / 1 HP           |
+| Frost Owl       | Summon | Tier 2, 2 turns. Knight jumps or 1 diagonal. 1 ATK / 0 DEF / 2 HP                 |
+| Iron Golem      | Summon | Tier 3, 3 turns. 1 orthogonal. 2 ATK / 2 DEF / 3 HP                               |
+| Shadow Panther  | Summon | Tier 3, 2 turns. ≤3 diagonal or 1 orthogonal. 3 ATK / 0 DEF / 1 HP                |
+| Ancient Treant  | Summon | Tier 3, 3 turns. 1 any direction. 1 ATK / 3 DEF / 4 HP                            |
+| Storm Drake     | Summon | Tier 4, 4 turns. Knight jumps or ≤2 orthogonal. 3 ATK / 0 DEF / 2 HP              |
+| Battle Cry      | Spell  | All your Pawns +1 ATK                                                             |
+| Second Wind     | Spell  | Friendly piece: refill HP and DEF shield                                          |
+| Battle Trance   | Spell  | Friendly piece in Defense mode → Attack mode, and it may still act this turn      |
+| Smite           | Spell  | 2 damage to an enemy piece                                                        |
 
 ### Adding a card
 

@@ -1,9 +1,21 @@
-import type { Color, PlayerView } from '@chessx/engine';
-import type { ChatMessage, Clocks, GameSummary, RoomInfo, ServerMessage, UserInfo } from '@chessx/protocol';
+import { DEFAULT_RULES, getCardDef, type Color, type PlayerView } from '@chessx/engine';
+import {
+  levelFor,
+  xpForLevel,
+  type ChatMessage,
+  type Clocks,
+  type GameSummary,
+  type Profile,
+  type RewardReport,
+  type RoomInfo,
+  type ServerMessage,
+  type UserInfo,
+} from '@chessx/protocol';
+import { Binder, cardElement } from './binder.js';
 import { GameView } from './game/GameView.js';
 import { InspectPanel } from './inspect.js';
 import { describeEvents } from './log.js';
-import { ApiError, authApi, Net, openGameId, rememberOpenGame } from './net.js';
+import { ApiError, authApi, Net, openGameId, profileApi, rememberOpenGame } from './net.js';
 import { colorName, drawThumbnail } from './thumbnail.js';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -11,13 +23,15 @@ const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) 
 // Screens
 const authScreen = $('auth');
 const homeScreen = $('home');
+const binderScreen = $('binder');
 const gameScreen = $('game');
 const chatEl = $('chat');
 
-type Screen = 'auth' | 'home' | 'game';
+type Screen = 'auth' | 'home' | 'binder' | 'game';
 function show(screen: Screen): void {
   authScreen.classList.toggle('hidden', screen !== 'auth');
   homeScreen.classList.toggle('hidden', screen !== 'home');
+  binderScreen.classList.toggle('hidden', screen !== 'binder');
   gameScreen.classList.toggle('hidden', screen !== 'game');
   chatEl.classList.toggle('hidden', screen !== 'game');
 }
@@ -37,6 +51,7 @@ let currentClocks: Clocks | null = null;
 let lastSeq = -1;
 let viewReady = false;
 let games: GameSummary[] = [];
+let profile: Profile | null = null;
 
 const inspect = new InspectPanel({
   gameView,
@@ -114,7 +129,99 @@ async function signedIn(u: UserInfo): Promise<void> {
   avatar.classList.toggle('hidden', !u.avatarUrl);
   if (u.avatarUrl) avatar.src = u.avatarUrl;
   show('home');
+  await refreshProfile();
   net.connect();
+}
+
+// ---------------------------------------------------------------------------
+// Profile: level, XP, decks, binder
+
+const deckSelect = $<HTMLSelectElement>('deck-select');
+
+async function refreshProfile(): Promise<void> {
+  try {
+    setProfile(await profileApi.get());
+  } catch {
+    /* not signed in */
+  }
+}
+
+function setProfile(p: Profile): void {
+  profile = p;
+  const level = levelFor(p.xp);
+  const from = xpForLevel(level);
+  const to = xpForLevel(level + 1);
+  $('level-badge').textContent = `Lv ${level}`;
+  $('xp-fill').style.width = `${Math.round(((p.xp - from) / (to - from)) * 100)}%`;
+  $('xp-text').textContent = `${p.xp - from} / ${to - from} XP`;
+
+  const fresh = p.collection.filter((c) => c.isNew).length;
+  const pill = $('binder-new');
+  pill.classList.toggle('hidden', fresh === 0);
+  pill.textContent = `${fresh} new`;
+
+  // Deck picker: only decks that are legal to play are selectable.
+  const prev = deckSelect.value;
+  deckSelect.innerHTML = '';
+  for (const d of p.decks) {
+    const opt = document.createElement('option');
+    const ok = d.cards.length >= DEFAULT_RULES.deckMin && d.cards.length <= DEFAULT_RULES.deckMax;
+    opt.value = String(d.slot);
+    opt.textContent = ok ? `${d.name} (${d.cards.length})` : `${d.name} — ${d.cards.length ? 'incomplete' : 'empty'}`;
+    opt.disabled = !ok;
+    deckSelect.appendChild(opt);
+  }
+  const firstOk = p.decks.find((d) => d.cards.length >= DEFAULT_RULES.deckMin && d.cards.length <= DEFAULT_RULES.deckMax);
+  deckSelect.value = [...deckSelect.options].some((o) => o.value === prev && !o.disabled) ? prev : String(firstOk?.slot ?? 1);
+}
+
+function chosenDeckSlot(): number | null {
+  const opt = deckSelect.selectedOptions[0];
+  if (!opt || opt.disabled) {
+    homeError.textContent = 'Pick a deck with at least 25 cards first (build one in the Binder).';
+    return null;
+  }
+  return Number(opt.value);
+}
+
+const binder = new Binder(() => {
+  show('home');
+  net.send({ type: 'listGames' });
+});
+binder.onProfileChanged = (p) => setProfile(p);
+
+$('open-binder').onclick = async () => {
+  await refreshProfile();
+  if (!profile) return;
+  show('binder');
+  binder.open(profile);
+};
+
+// Reward popup
+const rewardEl = $('reward');
+$('reward-close').onclick = () => rewardEl.classList.add('hidden');
+
+function showRewards(r: RewardReport): void {
+  $('reward-title').textContent =
+    r.reason === 'firstMatch' ? 'First match complete!' : r.leveledUp ? `Level ${r.level}!` : r.cards.length ? 'Victory spoils!' : 'Match complete';
+  const parts = [`+${r.xpGained} XP`];
+  if (r.leveledUp) parts.push(`you reached level ${r.level}`);
+  if (r.reason === 'firstMatch') parts.push("here's a taste of what's out there — win by checkmate to unlock more");
+  $('reward-xp').textContent = parts.join(' · ');
+  const wrap = $('reward-cards');
+  wrap.innerHTML = '';
+  for (const c of r.cards) {
+    const el = cardElement(getCardDef(c.cardId), { isNew: c.brandNew });
+    if (!c.brandNew) {
+      const tag = document.createElement('span');
+      tag.className = 'count';
+      tag.textContent = '+1 copy';
+      el.appendChild(tag);
+    }
+    wrap.appendChild(el);
+  }
+  rewardEl.classList.remove('hidden');
+  void refreshProfile();
 }
 
 $('logout').onclick = async () => {
@@ -131,8 +238,14 @@ $('logout').onclick = async () => {
 
 const homeError = $('home-error');
 
-$('new-game').onclick = () => net.send({ type: 'createGame' });
-$('practice').onclick = () => net.send({ type: 'createSolo' });
+$('new-game').onclick = () => {
+  const deckSlot = chosenDeckSlot();
+  if (deckSlot !== null) net.send({ type: 'createGame', deckSlot });
+};
+$('practice').onclick = () => {
+  const deckSlot = chosenDeckSlot();
+  if (deckSlot !== null) net.send({ type: 'createSolo', deckSlot });
+};
 $<HTMLFormElement>('join-form').onsubmit = (e) => {
   e.preventDefault();
   const code = $<HTMLInputElement>('join-code').value.trim().toUpperCase();
@@ -140,8 +253,10 @@ $<HTMLFormElement>('join-form').onsubmit = (e) => {
     homeError.textContent = 'Enter the 5-letter invite code.';
     return;
   }
+  const deckSlot = chosenDeckSlot();
+  if (deckSlot === null) return;
   homeError.textContent = '';
-  net.send({ type: 'joinGame', code });
+  net.send({ type: 'joinGame', code, deckSlot });
   $<HTMLInputElement>('join-code').value = '';
 };
 
@@ -521,6 +636,10 @@ net.onMessage = async (msg: ServerMessage) => {
       return;
     case 'chat':
       appendChat(msg.messages);
+      return;
+    case 'rewards':
+      // Let the game-over banner land first, then celebrate.
+      setTimeout(() => showRewards(msg.report), gameScreen.classList.contains('hidden') ? 0 : 1200);
       return;
     case 'error':
       if (!homeScreen.classList.contains('hidden')) {

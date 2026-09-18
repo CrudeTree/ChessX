@@ -68,10 +68,13 @@ describe('setup', () => {
     expect(a.players.white.hand.map((c) => c.cardId)).toEqual(b.players.white.hand.map((c) => c.cardId));
   });
 
-  it('validates deck size and copy limits', () => {
+  it('validates deck size (25-40) and copy limits', () => {
     expect(validateDeck(starterDeck())).toEqual([]);
-    expect(validateDeck(starterDeck().slice(1)).length).toBeGreaterThan(0);
+    expect(validateDeck(starterDeck().slice(0, 25))).toEqual([]);
+    expect(validateDeck(starterDeck().slice(0, 24)).length).toBeGreaterThan(0);
+    expect(validateDeck([...starterDeck(), ...starterDeck().slice(0, 11)]).length).toBeGreaterThan(0); // 41
     expect(validateDeck(new Array(30).fill('the_ox')).length).toBeGreaterThan(0);
+    expect(validateDeck([...starterDeck().slice(0, 24), 'not_a_card']).length).toBeGreaterThan(0);
   });
 });
 
@@ -404,6 +407,50 @@ describe('cards', () => {
     expect(() => act(g, { type: 'playCard', cardInstanceId: hex, target: s('e8') })).toThrow(IllegalActionError);
     g = act(g, { type: 'playCard', cardInstanceId: hex, target: s('e7') });
     expect(pieceAt(g, s('e7'))).toBeUndefined();
+  });
+
+  it('reward spells: Battle Cry buffs all pawns, Second Wind restores, Battle Trance frees a defender, Smite hits for 2', () => {
+    let g = newGame();
+    const cry = giveCard(g, 'white', 'battle_cry');
+    g = act(g, { type: 'playCard', cardInstanceId: cry });
+    for (const f of 'abcdefgh') expect(pieceAt(g, s(`${f}2`))!.atk).toBe(2);
+    expect(pieceAt(g, s('b1'))!.atk).toBe(1); // knights untouched
+
+    // Put e2 in Defense, then Battle Trance frees it and it may still move this turn.
+    g = act(g, { type: 'setStance', square: s('e2'), stance: 'defense' });
+    expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(false);
+    const trance = giveCard(g, 'white', 'battle_trance');
+    expect(legalActions(g).some((a) => a.type === 'playCard' && a.cardInstanceId === trance && a.target === s('e2'))).toBe(true);
+    g = act(g, { type: 'playCard', cardInstanceId: trance, target: s('e2') });
+    expect(pieceAt(g, s('e2'))!.stance).toBe('attack');
+    expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(true);
+
+    // Smite: 2 damage. Give the target 3 HP so it survives with 1, then Second Wind restores it.
+    const smite = giveCard(g, 'white', 'smite');
+    const e7 = pieceAt(g, s('e7'))!;
+    e7.hp = 3;
+    e7.maxHp = 3;
+    g = act(g, { type: 'playCard', cardInstanceId: smite, target: s('e7') });
+    expect(pieceAt(g, s('e7'))!.hp).toBe(1);
+    g = end(g);
+    const wind = giveCard(g, 'black', 'second_wind');
+    g = act(g, { type: 'playCard', cardInstanceId: wind, target: s('e7') });
+    expect(pieceAt(g, s('e7'))!.hp).toBe(3);
+  });
+
+  it('reward creatures have sensible movement patterns', () => {
+    let g = newGame();
+    const boar = giveCard(g, 'white', 'thornback_boar');
+    g = end(act(g, { type: 'playCard', cardInstanceId: boar, target: s('e2') }));
+    g = move(g, 'a7', 'a6');
+    g = move(g, 'a2', 'a3');
+    g = move(g, 'a6', 'a5'); // boar summoned at start of white's turn 3
+    expect(pieceAt(g, s('e2'))!.kind).toBe('thornback_boar');
+    const to = legalMoves(g).filter((m) => m.from === s('e2')).map((m) => m.to);
+    expect(to).toContain(s('e3'));
+    expect(to).toContain(s('e4')); // charges forward 2
+    expect(to).not.toContain(s('d2')); // d2 occupied by own pawn
+    expect(to).not.toContain(s('e1')); // never backwards
   });
 
   it('Dark Ritual hastens a summon', () => {

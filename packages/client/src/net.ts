@@ -1,4 +1,4 @@
-import { decode, encode, type AuthProviders, type ClientMessage, type ServerMessage, type UserInfo } from '@chessx/protocol';
+import { decode, encode, type AuthProviders, type ClientMessage, type DeckInfo, type Profile, type ServerMessage, type UserInfo } from '@chessx/protocol';
 
 // ---------------------------------------------------------------------------
 // HTTP: accounts
@@ -20,6 +20,13 @@ export const authApi = {
   login: (email: string, password: string) =>
     api<{ user: UserInfo }>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }).then((r) => r.user),
   logout: () => api('/api/auth/logout', { method: 'POST' }),
+};
+
+export const profileApi = {
+  get: () => api<Profile>('/api/profile'),
+  saveDeck: (slot: number, name: string, cards: string[]) =>
+    api<{ deck: DeckInfo }>(`/api/decks/${slot}`, { method: 'PUT', body: JSON.stringify({ name, cards }) }).then((r) => r.deck),
+  markSeen: () => api('/api/collection/seen', { method: 'POST' }),
 };
 
 // ---------------------------------------------------------------------------

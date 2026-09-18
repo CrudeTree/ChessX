@@ -187,6 +187,8 @@ function matchesTarget(p: Piece, rule: TargetRule, color: Color, allowKing: bool
       return true;
     case 'ownSummoning':
       return p.owner === color && !!p.summon;
+    case 'ownDefending':
+      return p.owner === color && p.stance === 'defense' && !p.summon;
   }
 }
 
@@ -429,20 +431,46 @@ function resolveSummon(state: GameState, sacrifice: Piece): void {
   state.events.push({ type: 'summoned', color: owner, cardId: card.id, pieceId: summoned.id, square });
 }
 
+function modifyStats(state: GameState, target: Piece, delta: { atk?: number; def?: number; hp?: number }): void {
+  target.atk = Math.max(0, target.atk + (delta.atk ?? 0));
+  if (delta.def) {
+    target.maxDef = Math.max(0, target.maxDef + delta.def);
+    target.def = Math.min(target.maxDef, Math.max(0, target.def + delta.def));
+  }
+  if (target.kind !== 'king' && delta.hp) {
+    target.maxHp = Math.max(1, target.maxHp + delta.hp);
+    target.hp = Math.min(target.maxHp, Math.max(1, target.hp + delta.hp));
+  }
+  emitStats(state, target);
+}
+
 function applyEffect(state: GameState, effect: Effect, color: Color, target: Piece | undefined): void {
   switch (effect.kind) {
     case 'modifyStats': {
-      if (!target) return;
-      target.atk = Math.max(0, target.atk + (effect.atk ?? 0));
-      if (effect.def) {
-        target.maxDef = Math.max(0, target.maxDef + effect.def);
-        target.def = Math.min(target.maxDef, Math.max(0, target.def + effect.def));
+      if (target) modifyStats(state, target, effect);
+      return;
+    }
+    case 'modifyStatsAll': {
+      for (const p of piecesOf(state, color)) {
+        if (p.kind === 'king') continue;
+        if (effect.pieceKind && p.kind !== effect.pieceKind) continue;
+        modifyStats(state, p, effect);
       }
-      if (target.kind !== 'king' && effect.hp) {
-        target.maxHp = Math.max(1, target.maxHp + effect.hp);
-        target.hp = Math.min(target.maxHp, Math.max(1, target.hp + effect.hp));
-      }
+      return;
+    }
+    case 'restore': {
+      if (!target || target.kind === 'king') return;
+      target.hp = target.maxHp;
+      target.def = target.maxDef;
       emitStats(state, target);
+      return;
+    }
+    case 'freeStance': {
+      if (!target || target.kind === 'king' || target.summon) return;
+      target.stance = 'attack';
+      // The piece may still act this turn: not frozen, even if it switched earlier this turn.
+      state.turnInfo.stanceChanged = state.turnInfo.stanceChanged.filter((id) => id !== target.id);
+      state.events.push({ type: 'stanceChanged', pieceId: target.id, square: target.square, stance: 'attack' });
       return;
     }
     case 'damage': {

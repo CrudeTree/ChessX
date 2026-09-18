@@ -1,17 +1,27 @@
-// Sample cards. These are placeholders to exercise the engine; replace or extend
-// with the real card list. Adding a card = adding an entry here.
+// Card catalog. Every card is pure data; adding one is adding an entry here.
+//
+//  STARTER_CARDS — what every new player owns (3 copies each) and Deck 1 is built from.
+//  REWARD_CARDS  — unlocked one at a time: the first finished match always grants one,
+//                  and each checkmate has a chance to grant another (or a spare starter copy).
 
 import { DIRS } from '../pieces.js';
 import { registerCards } from './registry.js';
 import type { CardDef } from './types.js';
 
+const FORWARD = [[0, 1]] as const;
+const SIDEWAYS = [
+  [1, 0],
+  [-1, 0],
+] as const;
+
 export const CATALOG: CardDef[] = [
-  // ---------------------------------------------------------------- Summons
+  // ======================================================== STARTER SUMMONS
   {
     id: 'the_ox',
     type: 'summon',
     name: 'The Ox',
     glyph: '🐂',
+    art: '/art/the_ox.png',
     tier: 2,
     summonTurns: 3,
     text: 'Sacrifice a Tier 1 piece. Summons in 3 turns. Moves up to 2 squares orthogonally. 2 ATK / 0 DEF / 2 HP.',
@@ -31,6 +41,7 @@ export const CATALOG: CardDef[] = [
     type: 'summon',
     name: 'Stone Sentinel',
     glyph: '🗿',
+    art: '/art/stone_sentinel.png',
     tier: 2,
     summonTurns: 2,
     text: 'Sacrifice a Tier 1 piece. Summons in 2 turns. Moves 1 square in any direction. 1 ATK / 1 DEF / 3 HP.',
@@ -50,6 +61,7 @@ export const CATALOG: CardDef[] = [
     type: 'summon',
     name: 'War Chariot',
     glyph: '🏇',
+    art: '/art/war_chariot.png',
     tier: 3,
     summonTurns: 3,
     text: 'Sacrifice a Tier 2 piece. Summons in 3 turns. Moves like a Rook or a Knight. 2 ATK / 0 DEF / 2 HP.',
@@ -69,6 +81,7 @@ export const CATALOG: CardDef[] = [
     type: 'summon',
     name: 'Elder Wyrm',
     glyph: '🐉',
+    art: '/art/elder_wyrm.png',
     tier: 4,
     sacrificeTier: 4,
     summonTurns: 4,
@@ -85,7 +98,7 @@ export const CATALOG: CardDef[] = [
     },
   },
 
-  // ----------------------------------------------------------------- Spells
+  // ========================================================= STARTER SPELLS
   {
     id: 'iron_hide',
     type: 'spell',
@@ -141,13 +154,179 @@ export const CATALOG: CardDef[] = [
     text: 'Target friendly piece being sacrificed: its summon timer drops by 2.',
     effects: [{ kind: 'hastenSummon', turns: 2 }],
   },
+
+  // ========================================================= REWARD SUMMONS
+  {
+    id: 'thornback_boar',
+    type: 'summon',
+    name: 'Thornback Boar',
+    glyph: '🐗',
+    tier: 2,
+    summonTurns: 2,
+    text: 'Sacrifice a Tier 1 piece. Summons in 2 turns. Charges up to 2 squares forward or 1 square sideways. 2 ATK / 0 DEF / 1 HP.',
+    piece: {
+      kind: 'thornback_boar',
+      name: 'Thornback Boar',
+      glyph: '🐗',
+      tier: 2,
+      movement: { slides: [{ dirs: FORWARD, range: 2 }], leaps: SIDEWAYS, relative: true },
+      atk: 2,
+      def: 0,
+      hp: 1,
+    },
+  },
+  {
+    id: 'frost_owl',
+    type: 'summon',
+    name: 'Frost Owl',
+    glyph: '🦉',
+    tier: 2,
+    summonTurns: 2,
+    text: 'Sacrifice a Tier 1 piece. Summons in 2 turns. Moves like a Knight or 1 square diagonally. 1 ATK / 0 DEF / 2 HP.',
+    piece: {
+      kind: 'frost_owl',
+      name: 'Frost Owl',
+      glyph: '🦉',
+      tier: 2,
+      movement: { leaps: [...DIRS.KNIGHT, ...DIRS.DIAGONAL] },
+      atk: 1,
+      def: 0,
+      hp: 2,
+    },
+  },
+  {
+    id: 'iron_golem',
+    type: 'summon',
+    name: 'Iron Golem',
+    glyph: '🤖',
+    tier: 3,
+    summonTurns: 3,
+    text: 'Sacrifice a Tier 2 piece. Summons in 3 turns. Moves 1 square orthogonally. 2 ATK / 2 DEF / 3 HP.',
+    piece: {
+      kind: 'iron_golem',
+      name: 'Iron Golem',
+      glyph: '🤖',
+      tier: 3,
+      movement: { leaps: DIRS.ORTHOGONAL },
+      atk: 2,
+      def: 2,
+      hp: 3,
+    },
+  },
+  {
+    id: 'shadow_panther',
+    type: 'summon',
+    name: 'Shadow Panther',
+    glyph: '🐆',
+    art: '/art/shadow_panther.png',
+    tier: 3,
+    summonTurns: 2,
+    text: 'Sacrifice a Tier 2 piece. Summons in 2 turns. Slides up to 3 squares diagonally or 1 square orthogonally. 3 ATK / 0 DEF / 1 HP.',
+    piece: {
+      kind: 'shadow_panther',
+      name: 'Shadow Panther',
+      glyph: '🐆',
+      tier: 3,
+      movement: { slides: [{ dirs: DIRS.DIAGONAL, range: 3 }], leaps: DIRS.ORTHOGONAL },
+      atk: 3,
+      def: 0,
+      hp: 1,
+    },
+  },
+  {
+    id: 'ancient_treant',
+    type: 'summon',
+    name: 'Ancient Treant',
+    glyph: '🌳',
+    tier: 3,
+    summonTurns: 3,
+    text: 'Sacrifice a Tier 2 piece. Summons in 3 turns. Moves 1 square in any direction. 1 ATK / 3 DEF / 4 HP.',
+    piece: {
+      kind: 'ancient_treant',
+      name: 'Ancient Treant',
+      glyph: '🌳',
+      tier: 3,
+      movement: { leaps: DIRS.ALL },
+      atk: 1,
+      def: 3,
+      hp: 4,
+    },
+  },
+  {
+    id: 'storm_drake',
+    type: 'summon',
+    name: 'Storm Drake',
+    glyph: '🐲',
+    art: '/art/storm_drake.png',
+    tier: 4,
+    summonTurns: 4,
+    text: 'Sacrifice a Tier 3 piece. Summons in 4 turns. Moves like a Knight or up to 2 squares orthogonally. 3 ATK / 0 DEF / 2 HP.',
+    piece: {
+      kind: 'storm_drake',
+      name: 'Storm Drake',
+      glyph: '🐲',
+      tier: 4,
+      movement: { leaps: DIRS.KNIGHT, slides: [{ dirs: DIRS.ORTHOGONAL, range: 2 }] },
+      atk: 3,
+      def: 0,
+      hp: 2,
+    },
+  },
+
+  // ========================================================== REWARD SPELLS
+  {
+    id: 'battle_cry',
+    type: 'spell',
+    name: 'Battle Cry',
+    glyph: '📣',
+    target: 'none',
+    text: 'All your Pawns gain +1 ATK.',
+    effects: [{ kind: 'modifyStatsAll', pieceKind: 'pawn', atk: 1 }],
+  },
+  {
+    id: 'second_wind',
+    type: 'spell',
+    name: 'Second Wind',
+    glyph: '💨',
+    target: 'ownPiece',
+    text: 'Target friendly piece fully restores its HP and DEF shield.',
+    effects: [{ kind: 'restore' }],
+  },
+  {
+    id: 'battle_trance',
+    type: 'spell',
+    name: 'Battle Trance',
+    glyph: '🔥',
+    target: 'ownDefending',
+    text: 'Target friendly piece in Defense mode switches to Attack mode and may still act this turn.',
+    effects: [{ kind: 'freeStance' }],
+  },
+  {
+    id: 'smite',
+    type: 'spell',
+    name: 'Smite',
+    glyph: '⚡',
+    target: 'enemyPiece',
+    text: 'Deal 2 damage to target enemy piece (not the King).',
+    effects: [{ kind: 'damage', amount: 2 }],
+  },
 ];
 
 registerCards(CATALOG);
 
-/** A legal 30-card deck: 3 copies of each of the 10 sample cards. */
+export const STARTER_CARDS: string[] = [
+  'the_ox', 'stone_sentinel', 'war_chariot', 'elder_wyrm',
+  'iron_hide', 'whetstone', 'shield_wall', 'foresight', 'hex', 'dark_ritual',
+];
+
+export const REWARD_CARDS: string[] = [
+  'thornback_boar', 'frost_owl', 'iron_golem', 'shadow_panther', 'ancient_treant', 'storm_drake',
+  'battle_cry', 'second_wind', 'battle_trance', 'smite',
+];
+
+/** The 30-card deck every new player starts with: 3 copies of each starter card. */
 export function starterDeck(): string[] {
   const deck: string[] = [];
-  for (const card of CATALOG) for (let i = 0; i < 3; i++) deck.push(card.id);
+  for (const id of STARTER_CARDS) for (let i = 0; i < 3; i++) deck.push(id);
   return deck;
 }

@@ -12,6 +12,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { Auth, AuthError, configFromEnv, toUserInfo } from './auth.js';
 import { Db } from './db.js';
 import { GameError, GameManager, type LiveGame, type Transport } from './games.js';
+import { Progression, ProgressionError } from './progression.js';
 
 const PORT = Number(process.env.PORT ?? 8080);
 const here = dirname(fileURLToPath(import.meta.url));
@@ -20,6 +21,7 @@ const DB_PATH = process.env.DB_PATH ?? join(here, '..', 'data', 'chessx.sqlite')
 const db = new Db(DB_PATH);
 const auth = new Auth(db, configFromEnv(process.env));
 const games = new GameManager(db, (id) => db.userById(id)?.name ?? 'Player');
+const progression = new Progression(db);
 setInterval(() => db.purgeExpiredSessions(), 60 * 60_000).unref();
 
 /** Open sockets per user, so home pages can be refreshed when one of their games changes. */
@@ -30,6 +32,19 @@ games.onChanged = (game) => {
       // Tabs sitting on the home page (not attached to a game) get a fresh list.
       if (!t.game) t.send({ type: 'games', games: games.summariesFor(uid) });
     }
+  }
+};
+
+// A two-player game reached a result: XP for both, cards where earned, and tell them.
+games.onFinished = (game) => {
+  const status = game.state?.status;
+  if (!status || status.kind === 'playing') return;
+  const winner = 'winner' in status ? status.winner : null;
+  const checkmate = status.kind === 'checkmate' || status.kind === 'kingCaptured';
+  for (const uid of game.participants()) {
+    const won = winner !== null && game.seatOf(uid) === winner;
+    const report = progression.award(uid, game.id, won, checkmate);
+    for (const t of socketsByUser.get(uid) ?? []) t.send({ type: 'rewards', report });
   }
 };
 
@@ -123,6 +138,23 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
       return json(res, 200, { ok: true });
     }
 
+    // ---- progression (signed-in only)
+    if (path === '/api/profile' || path.startsWith('/api/decks/') || path === '/api/collection/seen') {
+      const user = auth.userFromRequest(req);
+      if (!user) return json(res, 401, { error: 'Not signed in.' });
+      if (req.method === 'GET' && path === '/api/profile') return json(res, 200, progression.profile(user));
+      if (req.method === 'PUT' && path.startsWith('/api/decks/')) {
+        const slot = Number(path.slice('/api/decks/'.length));
+        const b = await readJson(req);
+        const deck = progression.saveDeck(user.id, slot, str(b.name), Array.isArray(b.cards) ? (b.cards as string[]) : []);
+        return json(res, 200, { deck });
+      }
+      if (req.method === 'POST' && path === '/api/collection/seen') {
+        progression.markSeen(user.id);
+        return json(res, 200, { ok: true });
+      }
+    }
+
     for (const provider of ['google', 'facebook'] as const) {
       if (req.method === 'GET' && path === `/api/auth/${provider}`) return auth.beginOAuth(provider, res);
       if (req.method === 'GET' && path === `/api/auth/${provider}/callback`) {
@@ -139,7 +171,7 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 
     json(res, 404, { error: 'Not found.' });
   } catch (e) {
-    if (e instanceof AuthError) return json(res, 400, { error: e.message });
+    if (e instanceof AuthError || e instanceof ProgressionError) return json(res, 400, { error: e.message });
     console.error(e);
     json(res, 500, { error: 'Server error.' });
   }
@@ -180,7 +212,8 @@ function handleMessage(t: SocketTransport, msg: ClientMessage): void {
       return;
     case 'createGame':
     case 'createSolo': {
-      const game = games.create(t.userId, msg.type === 'createSolo');
+      const deck = progression.deckForPlay(t.userId, msg.deckSlot);
+      const game = games.create(t.userId, msg.type === 'createSolo', deck);
       open(t, game);
       console.log(`[game ${game.row.code}] ${msg.type === 'createSolo' ? 'practice' : 'created'} by ${t.userId}`);
       return;
@@ -192,7 +225,8 @@ function handleMessage(t: SocketTransport, msg: ClientMessage): void {
         open(t, game); // re-opening your own game by code is fine
         return;
       }
-      game.join(t.userId, msg.deck);
+      const deck = progression.deckForPlay(t.userId, msg.deckSlot);
+      game.join(t.userId, deck);
       open(t, game);
       console.log(`[game ${game.row.code}] ${t.userId} joined`);
       return;
@@ -246,7 +280,7 @@ httpServer.on('upgrade', (req, socket, head) => {
       try {
         handleMessage(t, msg);
       } catch (e) {
-        if (e instanceof GameError) return t.error(e.message);
+        if (e instanceof GameError || e instanceof ProgressionError) return t.error(e.message);
         console.error(e);
         t.error('Server error.');
       }

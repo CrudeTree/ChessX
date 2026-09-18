@@ -21,6 +21,56 @@ export interface AuthProviders {
 }
 
 // ---------------------------------------------------------------------------
+// Progression: XP, level, card collection, decks.
+
+export const DECK_SLOTS = 3;
+export const XP_PER_MATCH = 20;
+export const XP_PER_WIN = 30;
+
+/** Total XP needed to *reach* `level` (level 1 = 0). Grows gently: 100, 300, 600, 1000... */
+export const xpForLevel = (level: number): number => (50 * (level - 1) * level);
+export function levelFor(xp: number): number {
+  let level = 1;
+  while (xpForLevel(level + 1) <= xp) level++;
+  return level;
+}
+
+export interface CollectionEntry {
+  cardId: string;
+  count: number;
+  /** Not yet looked at in the binder. */
+  isNew: boolean;
+}
+
+export interface DeckInfo {
+  slot: number;
+  name: string;
+  cards: string[];
+}
+
+export interface Profile {
+  user: UserInfo;
+  xp: number;
+  level: number;
+  gamesPlayed: number;
+  wins: number;
+  collection: CollectionEntry[];
+  decks: DeckInfo[];
+}
+
+/** What a player earned when a game finished. */
+export interface RewardReport {
+  gameId: string;
+  xpGained: number;
+  xp: number;
+  level: number;
+  leveledUp: boolean;
+  /** Card ids granted (a brand-new card, or a spare copy of one already owned). */
+  cards: { cardId: string; brandNew: boolean }[];
+  reason: 'firstMatch' | 'checkmate' | 'none';
+}
+
+// ---------------------------------------------------------------------------
 // Game summaries for the home page.
 
 export interface Clocks {
@@ -69,11 +119,11 @@ export interface ChatMessage {
 /** Messages the browser sends to the server. */
 export type ClientMessage =
   | { type: 'listGames' }
-  /** Start a new game; you get an invite code for a friend. */
-  | { type: 'createGame'; deck?: string[] }
-  /** Practice game: you control both sides. */
-  | { type: 'createSolo'; deck?: string[] }
-  | { type: 'joinGame'; code: string; deck?: string[] }
+  /** Start a new game with one of your decks; you get an invite code for a friend. */
+  | { type: 'createGame'; deckSlot: number }
+  /** Practice game: you control both sides (the chosen deck is used for both). */
+  | { type: 'createSolo'; deckSlot: number }
+  | { type: 'joinGame'; code: string; deckSlot: number }
   /** Open one of your games in this tab. */
   | { type: 'openGame'; gameId: string }
   | { type: 'action'; action: Action }
@@ -91,6 +141,8 @@ export type ServerMessage =
   | { type: 'state'; view: PlayerView; clocks: Clocks }
   /** One or more chat lines (the full history when opening a game). */
   | { type: 'chat'; messages: ChatMessage[] }
+  /** A game you were in just finished and you earned something. */
+  | { type: 'rewards'; report: RewardReport }
   | { type: 'error'; message: string }
   | { type: 'left' };
 

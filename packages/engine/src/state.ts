@@ -6,7 +6,8 @@ import type { Color, GameEvent, GameStatus, Piece, Square } from './types.js';
 import { sq } from './types.js';
 
 export interface RuleConstants {
-  deckSize: number;
+  deckMin: number;
+  deckMax: number;
   openingHand: number;
   /** Draw 1 card at the start of every Nth turn a player takes (5th, 10th, 15th...). */
   drawEvery: number;
@@ -14,7 +15,8 @@ export interface RuleConstants {
 }
 
 export const DEFAULT_RULES: RuleConstants = {
-  deckSize: 30,
+  deckMin: 25,
+  deckMax: 40,
   openingHand: 7,
   drawEvery: 5,
   maxCopies: 3,
@@ -72,9 +74,8 @@ export interface GameConfig {
 
 export function validateDeck(deck: string[], rules: RuleConstants = DEFAULT_RULES): string[] {
   const problems: string[] = [];
-  if (deck.length !== rules.deckSize) {
-    problems.push(`Deck must have exactly ${rules.deckSize} cards (has ${deck.length}).`);
-  }
+  if (deck.length < rules.deckMin) problems.push(`Deck needs at least ${rules.deckMin} cards (has ${deck.length}).`);
+  if (deck.length > rules.deckMax) problems.push(`Deck can have at most ${rules.deckMax} cards (has ${deck.length}).`);
   const counts = new Map<string, number>();
   for (const id of deck) {
     if (!hasCard(id)) {

@@ -47,6 +47,8 @@ export class LiveGame {
 
   /** Fired after anything that changes how the game appears on the home page. */
   onChanged: (game: LiveGame) => void = () => {};
+  /** Fired once when a two-player game reaches a final result (rewards are handed out here). */
+  onFinished: (game: LiveGame) => void = () => {};
 
   constructor(
     public row: GameRow,
@@ -135,25 +137,40 @@ export class LiveGame {
     this.state.seq++;
     this.save(now);
     this.broadcastState();
+    this.finished();
     return true;
+  }
+
+  /** Called whenever the status leaves 'playing'. Rewards are granted exactly once per game. */
+  private finished(): void {
+    if (this.solo || this.row.rewarded || !this.state || this.state.status.kind === 'playing') return;
+    this.row.rewarded = 1;
+    this.save(Date.now(), false);
+    this.onFinished(this);
   }
 
   // ------------------------------------------------------------------ seats
 
-  /** Second player takes the open seat; the game starts. */
-  join(userId: string, deck: string[] | undefined): Color {
+  /** Second player takes the open seat with their deck; the game starts. */
+  join(userId: string, deck: string[]): Color {
     if (this.state) throw new GameError('That game already has two players.');
     if (this.isParticipant(userId)) throw new GameError("That's your own game — send the code to a friend.");
     const color: Color = this.row.white_user_id ? 'black' : 'white';
-    if (color === 'white') this.row.white_user_id = userId;
-    else this.row.black_user_id = userId;
-    this.start(deck);
+    if (color === 'white') {
+      this.row.white_user_id = userId;
+      this.row.white_deck_json = JSON.stringify(deck);
+    } else {
+      this.row.black_user_id = userId;
+      this.row.black_deck_json = JSON.stringify(deck);
+    }
+    this.start();
     return color;
   }
 
-  private start(_deck: string[] | undefined): void {
-    // Deck building is not in yet: both sides use the starter deck.
-    this.state = createGame({ decks: { white: starterDeck(), black: starterDeck() } });
+  private start(): void {
+    const white = this.row.white_deck_json ? (JSON.parse(this.row.white_deck_json) as string[]) : starterDeck();
+    const black = this.row.black_deck_json ? (JSON.parse(this.row.black_deck_json) as string[]) : starterDeck();
+    this.state = createGame({ decks: { white, black } });
     this.row.turn_started_at = Date.now();
     this.save();
     this.broadcastRoom();
@@ -203,6 +220,7 @@ export class LiveGame {
       this.state.events.push({ type: 'gameOver', status: this.state.status });
       this.save(now);
       this.broadcastState();
+      this.finished();
       return;
     }
 
@@ -219,6 +237,7 @@ export class LiveGame {
     this.state = next;
     this.save(now);
     this.broadcastState();
+    this.finished();
   }
 
   chatMessage(t: Transport, rawText: string): void {
@@ -295,6 +314,8 @@ export class GameManager {
   private live = new Map<string, LiveGame>();
   /** Fired when a game's home-page summary may have changed (join, move, game over, timeout). */
   onChanged: (game: LiveGame) => void = () => {};
+  /** Fired once per two-player game when it reaches a result. */
+  onFinished: (game: LiveGame) => void = () => {};
 
   constructor(
     private db: Db,
@@ -305,6 +326,7 @@ export class GameManager {
 
   private track(g: LiveGame): LiveGame {
     g.onChanged = (game) => this.onChanged(game);
+    g.onFinished = (game) => this.onFinished(game);
     this.live.set(g.id, g);
     return g;
   }
@@ -324,11 +346,12 @@ export class GameManager {
     return row ? this.get(row.id) : undefined;
   }
 
-  create(userId: string, solo: boolean): LiveGame {
+  create(userId: string, solo: boolean, deck: string[]): LiveGame {
     let code = randomCode();
     while (this.db.codeExists(code)) code = randomCode();
     const now = Date.now();
     const creatorIsWhite = solo || Math.random() < 0.5;
+    const deckJson = JSON.stringify(deck);
     const row: GameRow = {
       id: newId(),
       code,
@@ -342,14 +365,17 @@ export class GameManager {
       clock_black_ms: TURN_CLOCK_MS,
       turn_started_at: null,
       chat_json: '[]',
+      white_deck_json: solo || creatorIsWhite ? deckJson : null,
+      black_deck_json: solo || !creatorIsWhite ? deckJson : null,
+      rewarded: 0,
       created_at: now,
       updated_at: now,
     };
     this.db.insertGame(row);
     const game = this.track(new LiveGame(row, this.db, this.userName));
     if (solo) {
-      // Both seats are the same user; start right away.
-      game.state = createGame({ decks: { white: starterDeck(), black: starterDeck() } });
+      // Both seats are the same user; start right away with the chosen deck on both sides.
+      game.state = createGame({ decks: { white: deck, black: deck.slice() } });
       row.turn_started_at = now;
       row.state_json = JSON.stringify(game.state);
       row.status_kind = 'playing';

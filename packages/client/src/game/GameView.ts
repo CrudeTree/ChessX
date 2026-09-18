@@ -1,5 +1,6 @@
 import { canAct, opposite, type Action, type Color, type GameEvent, type Piece, type PlayerView, type Square } from '@chessx/engine';
 import { Application, Container, Graphics, Text, type FederatedPointerEvent } from 'pixi.js';
+import { preloadArt } from './art.js';
 import { CardSprite } from './CardSprite.js';
 import { DeckSprite } from './DeckSprite.js';
 import {
@@ -102,6 +103,7 @@ export class GameView {
     });
     mount.appendChild(this.app.canvas);
     this.tweens = new Tweens(this.app.ticker);
+    await preloadArt();
 
     this.app.stage.addChild(
       this.boardLayer,
