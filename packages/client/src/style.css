@@ -624,6 +624,115 @@ button.danger {
   min-height: 16px;
 }
 
+/* ------------------------------------------------------------------- Chat */
+#chat {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 5;
+  transition: opacity 0.2s ease;
+}
+
+.chat-log {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 3px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  cursor: pointer;
+  transition: max-height 0.25s ease, background 0.25s ease, border-color 0.25s ease;
+}
+
+/* Faded (default): translucent, short, older lines dissolve toward the top. */
+.chat.faded .chat-log {
+  max-height: 150px;
+  background: rgba(20, 20, 30, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.35) 35%, black 75%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.35) 35%, black 75%);
+}
+
+.chat.faded .chat-log:empty {
+  display: none;
+}
+
+/* Expanded: click the message area to read comfortably. */
+.chat.expanded .chat-log {
+  max-height: 360px;
+  background: rgba(24, 24, 36, 0.96);
+  border: 1px solid #3a3a52;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  cursor: default;
+}
+
+.chat-line {
+  word-wrap: break-word;
+  color: #e4e2ee;
+}
+
+.chat-line .who {
+  font-weight: 700;
+  margin-right: 6px;
+}
+
+.chat-line.white .who {
+  color: #f7f3ea;
+}
+
+.chat-line.black .who {
+  color: #b8b4d0;
+}
+
+.chat-line.me .who {
+  color: var(--accent);
+}
+
+.chat-line .time {
+  color: var(--muted);
+  font-size: 10.5px;
+  margin-left: 6px;
+}
+
+.chat-form {
+  margin: 0;
+}
+
+#chat-input {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 13px;
+  background: rgba(24, 24, 36, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.chat.faded #chat-input:not(:focus) {
+  opacity: 0.6;
+}
+
+#chat-input:focus {
+  background: rgba(24, 24, 36, 0.95);
+  border-color: var(--accent);
+}
+
+/* New lines pop in. */
+@keyframes chat-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.chat-line {
+  animation: chat-in 0.18s ease-out;
+}
+
 /* ------------------------------------------------------------------ Toast */
 #toast {
   position: fixed;

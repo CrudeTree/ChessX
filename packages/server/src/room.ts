@@ -9,7 +9,7 @@ import {
   type Color,
   type GameState,
 } from '@chessx/engine';
-import type { RoomInfo, ServerMessage } from '@chessx/protocol';
+import type { ChatMessage, RoomInfo, ServerMessage } from '@chessx/protocol';
 import { randomBytes } from 'node:crypto';
 
 export interface Transport {
@@ -21,7 +21,12 @@ interface Seat {
   token: string;
   deck: string[];
   transport: Transport | null;
+  lastChatAt: number;
 }
+
+const CHAT_HISTORY = 50;
+const CHAT_MAX_LEN = 240;
+const CHAT_MIN_INTERVAL_MS = 400;
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -36,6 +41,7 @@ export class Room {
   readonly code: string;
   private seats: Record<Color, Seat | null> = { white: null, black: null };
   private state: GameState | null = null;
+  private chatLog: ChatMessage[] = [];
   /** Practice room: a single connection plays both colours. */
   readonly solo: boolean;
   /** Timestamp of the last activity, used to garbage-collect dead rooms. */
@@ -76,7 +82,7 @@ export class Room {
     else throw new Error('Room is full.');
 
     const token = randomBytes(16).toString('hex');
-    this.seats[color] = { name: name.slice(0, 24) || color, token, deck: chosenDeck, transport };
+    this.seats[color] = { name: name.slice(0, 24) || color, token, deck: chosenDeck, transport, lastChatAt: 0 };
 
     if (this.isFull && !this.state) {
       this.state = createGame({
@@ -96,8 +102,8 @@ export class Room {
     if (problems.length) throw new Error(problems.join(' '));
     const token = randomBytes(16).toString('hex');
     const label = name.slice(0, 24) || 'Player';
-    this.seats.white = { name: label, token, deck: chosenDeck, transport };
-    this.seats.black = { name: label, token, deck: chosenDeck.slice(), transport };
+    this.seats.white = { name: label, token, deck: chosenDeck, transport, lastChatAt: 0 };
+    this.seats.black = { name: label, token, deck: chosenDeck.slice(), transport, lastChatAt: 0 };
     this.state = createGame({ decks: { white: chosenDeck, black: chosenDeck } });
     this.broadcastRoom();
     this.broadcastState();
@@ -117,7 +123,25 @@ export class Room {
     if (!found) throw new Error('Invalid rejoin token.');
     this.broadcastRoom();
     this.broadcastState();
+    if (this.chatLog.length) transport.send({ type: 'chat', messages: this.chatLog });
     return found;
+  }
+
+  /** Relay a chat line to everyone in the room (and remember it for rejoins). */
+  chat(transport: Transport, rawText: string): void {
+    this.touch();
+    const color = this.colorOf(transport);
+    if (!color) throw new Error('You are not seated in this room.');
+    const seat = this.seats[color]!;
+    const text = rawText.replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX_LEN);
+    if (!text) return;
+    const now = Date.now();
+    if (now - seat.lastChatAt < CHAT_MIN_INTERVAL_MS) return; // gentle flood control
+    seat.lastChatAt = now;
+    const msg: ChatMessage = { from: color, name: seat.name, text, at: now };
+    this.chatLog.push(msg);
+    if (this.chatLog.length > CHAT_HISTORY) this.chatLog.shift();
+    for (const t of this.transports()) t.send({ type: 'chat', messages: [msg] });
   }
 
   disconnect(transport: Transport): void {

@@ -16,7 +16,16 @@ export type ClientMessage =
   /** Rejoin an existing seat after a refresh/disconnect. */
   | { type: 'rejoin'; code: string; token: string }
   | { type: 'action'; action: Action }
+  | { type: 'chat'; text: string }
   | { type: 'leave' };
+
+export interface ChatMessage {
+  from: Color;
+  name: string;
+  text: string;
+  /** Unix ms. */
+  at: number;
+}
 
 /** Messages the server sends to the browser. */
 export type ServerMessage =
@@ -25,6 +34,8 @@ export type ServerMessage =
   | { type: 'seated'; code: string; color: Color; token: string; room: RoomInfo; solo?: boolean }
   | { type: 'room'; room: RoomInfo }
   | { type: 'state'; view: PlayerView }
+  /** One or more chat lines (several when catching up after a rejoin). */
+  | { type: 'chat'; messages: ChatMessage[] }
   | { type: 'error'; message: string }
   | { type: 'left' };
 

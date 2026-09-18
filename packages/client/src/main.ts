@@ -10,7 +10,7 @@ import {
   type PlayerView,
   type SummonCardDef,
 } from '@chessx/engine';
-import type { RoomInfo, ServerMessage } from '@chessx/protocol';
+import type { ChatMessage, RoomInfo, ServerMessage } from '@chessx/protocol';
 import { GameView, type InspectTarget } from './game/GameView.js';
 import { describeEvents } from './log.js';
 import { Net, saveSession } from './net.js';
@@ -98,12 +98,15 @@ function showLobby(): void {
   logEl.innerHTML = '';
   if (viewReady) gameView.reset();
   game.classList.add('hidden');
+  chatEl.classList.add('hidden');
+  chatLog.innerHTML = '';
   lobby.classList.remove('hidden');
 }
 
 async function showGame(): Promise<void> {
   lobby.classList.add('hidden');
   game.classList.remove('hidden');
+  chatEl.classList.remove('hidden');
   if (!viewReady) {
     viewReady = true;
     await gameView.init($('board-mount'));
@@ -386,6 +389,62 @@ function appendLog(view: PlayerView): void {
   logEl.scrollTop = logEl.scrollHeight;
 }
 
+// ---------------------------------------------------------------------------
+// Chat: faded by default (older lines dissolve upward); click the message area
+// to expand; clicking the input keeps the compact look so it stays out of the way.
+
+const chatEl = $('chat');
+const chatLog = $('chat-log');
+const chatForm = $<HTMLFormElement>('chat-form');
+const chatInput = $<HTMLInputElement>('chat-input');
+
+function setChatExpanded(expanded: boolean): void {
+  chatEl.classList.toggle('expanded', expanded);
+  chatEl.classList.toggle('faded', !expanded);
+  if (expanded) chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+chatLog.addEventListener('pointerdown', (e) => {
+  e.stopPropagation();
+  setChatExpanded(true);
+});
+chatInput.addEventListener('pointerdown', (e) => e.stopPropagation());
+document.addEventListener('pointerdown', () => setChatExpanded(false));
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    setChatExpanded(false);
+    chatInput.blur();
+  }
+});
+
+chatForm.onsubmit = (e) => {
+  e.preventDefault();
+  const text = chatInput.value.trim();
+  if (!text) return;
+  net.send({ type: 'chat', text });
+  chatInput.value = '';
+};
+
+function appendChat(messages: ChatMessage[]): void {
+  for (const m of messages) {
+    const line = document.createElement('div');
+    const mine = solo ? false : m.from === you;
+    line.className = `chat-line ${m.from} ${mine ? 'me' : ''}`;
+    const who = document.createElement('span');
+    who.className = 'who';
+    who.textContent = mine ? 'You' : solo ? (m.from === 'white' ? 'White' : 'Black') : m.name;
+    const text = document.createElement('span');
+    text.textContent = m.text;
+    const time = document.createElement('span');
+    time.className = 'time';
+    time.textContent = new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    line.append(who, text, time);
+    chatLog.appendChild(line);
+  }
+  while (chatLog.children.length > 80) chatLog.firstChild?.remove();
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+
 let toastTimer = 0;
 function showToast(message: string): void {
   toast.textContent = message;
@@ -424,6 +483,9 @@ net.onMessage = async (msg: ServerMessage) => {
       gameView.sync(msg.view);
       renderStatus(msg.view);
       appendLog(msg.view);
+      return;
+    case 'chat':
+      appendChat(msg.messages);
       return;
     case 'error':
       if (!lobby.classList.contains('hidden')) {

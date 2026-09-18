@@ -113,6 +113,12 @@ function handleMessage(t: SocketTransport, msg: ClientMessage): void {
       t.room.act(t, msg.action);
       return;
     }
+    case 'chat': {
+      if (!t.room) return t.error('You are not in a game.');
+      if (typeof msg.text !== 'string') return;
+      t.room.chat(t, msg.text);
+      return;
+    }
     case 'leave': {
       leaveCurrent(t);
       t.send({ type: 'left' });
