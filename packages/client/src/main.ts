@@ -491,6 +491,16 @@ function renderHome(): void {
     }
 
     card.append(opp, canvas, meta);
+    if (g.waitingForOpponent) {
+      const cancel = document.createElement('button');
+      cancel.className = 'card-cancel';
+      cancel.textContent = g.invitedName ? 'Withdraw challenge' : 'Cancel invite';
+      cancel.onclick = (e) => {
+        e.stopPropagation();
+        cancelInvite(g);
+      };
+      card.appendChild(cancel);
+    }
     activeEl.appendChild(card);
   }
 
@@ -526,6 +536,11 @@ function openGame(id: string): void {
   net.send({ type: 'openGame', gameId: id });
 }
 
+function cancelInvite(g: { id: string; invitedName?: string | null }): void {
+  const what = g.invitedName ? `Withdraw your challenge to ${g.invitedName}?` : 'Cancel this invite? The code will stop working.';
+  if (confirm(what)) net.send({ type: 'cancelGame', gameId: g.id });
+}
+
 // Keep the clocks on the cards current while the home page is open.
 setInterval(() => {
   if (!homeScreen.classList.contains('hidden') && games.length) renderHome();
@@ -545,6 +560,12 @@ const trackMajor = $('track-major');
 endTurnBtn.onclick = () => net.send({ type: 'action', action: { type: 'endTurn' } });
 
 $('resign').onclick = () => {
+  const { opp } = panelColors();
+  if (room && currentGameId && !solo && !room.players[opp]) {
+    // Nobody has joined: withdraw the invite instead of resigning. The server sends us home.
+    cancelInvite({ id: currentGameId, invitedName: games.find((g) => g.id === currentGameId)?.invitedName });
+    return;
+  }
   if (confirm('Resign this game?')) net.send({ type: 'action', action: { type: 'resign' } });
 };
 
@@ -701,10 +722,13 @@ function renderRoom(): void {
     const label = solo ? colorName(color) : seat ? seat.name + (color === you ? ' (you)' : '') : 'Waiting for opponent…';
     el.querySelector('.pname')!.textContent = label;
   }
-  if (!room.players[opp]) {
+  const waiting = !room.players[opp];
+  if (waiting) {
     statusEl.textContent = 'Waiting for an opponent to join. Share the invite code!';
     statusEl.className = 'status';
   }
+  // Before anyone joins there is nothing to resign — offer to cancel the invite instead.
+  $('resign').textContent = waiting ? 'Cancel invite' : 'Resign';
 }
 
 function renderClocks(): void {

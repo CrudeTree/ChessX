@@ -306,6 +306,22 @@ function handleMessage(t: SocketTransport, msg: ClientMessage): void {
       open(t, game);
       return;
     }
+    case 'cancelGame': {
+      const game = games.get(msg.gameId);
+      if (!game) return t.error('That game is no longer available.');
+      if (!game.isParticipant(t.userId)) return t.error('That game is not yours.');
+      if (game.state) return t.error('The game has already started — use Resign instead.');
+      const c = db.pendingChallengeForGame(game.id);
+      games.discardUnstarted(game.id);
+      if (c) {
+        social.resolveChallenge(c.id, 'declined');
+        pushSocial(c.from_user, c.to_user);
+        notify(c.to_user, `${nameOf(t.userId)} withdrew their challenge.`);
+      }
+      notify(t.userId, 'Invite cancelled.');
+      console.log(`[game ${game.row.code}] cancelled by ${t.userId}`);
+      return;
+    }
     case 'action':
       if (!t.game) return t.error('You are not in a game.');
       t.game.act(t, msg.action);

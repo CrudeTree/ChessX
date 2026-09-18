@@ -1005,6 +1005,25 @@ button.danger {
   opacity: 0.85;
 }
 
+/* Cancel button on invites nobody has joined yet. */
+.game-card .card-cancel {
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 8px;
+  border: 1px solid #3a2a2a;
+  background: rgba(255, 107, 107, 0.08);
+  color: #e58a8a;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.game-card .card-cancel:hover {
+  background: rgba(255, 107, 107, 0.18);
+  border-color: #ff6b6b;
+  color: #ff9c9c;
+}
+
 /* Finished games: a plain list. */
 .finished-list {
   display: flex;
@@ -2025,6 +2044,9 @@ button,
   #board-mount canvas {
     width: min(100vw, 520px) !important;
     height: auto !important;
+    /* The desktop rule subtracts the side panels from 100vw, which goes to 0 here. */
+    max-width: none !important;
+    max-height: none !important;
   }
 
   /* Top bar */

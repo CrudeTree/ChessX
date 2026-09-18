@@ -168,6 +168,8 @@ export type ClientMessage =
   | { type: 'joinGame'; code: string; deckSlot: number }
   /** Open one of your games in this tab. */
   | { type: 'openGame'; gameId: string }
+  /** Withdraw an invite/challenge nobody has joined yet. Only the creator may do this. */
+  | { type: 'cancelGame'; gameId: string }
   // ---- friends & challenges
   | { type: 'getSocial' }
   | { type: 'friendRequest'; userId: string }
