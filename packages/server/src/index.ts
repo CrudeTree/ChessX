@@ -301,7 +301,8 @@ function handleMessage(t: SocketTransport, msg: ClientMessage): void {
     }
     case 'openGame': {
       const game = games.get(msg.gameId);
-      if (!game || !game.isParticipant(t.userId)) return t.error('That game is not yours.');
+      if (!game) return t.error('That game is no longer available.');
+      if (!game.isParticipant(t.userId)) return t.error('That game is not yours.');
       open(t, game);
       return;
     }

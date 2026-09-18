@@ -131,6 +131,8 @@ export interface GameSummary {
   opponentName: string | null;
   /** No opponent has joined yet; share `code`. */
   waitingForOpponent: boolean;
+  /** If this game is a pending challenge, the friend it was sent to. */
+  invitedName: string | null;
   status: GameStatus;
   turn: Color;
   clocks: Clocks;

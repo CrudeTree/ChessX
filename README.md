@@ -9,7 +9,7 @@ npm install
 npm run dev          # server on :8080 + hot-reloading client on :5173
 ```
 
-Open http://localhost:5173, create an account (email + password works out of the box), then **New game** → send the 5-letter invite code to a friend → they **Join** with it. Your home page lists every game you're in with a live board thumbnail, the opponent's name, both clocks, and a gold highlight on the ones where it's your move. Open a game and everything comes back: board, hands, log and chat. **Practice** starts a game where you play both sides.
+Open http://localhost:5173, create an account (email + password works out of the box), then **New game** → send the 5-letter invite code to a friend → they **Join** with it. Your home page lists every game you're in with a live board thumbnail, the opponent's name, both clocks, and a gold highlight on the ones where it's your move. Open a game and everything comes back: board, hands, log and chat. **Practice** starts a throwaway game where you play both sides: it is never saved or listed, gives no XP or rewards, and disappears the moment you leave it.
 
 To test with two accounts on one machine, use a normal window and a private/incognito window (accounts are cookie sessions, so two tabs in the same window share one sign-in).
 

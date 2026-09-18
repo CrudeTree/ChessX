@@ -384,11 +384,13 @@ function renderHome(): void {
     const opp = document.createElement('div');
     opp.className = 'opp';
     const oppName = document.createElement('span');
-    oppName.textContent = g.solo ? 'Practice (both sides)' : g.opponentName ?? 'Waiting for an opponent';
+    oppName.textContent = g.solo
+      ? 'Practice (both sides)'
+      : g.opponentName ?? (g.invitedName ? `Challenged ${g.invitedName}` : 'Open invite');
     const badge = document.createElement('span');
     if (g.waitingForOpponent) {
       badge.className = 'badge wait';
-      badge.textContent = 'Invite sent';
+      badge.textContent = g.invitedName ? 'Awaiting reply' : 'Code sent';
     } else if (yours) {
       badge.className = 'badge';
       badge.textContent = g.solo ? `${colorName(g.turn)} to move` : 'Your move';
@@ -404,7 +406,9 @@ function renderHome(): void {
     const meta = document.createElement('div');
     meta.className = 'meta';
     if (g.waitingForOpponent) {
-      meta.innerHTML = `<span class="code-line">Invite code <b>${g.code}</b></span><span>You play ${colorName(g.yourColor)}</span>`;
+      meta.innerHTML = g.invitedName
+        ? `<span>Waiting for ${g.invitedName} to accept</span><span>You play ${colorName(g.yourColor)}</span>`
+        : `<span class="code-line">Invite code <b>${g.code}</b></span><span>You play ${colorName(g.yourColor)}</span>`;
     } else if (g.solo) {
       meta.innerHTML = `<span>Turn ${g.turn === 'white' ? 'White' : 'Black'}</span><span>${new Date(g.updatedAt).toLocaleDateString()}</span>`;
     } else {
@@ -895,7 +899,7 @@ net.onMessage = async (msg: ServerMessage) => {
       if (!homeScreen.classList.contains('hidden')) {
         homeError.textContent = msg.message;
         // The remembered game is gone or not ours: fall back to the list.
-        if (/not yours|No game/i.test(msg.message)) {
+        if (/not yours|No game|no longer available/i.test(msg.message)) {
           rememberOpenGame(null);
           history.replaceState({ screen: 'home' } satisfies Route, '', '/');
           net.send({ type: 'listGames' });

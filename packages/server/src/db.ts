@@ -272,6 +272,10 @@ export class Db {
     return this.db.prepare('SELECT * FROM challenges WHERE id = ?').get(id) as ChallengeRow | undefined;
   }
 
+  pendingChallengeForGame(gameId: string): ChallengeRow | undefined {
+    return this.db.prepare("SELECT * FROM challenges WHERE game_id = ? AND status = 'pending'").get(gameId) as ChallengeRow | undefined;
+  }
+
   pendingChallengesFor(userId: string): ChallengeRow[] {
     return this.db
       .prepare("SELECT * FROM challenges WHERE status = 'pending' AND (to_user = ? OR from_user = ?) ORDER BY created_at DESC")

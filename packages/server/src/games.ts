@@ -51,6 +51,8 @@ export class LiveGame {
   onFinished: (game: LiveGame) => void = () => {};
   /** Fired when the turn passes to `userId` in a two-player game. */
   onYourTurn: (game: LiveGame, userId: string) => void = () => {};
+  /** Fired when the last viewer detaches (practice games are discarded then). */
+  onEmpty: (game: LiveGame) => void = () => {};
   /** Fired when a chat line is posted; `toUserId` is the other seat. */
   onChat: (game: LiveGame, fromUserId: string, toUserId: string, text: string) => void = () => {};
 
@@ -208,7 +210,9 @@ export class LiveGame {
   }
 
   detach(t: Transport): void {
-    if (this.watchers.delete(t)) this.broadcastRoom();
+    if (!this.watchers.delete(t)) return;
+    this.broadcastRoom();
+    if (this.watchers.size === 0) this.onEmpty(this);
   }
 
   // ---------------------------------------------------------------- actions
@@ -278,6 +282,7 @@ export class LiveGame {
     const oppId = seat === 'white' ? this.row.black_user_id : this.row.white_user_id;
     const status = this.state?.status ?? { kind: 'playing' as const };
     const turn = this.state?.turn ?? 'white';
+    const invite = this.state ? undefined : this.db.pendingChallengeForGame(this.id);
     return {
       id: this.id,
       code: this.row.code,
@@ -286,6 +291,7 @@ export class LiveGame {
       yourTurn: !!this.state && status.kind === 'playing' && (this.solo || turn === seat),
       opponentName: this.solo ? null : oppId ? this.userName(oppId) : null,
       waitingForOpponent: !this.state,
+      invitedName: invite ? this.userName(invite.to_user) : null,
       status,
       turn,
       clocks: this.clocks(now),
@@ -303,6 +309,8 @@ export class LiveGame {
     this.row.turn = this.state?.turn ?? 'white';
     this.row.chat_json = JSON.stringify(this.chat);
     this.row.updated_at = now;
+    // Practice games live in memory only: nothing is written and the home page is not told.
+    if (this.solo) return;
     this.db.updateGame(this.row);
     if (notify) this.onChanged(this);
   }
@@ -347,6 +355,10 @@ export class GameManager {
     g.onFinished = (game) => this.onFinished(game);
     g.onYourTurn = (game, uid) => this.onYourTurn(game, uid);
     g.onChat = (game, from, to, text) => this.onChat(game, from, to, text);
+    // A practice game vanishes as soon as its player leaves; it was never on disk.
+    g.onEmpty = (game) => {
+      if (game.solo) this.live.delete(game.id);
+    };
     this.live.set(g.id, g);
     return g;
   }
@@ -391,17 +403,17 @@ export class GameManager {
       created_at: now,
       updated_at: now,
     };
-    this.db.insertGame(row);
-    const game = this.track(new LiveGame(row, this.db, this.userName));
     if (solo) {
-      // Both seats are the same user; start right away with the chosen deck on both sides.
+      // Practice: both seats are the same user, starts immediately, memory only — never saved,
+      // never listed, no rewards, gone when the player leaves.
+      const game = this.track(new LiveGame(row, this.db, this.userName));
       game.state = createGame({ decks: { white: deck, black: deck.slice() } });
       row.turn_started_at = now;
-      row.state_json = JSON.stringify(game.state);
       row.status_kind = 'playing';
-      this.db.updateGame(row);
+      return game;
     }
-    return game;
+    this.db.insertGame(row);
+    return this.track(new LiveGame(row, this.db, this.userName));
   }
 
   /** Remove a game nobody has started playing (declined/cancelled challenge). Anyone viewing it is sent home. */
@@ -419,11 +431,14 @@ export class GameManager {
 
   summariesFor(userId: string): GameSummary[] {
     const now = Date.now();
-    return this.db.gamesForUser(userId).map((row) => {
-      const g = this.get(row.id)!;
-      g.checkTimeout(now);
-      return g.summaryFor(userId, now);
-    });
+    return this.db
+      .gamesForUser(userId)
+      .filter((row) => !row.solo) // practice games from before they became memory-only
+      .map((row) => {
+        const g = this.get(row.id)!;
+        g.checkTimeout(now);
+        return g.summaryFor(userId, now);
+      });
   }
 
   /** Periodic: end games whose side to move has run out of clock, and drop idle games from memory. */
