@@ -95,7 +95,7 @@ The server is authoritative: the client only ever offers the player actions from
 - **Stance switches**: as many pieces as you like, in either direction. A piece that switched this turn is frozen (can't move or switch again) until the turn ends.
 - **End Turn** only becomes available once you have moved or summoned (if neither is possible at all, you may pass). You may **not** end it while in check.
 
-**Combat.** Moving onto an enemy piece attacks it for the attacker's full ATK. If the defender is in **Defense mode**, its DEF acts as a shield that absorbs damage first; whatever is left comes off HP. In Attack mode DEF does nothing. If HP hits 0 the defender is destroyed and the attacker takes its square. If the defender survives, it stays and the attacker returns to its original square (the turn is still used). **Kings ignore HP**: any piece reaching the king's square captures it.
+**Combat.** Moving onto an enemy piece attacks it for the attacker's full ATK. If the defender is in **Defense mode**, its DEF acts as a shield that absorbs damage first; whatever is left comes off HP. In Attack mode DEF does nothing. If HP hits 0 the defender is destroyed and the attacker takes its square. If the defender survives, it stays and the attacker returns to its original square (the turn is still used). **Kings ignore HP**: any piece reaching the king's square captures it. **Royal strike**: the King's own attack destroys any piece outright, no matter its HP or DEF shield.
 
 Example: DEF 3 / HP 1 in Defense mode, hit by ATK 4 → shield wiped out, 1 damage reaches HP, piece destroyed. Depleted DEF does not regenerate on its own.
 

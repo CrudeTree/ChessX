@@ -328,15 +328,19 @@ function attack(state: GameState, attacker: Piece, target: Piece, cand: MoveCand
     return;
   }
 
+  // Royal privilege: the King's blow is always lethal, whatever the target's shield or HP.
+  const execution = attacker.kind === 'king';
+  const damage = execution ? target.def + target.hp : attacker.atk;
   state.events.push({
     type: 'attacked',
     attackerId: attacker.id,
     targetId: target.id,
     from: attacker.square,
     to: target.square,
-    damage: attacker.atk,
+    damage,
+    execution: execution || undefined,
   });
-  const destroyed = dealDamage(state, target, attacker.atk);
+  const destroyed = execution ? slay(state, target) : dealDamage(state, target, attacker.atk);
 
   if (destroyed) {
     movePiece(state, attacker, cand.to);
@@ -344,6 +348,17 @@ function attack(state: GameState, attacker: Piece, target: Piece, cand: MoveCand
   } else {
     state.events.push({ type: 'repelled', pieceId: attacker.id, square: attacker.square });
   }
+}
+
+/** Destroy a piece outright (the King's attack). Always returns true. */
+function slay(state: GameState, target: Piece): true {
+  const shield = target.stance === 'defense' ? target.def : 0;
+  const amount = shield + target.hp;
+  target.def -= shield;
+  target.hp = 0;
+  state.events.push({ type: 'damaged', pieceId: target.id, square: target.square, amount, shield, hp: 0, def: target.def });
+  destroyPiece(state, target);
+  return true;
 }
 
 /** Apply `amount` damage (shield first if in Defense mode). Returns true if the piece was destroyed. */

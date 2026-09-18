@@ -106,7 +106,8 @@ export type GameStatus =
 /** Events emitted while applying an action. The client uses these for animation and the log. */
 export type GameEvent =
   | { type: 'moved'; pieceId: string; from: Square; to: Square; castle?: boolean }
-  | { type: 'attacked'; attackerId: string; targetId: string; from: Square; to: Square; damage: number }
+  /** `execution`: the King's attack, which always destroys the target. */
+  | { type: 'attacked'; attackerId: string; targetId: string; from: Square; to: Square; damage: number; execution?: boolean }
   /** `shield` is how much of the hit the defender's DEF absorbed. */
   | { type: 'damaged'; pieceId: string; square: Square; amount: number; shield: number; hp: number; def: number }
   | { type: 'stanceChanged'; pieceId: string; square: Square; stance: Stance }

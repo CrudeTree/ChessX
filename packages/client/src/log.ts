@@ -38,6 +38,10 @@ export function describeEvents(view: PlayerView, names: Record<'white' | 'black'
         const targetKind = destroyedKinds.get(e.targetId);
         const killed = !!targetKind;
         const target = pieceName(e.targetId, targetKind);
+        if (e.execution) {
+          lines.push({ text: `${names[owner ?? 'white']}: King ${squareName(e.from)} strikes down ${target} on ${squareName(e.to)} — royal strike, destroyed!`, color: owner, important: true });
+          break;
+        }
         const hit = view.events.find((x) => x.type === 'damaged' && x.pieceId === e.targetId);
         const shield = hit && hit.type === 'damaged' && hit.shield > 0 ? ` (shield absorbs ${hit.shield})` : '';
         lines.push({

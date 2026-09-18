@@ -338,6 +338,29 @@ describe('combat with HP', () => {
     expect(dmg && dmg.type === 'damaged' && dmg.shield).toBe(3);
   });
 
+  it("the King's attack destroys any piece regardless of HP and DEF", () => {
+    let g = newGame();
+    // Put a beefy black piece next to the white king: knight to d2 with 5 HP, 3 DEF, in Defense mode.
+    const knight = pieceAt(g, s('b8'))!;
+    const d2 = pieceAt(g, s('d2'))!;
+    delete g.pieces[d2.id];
+    g.board[s('d2')] = null;
+    g.board[knight.square] = null;
+    knight.square = s('d2');
+    g.board[s('d2')] = knight.id;
+    knight.hp = 5;
+    knight.maxHp = 5;
+    knight.def = 3;
+    knight.maxDef = 3;
+    knight.stance = 'defense';
+    expect(pieceAt(g, s('e1'))!.atk).toBe(1);
+    g = step(g, 'e1', 'd2');
+    expect(pieceAt(g, s('d2'))!.kind).toBe('king'); // king took the square
+    expect(Object.values(g.pieces).some((p) => p.id === knight.id)).toBe(false);
+    expect(g.events.some((e) => e.type === 'attacked' && e.execution === true)).toBe(true);
+    expect(g.events.some((e) => e.type === 'destroyed' && e.pieceId === knight.id)).toBe(true);
+  });
+
   it('a piece that survives a capture still gives check; you cannot end the turn in check', () => {
     let g = newGame();
     g = move(g, 'e2', 'e4');
