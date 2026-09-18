@@ -4,7 +4,11 @@ export const SQ = 72;
 /** Width of the columns flanking the board (decks live there). */
 export const SIDE_W = 160;
 export const BOARD_X = SIDE_W;
-export const BOARD_Y = 30;
+/** Face-down row showing how many cards the opponent holds. */
+export const OPP_HAND_Y = 34;
+export const OPP_CARD_W = 30;
+export const OPP_CARD_H = 42;
+export const BOARD_Y = 84;
 export const BOARD_SIZE = SQ * 8;
 export const CANVAS_W = SIDE_W * 2 + BOARD_SIZE;
 export const CARD_W = 92;

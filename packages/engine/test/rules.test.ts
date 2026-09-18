@@ -225,14 +225,26 @@ describe('turn structure', () => {
     expect(g.status).toEqual({ kind: 'resigned', winner: 'black' });
   });
 
-  it('player views hide the opponent hand', () => {
-    const g = newGame();
+  it('player views hide the opponent hand and deck, but show the counts', () => {
+    let g = newGame();
     const v = viewFor(g, 'black');
     expect(v.players.black.hand).toHaveLength(7);
     expect(v.players.white.hand).toBeNull();
     expect(v.players.white.handCount).toBe(7);
+    expect(v.players.white.deckCount).toBe(23);
     expect(v.legalActions).toHaveLength(0); // white to move
     expect(viewFor(g, 'white').legalActions.length).toBeGreaterThan(20);
+
+    // Nothing that identifies a hidden card may appear anywhere in the serialised view,
+    // including after a draw (the event only says how many).
+    g = move(g, 'a2', 'a3'); g = move(g, 'a7', 'a6'); g = move(g, 'b2', 'b3'); g = move(g, 'b7', 'b6');
+    g = move(g, 'c2', 'c3'); g = move(g, 'c7', 'c6'); g = move(g, 'd2', 'd3'); g = move(g, 'd7', 'd6');
+    g = applyAction(g, { type: 'draw' }); // white draws on turn 5
+    const json = JSON.stringify(viewFor(g, 'black'));
+    for (const hidden of [...g.players.white.hand, ...g.players.white.deck, ...g.players.black.deck]) {
+      expect(json).not.toContain(hidden.instanceId);
+    }
+    expect(viewFor(g, 'black').players.white.handCount).toBe(8);
   });
 });
 

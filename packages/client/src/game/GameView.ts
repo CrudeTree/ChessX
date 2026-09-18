@@ -15,7 +15,10 @@ import {
   DECK_W,
   HAND_Y,
   MY_DECK,
+  OPP_CARD_H,
+  OPP_CARD_W,
   OPP_DECK,
+  OPP_HAND_Y,
   SQ,
   UI_FONT,
   isOverBoard,
@@ -69,6 +72,7 @@ export class GameView {
   private pieceLayer = new Container();
   private fxLayer = new Container();
   private handLayer = new Container();
+  private oppHandLayer = new Container();
   private deckLayer = new Container();
   private dragLayer = new Container();
   private banner = new Container();
@@ -108,6 +112,7 @@ export class GameView {
       this.pieceLayer,
       this.fxLayer,
       this.deckLayer,
+      this.oppHandLayer,
       this.handLayer,
       this.dragLayer,
       this.banner,
@@ -273,6 +278,7 @@ export class GameView {
     this.drawLastMove(view.events);
     this.renderDecks();
     this.renderHand();
+    this.renderOpponentHand();
     this.renderBanner();
     // Refresh the inspected piece (it may have moved, changed stats, or died).
     this.setInspected(this.inspected && view.pieces[this.inspected] ? this.inspected : null);
@@ -468,7 +474,7 @@ export class GameView {
       if (ev.type !== 'drew') continue;
       const fromBottom = ev.color === bottom;
       const from = fromBottom ? MY_DECK : OPP_DECK;
-      const to = fromBottom ? { x: CANVAS_W / 2, y: HAND_Y + CARD_H / 2 } : { x: CANVAS_W / 2, y: -CARD_H };
+      const to = fromBottom ? { x: CANVAS_W / 2, y: HAND_Y + CARD_H / 2 } : { x: BOARD_X + BOARD_SIZE / 2, y: OPP_HAND_Y };
       for (let i = 0; i < ev.count; i++) this.flyCard(from, to, i * 120);
     }
   }
@@ -484,6 +490,39 @@ export class GameView {
       card.scale.set(1 + 0.25 * Math.sin(t * Math.PI));
       card.alpha = t > 0.8 ? 1 - (t - 0.8) / 0.2 : 1;
     }, { ease: easeInOutQuad, delay, done: () => card.destroy() });
+  }
+
+  /**
+   * The opponent's hand as a row of face-down card backs above the board. The
+   * server never sends us what those cards are, only how many, so there is
+   * nothing to inspect here and the sprites are not interactive.
+   */
+  private renderOpponentHand(): void {
+    for (const old of this.oppHandLayer.removeChildren()) old.destroy();
+    const view = this.view;
+    if (!view) return;
+    const oppColor = opposite(this.bottomColor());
+    const n = view.players[oppColor].handCount;
+    const g = new Graphics();
+    const spacing = n <= 1 ? 0 : Math.min(OPP_CARD_W + 6, (BOARD_SIZE - 40 - OPP_CARD_W) / (n - 1));
+    const startX = BOARD_X + BOARD_SIZE / 2 - ((n - 1) * spacing) / 2;
+    for (let i = 0; i < n; i++) {
+      const x = startX + i * spacing;
+      g.roundRect(x - OPP_CARD_W / 2, OPP_HAND_Y - OPP_CARD_H / 2, OPP_CARD_W, OPP_CARD_H, 4)
+        .fill(COLORS.deckBack)
+        .stroke({ width: 1.5, color: COLORS.deckEdge, alpha: 0.9 });
+      g.roundRect(x - OPP_CARD_W / 2 + 4, OPP_HAND_Y - OPP_CARD_H / 2 + 4, OPP_CARD_W - 8, OPP_CARD_H - 8, 2)
+        .stroke({ width: 1, color: COLORS.deckEdge, alpha: 0.5 });
+    }
+    this.oppHandLayer.addChild(g);
+    const label = new Text({
+      text: n === 0 ? 'No cards in hand' : `${n} card${n === 1 ? '' : 's'} in hand`,
+      style: { fontFamily: UI_FONT, fontSize: 11, fontWeight: '700', fill: 0xbdb8d6, letterSpacing: 1 },
+    });
+    label.anchor.set(0, 0.5);
+    label.position.set(n === 0 ? BOARD_X + BOARD_SIZE / 2 - 50 : startX + (n - 1) * spacing + OPP_CARD_W / 2 + 10, OPP_HAND_Y);
+    this.oppHandLayer.addChild(label);
+    this.oppHandLayer.eventMode = 'none';
   }
 
   private renderHand(): void {

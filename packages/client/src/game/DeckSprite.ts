@@ -45,6 +45,7 @@ export class DeckSprite extends Container {
     this.prompt = new Text({ text: 'DRAW', style: { fontFamily: UI_FONT, fontSize: 14, fontWeight: '900', fill: COLORS.ringFill, stroke: { color: 0x000000, width: 3 }, letterSpacing: 2 } });
     this.prompt.anchor.set(0.5);
     this.prompt.position.set(0, -DECK_RING_R - 14);
+    this.prompt.visible = false;
     this.addChild(this.prompt);
 
     this.eventMode = 'static';
