@@ -28,7 +28,7 @@ const gameView = new GameView();
 let you: Color | null = null;
 let room: RoomInfo | null = null;
 let solo = false;
-let lastPly = -1;
+let lastSeq = -1;
 let viewReady = false;
 
 // ---------------------------------------------------------------------------
@@ -77,7 +77,7 @@ function showLobby(): void {
   you = null;
   room = null;
   solo = false;
-  lastPly = -1;
+  lastSeq = -1;
   currentView = null;
   logEl.innerHTML = '';
   if (viewReady) gameView.reset();
@@ -236,12 +236,19 @@ function renderStatus(view: PlayerView): void {
   if (view.inCheck) statusEl.classList.add('check');
   const turnNo = view.players[view.turn].turnsTaken;
   const drawIn = view.rules.drawEvery - (turnNo % view.rules.drawEvery);
+  const mustDraw = view.players[view.turn].pendingDraws > 0;
   if (solo) {
     const side = view.turn === 'white' ? 'White' : 'Black';
-    statusEl.textContent = `${side} to move (turn ${turnNo}). Move a piece or play a card.${view.inCheck ? ` ${side} is in CHECK!` : ''}`;
+    statusEl.textContent = mustDraw
+      ? `${side}: the draw timer is full — click ${side}'s deck to draw a card.`
+      : `${side} to move (turn ${turnNo}). Move a piece or play a card.${view.inCheck ? ` ${side} is in CHECK!` : ''}`;
+  } else if (mine) {
+    statusEl.textContent = mustDraw
+      ? 'Your draw timer is full — click your deck to draw a card.'
+      : `Your turn (${turnNo}). Move a piece or play a card.${view.inCheck ? ' You are in CHECK!' : ''}`;
   } else {
-    statusEl.textContent = mine
-      ? `Your turn (${turnNo}). Move a piece or play a card.${view.inCheck ? ' You are in CHECK!' : ''}`
+    statusEl.textContent = mustDraw
+      ? 'Opponent is drawing a card…'
       : `Opponent's turn (${turnNo}).${view.inCheck ? ' They are in check.' : ''}`;
   }
   statusEl.title = `Next draw in ${drawIn === view.rules.drawEvery ? 0 : drawIn} turns`;
@@ -255,8 +262,8 @@ function renderStatus(view: PlayerView): void {
 }
 
 function appendLog(view: PlayerView): void {
-  if (view.ply === lastPly) return;
-  lastPly = view.ply;
+  if (view.seq === lastSeq) return;
+  lastSeq = view.seq;
   for (const line of describeEvents(view, names())) {
     const div = document.createElement('div');
     div.className = `entry ${line.color ?? ''} ${line.important ? 'important' : ''}`;

@@ -27,6 +27,8 @@ export interface PlayerState {
   graveyard: CardInstance[];
   /** Number of turns this player has started, including the current one. */
   turnsTaken: number;
+  /** Draws owed by the timer. While > 0 the player's only legal action is `draw`. */
+  pendingDraws: number;
 }
 
 export interface GameState {
@@ -38,6 +40,8 @@ export interface GameState {
   turn: Color;
   /** Half-moves played so far. */
   ply: number;
+  /** Number of actions applied so far (including draws, which do not advance the ply). */
+  seq: number;
   /** Square a pawn may capture onto via en passant this turn, if any. */
   enPassant: Square | null;
   status: GameStatus;
@@ -84,11 +88,12 @@ export function createGame(config: GameConfig): GameState {
     pieces: {},
     board: new Array<string | null>(64).fill(null),
     players: {
-      white: { color: 'white', deck: [], hand: [], graveyard: [], turnsTaken: 1 },
-      black: { color: 'black', deck: [], hand: [], graveyard: [], turnsTaken: 0 },
+      white: { color: 'white', deck: [], hand: [], graveyard: [], turnsTaken: 1, pendingDraws: 0 },
+      black: { color: 'black', deck: [], hand: [], graveyard: [], turnsTaken: 0, pendingDraws: 0 },
     },
     turn: 'white',
     ply: 0,
+    seq: 0,
     enPassant: null,
     status: { kind: 'playing' },
     nextId: 1,
@@ -178,6 +183,7 @@ export function cloneState(state: GameState): GameState {
     hand: p.hand.slice(),
     graveyard: p.graveyard.slice(),
     turnsTaken: p.turnsTaken,
+    pendingDraws: p.pendingDraws,
   });
   return {
     rules: state.rules,
@@ -186,6 +192,7 @@ export function cloneState(state: GameState): GameState {
     players: { white: clonePlayer(state.players.white), black: clonePlayer(state.players.black) },
     turn: state.turn,
     ply: state.ply,
+    seq: state.seq,
     enPassant: state.enPassant,
     status: state.status,
     nextId: state.nextId,

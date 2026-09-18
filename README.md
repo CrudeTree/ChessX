@@ -50,7 +50,7 @@ Example: DEF 3 / HP 1 in Defense mode, hit by ATK 4 → shield wiped out, 1 dama
 
 **Check and checkmate.** Standard. An action is legal only if your king is not attackable afterwards. Because pieces can survive attacks, "capturing" the checking piece does not resolve check unless the capture actually destroys it. A card is playable in check only if its effect actually ends the check (e.g. destroying the attacker). No legal actions while in check = checkmate; while not in check = stalemate.
 
-**Deck and hand.** 30 cards, max 3 copies of any card. Draw 7 at the start. You draw 1 more card at the start of your 5th, 10th, 15th… turn. Cards can also grant draws.
+**Deck and hand.** 30 cards, max 3 copies of any card. Draw 7 at the start. A green timer ring around your deck fills one segment per turn you take; on your 5th, 10th, 15th… turn it closes and pulses, and you **must click your deck to draw** before doing anything else that turn. Drawing does not use the turn. Cards can also grant extra draws directly. Your deck sits at the bottom-right of the board, the opponent's at the top-left (their right), and you can watch their ring fill too.
 
 **Summon cards.** Pieces have tiers: Pawn = 1, Knight/Bishop = 2, Rook = 3, Queen = 4. A tier-N summon card is played by dropping it on one of your pieces of tier N−1, which becomes the sacrifice. A void opens beneath it with a timer. While the timer runs the sacrificed piece cannot move or attack. The timer ticks down at the start of each of your turns; when it reaches 0 the piece is replaced by the summoned creature. If the sacrifice is destroyed first, the summon fails and the card is lost.
 

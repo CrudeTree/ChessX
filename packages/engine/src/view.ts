@@ -6,6 +6,8 @@ import type { Action, Color, GameEvent, GameStatus, Piece, Square } from './type
 
 export interface PlayerViewSide {
   turnsTaken: number;
+  /** Draws this player still has to take by clicking their deck. */
+  pendingDraws: number;
   deckCount: number;
   handCount: number;
   /** Your own hand; null for the opponent. */
@@ -18,6 +20,7 @@ export interface PlayerView {
   you: Color;
   turn: Color;
   ply: number;
+  seq: number;
   status: GameStatus;
   rules: RuleConstants;
   board: (string | null)[];
@@ -35,6 +38,7 @@ export function viewFor(state: GameState, you: Color): PlayerView {
     const p = state.players[c];
     return {
       turnsTaken: p.turnsTaken,
+      pendingDraws: p.pendingDraws,
       deckCount: p.deck.length,
       handCount: p.hand.length,
       hand: c === you ? p.hand : null,
@@ -45,6 +49,7 @@ export function viewFor(state: GameState, you: Color): PlayerView {
     you,
     turn: state.turn,
     ply: state.ply,
+    seq: state.seq,
     status: state.status,
     rules: state.rules,
     board: state.board,

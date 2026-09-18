@@ -19,7 +19,9 @@ function newGame(seed = 1): GameState {
   return createGame({ decks: { white: starterDeck(), black: starterDeck() }, seed });
 }
 
+/** Make a move, first taking any owed draw (as a player would by clicking the deck). */
 function move(state: GameState, from: string, to: string): GameState {
+  if (state.players[state.turn].pendingDraws > 0) state = applyAction(state, { type: 'draw' });
   return applyAction(state, { type: 'move', from: s(from), to: s(to) });
 }
 
@@ -336,7 +338,7 @@ describe('stance', () => {
 });
 
 describe('turn structure', () => {
-  it('a turn is either a move or a card, and the player draws on every 5th turn', () => {
+  it('on every 5th turn the player owes a draw, must take it by clicking the deck, and it does not end the turn', () => {
     let g = newGame();
     const handAt = (c: 'white' | 'black') => g.players[c].hand.length;
     const w0 = handAt('white');
@@ -349,10 +351,44 @@ describe('turn structure', () => {
     g = move(g, 'c7', 'c6');
     g = move(g, 'd2', 'd3');
     expect(handAt('white')).toBe(w0);
-    g = move(g, 'd7', 'd6'); // white now starts turn 5 -> draws
+    expect(() => applyAction(g, { type: 'draw' })).toThrow(IllegalActionError); // nothing owed yet (black's turn)
+
+    g = move(g, 'd7', 'd6'); // white now starts turn 5 -> a draw is owed
     expect(g.players.white.turnsTaken).toBe(5);
+    expect(g.players.white.pendingDraws).toBe(1);
+    expect(handAt('white')).toBe(w0);
+    expect(g.events.some((e) => e.type === 'drawReady' && e.color === 'white')).toBe(true);
+    // Only the draw is legal; moving is refused.
+    expect(legalActions(g)).toEqual([{ type: 'draw' }]);
+    expect(() => applyAction(g, { type: 'move', from: s('e2'), to: s('e4') })).toThrow(/Draw a card first/);
+
+    g = applyAction(g, { type: 'draw' });
     expect(handAt('white')).toBe(w0 + 1);
+    expect(g.players.white.pendingDraws).toBe(0);
+    expect(g.turn).toBe('white'); // drawing did not end the turn
     expect(g.events.some((e) => e.type === 'drew' && e.color === 'white')).toBe(true);
+    expect(legalMoves(g).length).toBeGreaterThan(0);
+    g = move(g, 'e2', 'e4');
+    expect(g.turn).toBe('black');
+  });
+
+  it('checkmate is only judged after an owed draw is taken', () => {
+    let g = newGame();
+    // Reach white's 5th turn with a draw owed, and white in check but with a legal escape.
+    g = move(g, 'e2', 'e4');
+    g = move(g, 'e7', 'e5');
+    g = move(g, 'f2', 'f3');
+    g = move(g, 'd8', 'h4'); // check on the e1-h4 diagonal (f3 pawn moved)
+    expect(isInCheck(g, 'white')).toBe(true);
+    g = move(g, 'g2', 'g3'); // block
+    g = move(g, 'h4', 'g5');
+    g = move(g, 'a2', 'a3');
+    g = move(g, 'g5', 'h4'); // white's 5th turn begins: not in check, but a draw is owed
+    expect(g.players.white.pendingDraws).toBe(1);
+    expect(g.status.kind).toBe('playing');
+    g = applyAction(g, { type: 'draw' });
+    expect(g.status.kind).toBe('playing');
+    expect(legalMoves(g).length).toBeGreaterThan(0);
   });
 
   it('resigning ends the game', () => {

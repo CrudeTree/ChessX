@@ -88,6 +88,8 @@ export type Action =
   | { type: 'move'; from: Square; to: Square; promotion?: PromotionKind }
   | { type: 'playCard'; cardInstanceId: string; target?: Square }
   | { type: 'setStance'; square: Square; stance: Stance }
+  /** Take a pending draw (click the deck). Does not end the turn. */
+  | { type: 'draw' }
   | { type: 'resign' };
 
 export type GameStatus =
@@ -115,5 +117,7 @@ export type GameEvent =
   | { type: 'summonFailed'; color: Color; cardId: string; square: Square }
   | { type: 'statsChanged'; pieceId: string; square: Square; atk: number; def: number; hp: number; maxHp: number }
   | { type: 'drew'; color: Color; count: number }
+  /** The draw timer completed: this player must click their deck before acting. */
+  | { type: 'drawReady'; color: Color }
   | { type: 'check'; color: Color }
   | { type: 'gameOver'; status: GameStatus };

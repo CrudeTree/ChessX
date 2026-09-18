@@ -30,6 +30,8 @@ const PROMOTIONS: PromotionKind[] = ['queen', 'rook', 'bishop', 'knight'];
  */
 export function legalActions(state: GameState, color: Color = state.turn): Action[] {
   if (state.status.kind !== 'playing') return [];
+  // The draw phase comes first: while a draw is owed nothing else is allowed.
+  if (state.players[color].pendingDraws > 0) return [{ type: 'draw' }];
   const out: Action[] = [];
   for (const cand of candidateActions(state, color)) {
     if (leavesKingSafe(state, cand, color)) out.push(cand);
@@ -49,6 +51,7 @@ export function applyAction(state: GameState, action: Action): GameState {
   if (state.status.kind !== 'playing') throw new IllegalActionError('Game is over.');
   const next = cloneState(state);
   next.events = [];
+  next.seq++;
   const color = next.turn;
 
   if (action.type === 'resign') {
@@ -56,6 +59,18 @@ export function applyAction(state: GameState, action: Action): GameState {
     next.events.push({ type: 'gameOver', status: next.status });
     return next;
   }
+
+  if (action.type === 'draw') {
+    const player = next.players[color];
+    if (player.pendingDraws <= 0) throw new IllegalActionError('You have no card to draw right now.');
+    player.pendingDraws--;
+    drawCards(next, color, 1);
+    // Drawing is a phase, not a turn. Once the draw phase is done we know whether the player is mated.
+    if (player.pendingDraws === 0) evaluateStatus(next);
+    return next;
+  }
+
+  if (next.players[color].pendingDraws > 0) throw new IllegalActionError('Draw a card first (click your deck).');
 
   performAction(next, action, color); // throws a descriptive IllegalActionError if malformed
   if (!kingSafe(next, color)) {
@@ -164,8 +179,9 @@ function performAction(state: GameState, action: Action, color: Color): void {
     case 'setStance':
       performStance(state, action, color);
       break;
+    case 'draw':
     case 'resign':
-      break;
+      break; // handled in applyAction
   }
 }
 
@@ -418,8 +434,10 @@ function emitStats(state: GameState, p: Piece): void {
 /**
  * Hand the turn over. At the start of the new player's turn:
  *  1. their pending summon timers tick down (resolving at 0),
- *  2. they draw a card on every `drawEvery`th turn,
- *  3. check / checkmate / stalemate is evaluated.
+ *  2. on every `drawEvery`th turn the draw timer completes and they owe a draw
+ *     (taken by clicking the deck; nothing else is legal until then),
+ *  3. check / checkmate / stalemate is evaluated (after the draw, if one is owed,
+ *     since the drawn card might be the answer to check).
  */
 function endTurn(state: GameState): void {
   state.turn = opposite(state.turn);
@@ -435,13 +453,20 @@ function endTurn(state: GameState): void {
     else state.events.push({ type: 'summonTick', square: piece.square, turnsRemaining: piece.summon.turnsRemaining });
   }
 
-  if (player.turnsTaken % state.rules.drawEvery === 0) drawCards(state, color, 1);
+  if (player.turnsTaken % state.rules.drawEvery === 0 && player.deck.length > 0) {
+    player.pendingDraws++;
+    state.events.push({ type: 'drawReady', color });
+  }
 
-  const inCheck = isInCheck(state, color);
-  if (inCheck) state.events.push({ type: 'check', color });
+  if (isInCheck(state, color)) state.events.push({ type: 'check', color });
+  if (player.pendingDraws === 0) evaluateStatus(state);
+}
 
+/** Checkmate / stalemate detection for the side to move. */
+function evaluateStatus(state: GameState): void {
+  const color = state.turn;
   if (legalActions(state, color).length === 0) {
-    state.status = inCheck ? { kind: 'checkmate', winner: opposite(color) } : { kind: 'stalemate' };
+    state.status = isInCheck(state, color) ? { kind: 'checkmate', winner: opposite(color) } : { kind: 'stalemate' };
     state.events.push({ type: 'gameOver', status: state.status });
   }
 }

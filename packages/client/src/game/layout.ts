@@ -1,14 +1,23 @@
 import { fileOf, rankOf, sq, type Square } from '@chessx/engine';
 
 export const SQ = 72;
-export const BOARD_X = 62;
+/** Width of the columns flanking the board (decks live there). */
+export const SIDE_W = 160;
+export const BOARD_X = SIDE_W;
 export const BOARD_Y = 30;
 export const BOARD_SIZE = SQ * 8;
-export const CANVAS_W = 700;
+export const CANVAS_W = SIDE_W * 2 + BOARD_SIZE;
 export const CARD_W = 92;
 export const CARD_H = 150;
 export const HAND_Y = BOARD_Y + BOARD_SIZE + 20;
 export const CANVAS_H = HAND_Y + CARD_H + 20;
+
+/** Deck positions: yours bottom-right, the opponent's top-left (their right, from their side). */
+export const DECK_W = 78;
+export const DECK_H = 108;
+export const DECK_RING_R = 74;
+export const MY_DECK = { x: BOARD_X + BOARD_SIZE + SIDE_W / 2, y: BOARD_Y + BOARD_SIZE - DECK_RING_R - 8 };
+export const OPP_DECK = { x: SIDE_W / 2, y: BOARD_Y + DECK_RING_R + 8 };
 
 export const COLORS = {
   light: 0xd6c9a8,
@@ -28,6 +37,10 @@ export const COLORS = {
   hp: 0x3fbf6f,
   summon: 0x9b6bff,
   void: 0x05030a,
+  deckBack: 0x2c2450,
+  deckEdge: 0x8f7bd6,
+  ringTrack: 0x2a2a3a,
+  ringFill: 0x3dd68c,
 } as const;
 
 /** Board orientation: your pieces are always at the bottom. */

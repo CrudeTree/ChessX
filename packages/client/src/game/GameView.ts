@@ -1,6 +1,7 @@
-import { canAct, type Action, type Color, type GameEvent, type Piece, type PlayerView, type Square } from '@chessx/engine';
+import { canAct, opposite, type Action, type Color, type GameEvent, type Piece, type PlayerView, type Square } from '@chessx/engine';
 import { Application, Container, Graphics, Text, type FederatedPointerEvent } from 'pixi.js';
 import { CardSprite } from './CardSprite.js';
+import { DeckSprite } from './DeckSprite.js';
 import {
   BOARD_SIZE,
   BOARD_X,
@@ -10,7 +11,11 @@ import {
   CARD_H,
   CARD_W,
   COLORS,
+  DECK_H,
+  DECK_W,
   HAND_Y,
+  MY_DECK,
+  OPP_DECK,
   SQ,
   UI_FONT,
   isOverBoard,
@@ -61,8 +66,11 @@ export class GameView {
   private pieceLayer = new Container();
   private fxLayer = new Container();
   private handLayer = new Container();
+  private deckLayer = new Container();
   private dragLayer = new Container();
   private banner = new Container();
+  private myDeck = new DeckSprite();
+  private oppDeck = new DeckSprite();
 
   private sprites = new Map<string, PieceSprite>();
   private voids = new Map<string, Graphics>();
@@ -93,11 +101,18 @@ export class GameView {
       this.highlightLayer,
       this.pieceLayer,
       this.fxLayer,
+      this.deckLayer,
       this.handLayer,
       this.dragLayer,
       this.banner,
     );
     this.drawBoard();
+
+    this.myDeck.position.set(MY_DECK.x, MY_DECK.y);
+    this.oppDeck.position.set(OPP_DECK.x, OPP_DECK.y);
+    this.myDeck.onDraw = () => this.onAction({ type: 'draw' });
+    this.oppDeck.onDraw = () => this.onAction({ type: 'draw' });
+    this.deckLayer.addChild(this.oppDeck, this.myDeck);
 
     this.app.stage.eventMode = 'static';
     this.app.stage.hitArea = this.app.screen;
@@ -113,6 +128,8 @@ export class GameView {
         v.alpha = a;
         v.rotation += tk.deltaMS / 2500;
       }
+      this.myDeck.tick(tk.deltaMS);
+      this.oppDeck.tick(tk.deltaMS);
     });
   }
 
@@ -230,6 +247,7 @@ export class GameView {
 
     this.playEvents(view.events);
     this.drawLastMove(view.events);
+    this.renderDecks();
     this.renderHand();
     this.renderBanner();
     // Refresh the inspected piece (it may have moved, changed stats, or died).
@@ -391,6 +409,59 @@ export class GameView {
       }
     }
     this.highlightLayer.addChild(g);
+  }
+
+  /** Colour of the player sitting at the bottom of the screen. */
+  private bottomColor(): Color {
+    return this.hotseat ? 'white' : (this.view?.you ?? 'white');
+  }
+
+  private renderDecks(): void {
+    const view = this.view;
+    if (!view) return;
+    const bottom = this.bottomColor();
+    const canDraw = view.legalActions.some((a) => a.type === 'draw');
+    for (const [deck, color] of [
+      [this.myDeck, bottom],
+      [this.oppDeck, opposite(bottom)],
+    ] as const) {
+      const side = view.players[color];
+      const drawReady = side.pendingDraws > 0;
+      deck.update({
+        count: side.deckCount,
+        // One segment per turn taken; closes on the drawEvery-th turn.
+        progress: (side.turnsTaken % view.rules.drawEvery) / view.rules.drawEvery,
+        drawReady,
+        clickable: drawReady && view.turn === color && canDraw && view.status.kind === 'playing',
+        label: this.hotseat ? (color === 'white' ? 'WHITE DECK' : 'BLACK DECK') : color === view.you ? 'YOUR DECK' : 'THEIR DECK',
+      });
+    }
+    for (const ev of view.events) {
+      // Timer completed: ring burst on that deck.
+      if (ev.type === 'drawReady') {
+        const at = ev.color === bottom ? MY_DECK : OPP_DECK;
+        this.burst(at.x, at.y, COLORS.ringFill, 2);
+      }
+      // Card drawn: fly a card back from the deck toward the hand.
+      if (ev.type !== 'drew') continue;
+      const fromBottom = ev.color === bottom;
+      const from = fromBottom ? MY_DECK : OPP_DECK;
+      const to = fromBottom ? { x: CANVAS_W / 2, y: HAND_Y + CARD_H / 2 } : { x: CANVAS_W / 2, y: -CARD_H };
+      for (let i = 0; i < ev.count; i++) this.flyCard(from, to, i * 120);
+    }
+  }
+
+  private flyCard(from: { x: number; y: number }, to: { x: number; y: number }, delay: number): void {
+    const card = new Graphics().roundRect(-DECK_W / 2, -DECK_H / 2, DECK_W, DECK_H, 8).fill(COLORS.deckBack).stroke({ width: 2, color: COLORS.deckEdge });
+    card.position.set(from.x, from.y);
+    card.zIndex = 100;
+    this.dragLayer.addChild(card);
+    this.tweens.run(420, (t) => {
+      card.position.set(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t - Math.sin(t * Math.PI) * 60);
+      card.rotation = t * Math.PI * 0.5;
+      card.scale.set(1 + 0.25 * Math.sin(t * Math.PI));
+      card.alpha = t > 0.8 ? 1 - (t - 0.8) / 0.2 : 1;
+    }, { ease: easeInOutQuad, delay, done: () => card.destroy() });
   }
 
   private renderHand(): void {
