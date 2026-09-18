@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Admin, AdminError } from '../src/admin.js';
 import { Db } from '../src/db.js';
+import { GameManager } from '../src/games.js';
 import { Progression } from '../src/progression.js';
 
 const dirs: string[] = [];
@@ -102,6 +103,30 @@ describe('admin', () => {
     expect(s.activeToday).toBe(1);
     expect(db.allUsers().map((u) => u.name)).toEqual(['Bob', 'Alice']); // newest first
     expect(db.userById(a.id)!.last_seen_at).toBeGreaterThan(0);
+  });
+
+  it('deleting an account removes their data and vacates their seat in shared games', () => {
+    const { db, progression, mk } = setup();
+    const alice = mk('Alice');
+    const bob = mk('Bob');
+    progression.ensureStarter(alice.id);
+    progression.ensureStarter(bob.id);
+    db.upsertFriend(alice.id, bob.id, 'accepted');
+    db.upsertFriend(bob.id, alice.id, 'accepted');
+    const games = new GameManager(db, (id) => db.userById(id)?.name ?? '?');
+    const g = games.create(alice.id, false, progression.deckForPlay(alice.id, 1));
+    g.join(bob.id, progression.deckForPlay(bob.id, 1));
+    expect(db.siteStats().gamesPlaying).toBe(1);
+
+    games.forgetUser(bob.id);
+    db.deleteUser(bob.id);
+    expect(db.userById(bob.id)).toBeUndefined();
+    expect(db.collectionFor(bob.id)).toHaveLength(0);
+    expect(db.friendRows(alice.id)).toHaveLength(0);
+    const row = db.gameById(g.id)!;
+    expect([row.white_user_id, row.black_user_id]).toContain(alice.id);
+    expect([row.white_user_id, row.black_user_id]).not.toContain(bob.id);
+    expect(db.siteStats().accounts).toBe(1);
   });
 
   it('stores PNG uploads by content hash and rejects anything else', () => {

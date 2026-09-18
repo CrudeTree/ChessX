@@ -230,6 +230,27 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
       return json(res, 200, { stats, players });
     }
 
+    if (req.method === 'POST' && path === '/api/admin/players/delete') {
+      const user = auth.userFromRequest(req);
+      if (!user) return json(res, 401, { error: 'Not signed in.' });
+      if (!admin.isOwner(user)) return json(res, 403, { error: 'Only the owner can remove accounts.' });
+      const b = await readJson(req);
+      const target = db.userById(str(b.userId));
+      if (!target) return json(res, 404, { error: 'No such account.' });
+      if (admin.isOwner(target)) return json(res, 400, { error: 'The owner account cannot be removed.' });
+      // Sign them out everywhere first, then drop the account.
+      for (const t of socketsByUser.get(target.id) ?? []) {
+        detach(t);
+        t.close(4001, 'Account removed');
+      }
+      socketsByUser.delete(target.id);
+      admin.setDeveloper(target.id, false);
+      games.forgetUser(target.id);
+      db.deleteUser(target.id);
+      console.log(`[admin] ${user.name} removed account ${target.name} (${target.email ?? 'no email'})`);
+      return json(res, 200, { ok: true });
+    }
+
     // ---- developers (owner only): who else may use the card editor
     if (path === '/api/admin/developers') {
       const user = auth.userFromRequest(req);

@@ -56,6 +56,7 @@ export const balanceApi = {
   upload: (image: string) => api<{ url: string }>('/api/admin/upload', { method: 'POST', body: JSON.stringify({ image }) }).then((r) => r.url),
   /** Owner only: every account plus site totals. */
   players: () => api<{ stats: SiteStats; players: PlayerInfo[] }>('/api/admin/players'),
+  deletePlayer: (userId: string) => api<{ ok: true }>('/api/admin/players/delete', { method: 'POST', body: JSON.stringify({ userId }) }),
   /** Owner only: who else may use the editor. */
   developers: () => api<{ developers: DeveloperInfo[] }>('/api/admin/developers').then((r) => r.developers),
   setDeveloper: (userId: string, grant: boolean) =>

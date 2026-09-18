@@ -235,6 +235,27 @@ export class Db {
     return this.db.prepare('SELECT * FROM users WHERE friend_code = ?').get(code.toUpperCase()) as UserRow | undefined;
   }
 
+  /**
+   * Delete an account outright. Their collection, decks, friendships, challenges,
+   * sessions and push subscriptions go with it (ON DELETE CASCADE); games they were
+   * in are kept for the other player, with this seat left empty.
+   */
+  deleteUser(userId: string): void {
+    const tx = this.db;
+    tx.exec('BEGIN');
+    try {
+      tx.prepare('UPDATE games SET white_user_id = NULL WHERE white_user_id = ?').run(userId);
+      tx.prepare('UPDATE games SET black_user_id = NULL WHERE black_user_id = ?').run(userId);
+      tx.prepare("DELETE FROM games WHERE white_user_id IS NULL AND black_user_id IS NULL").run();
+      tx.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+      tx.prepare('DELETE FROM users WHERE id = ?').run(userId);
+      tx.exec('COMMIT');
+    } catch (e) {
+      tx.exec('ROLLBACK');
+      throw e;
+    }
+  }
+
   touchLastSeen(userId: string, now = Date.now()): void {
     this.db.prepare('UPDATE users SET last_seen_at = ? WHERE id = ?').run(now, userId);
   }

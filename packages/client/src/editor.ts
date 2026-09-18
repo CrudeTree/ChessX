@@ -333,15 +333,18 @@ export class BalanceEditor {
       statsEl.textContent = e instanceof ApiError ? e.message : 'Could not load players.';
       return;
     }
-    const s = data.stats;
     const stat = (n: number | string, label: string) => `<div class="pstat"><b>${n}</b><span>${label}</span></div>`;
-    statsEl.innerHTML =
-      stat(s.accounts, 'accounts') +
-      stat(s.newThisWeek, 'new this week') +
-      stat(s.activeToday, 'active in 24h') +
-      stat(s.onlineNow, 'online now') +
-      stat(s.gamesPlaying, 'games in progress') +
-      stat(s.gamesFinished, 'games finished');
+    const renderStats = () => {
+      const s = data.stats;
+      statsEl.innerHTML =
+        stat(s.accounts, 'accounts') +
+        stat(s.newThisWeek, 'new this week') +
+        stat(s.activeToday, 'active in 24h') +
+        stat(s.onlineNow, 'online now') +
+        stat(s.gamesPlaying, 'games in progress') +
+        stat(s.gamesFinished, 'games finished');
+    };
+    renderStats();
 
     const fmtDate = (ms: number) => new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
     const ago = (ms: number | null, online: boolean) => {
@@ -368,10 +371,10 @@ export class BalanceEditor {
       const th = (key: keyof PlayerInfo, label: string) =>
         `<th data-key="${key}" class="${sortKey === key ? (desc ? 'desc' : 'asc') : ''}">${label}</th>`;
       tableWrap.innerHTML = `<table class="ptable"><thead><tr>
-        ${th('name', 'Player')}${th('signIn', 'Sign-in')}${th('createdAt', 'Joined')}${th('lastSeenAt', 'Last seen')}${th('level', 'Level')}${th('gamesPlayed', 'Games')}${th('wins', 'Wins')}${th('gamesInProgress', 'In progress')}
+        ${th('name', 'Player')}${th('signIn', 'Sign-in')}${th('createdAt', 'Joined')}${th('lastSeenAt', 'Last seen')}${th('level', 'Level')}${th('gamesPlayed', 'Games')}${th('wins', 'Wins')}${th('gamesInProgress', 'In progress')}<th></th>
       </tr></thead><tbody>${rows
         .map(
-          (p) => `<tr>
+          (p) => `<tr data-id="${esc(p.id)}">
           <td><b>${esc(p.name)}</b>${p.owner ? ' <span class="tag">owner</span>' : p.developer ? ' <span class="tag">dev</span>' : ''}<br><span class="muted">${esc(p.email ?? '')}</span></td>
           <td>${p.signIn}</td>
           <td>${fmtDate(p.createdAt)}</td>
@@ -380,10 +383,11 @@ export class BalanceEditor {
           <td>${p.gamesPlayed}</td>
           <td>${p.wins}</td>
           <td>${p.gamesInProgress}</td>
+          <td>${p.owner ? '' : '<button class="danger premove">Remove</button>'}</td>
         </tr>`,
         )
         .join('')}</tbody></table>`;
-      for (const h of tableWrap.querySelectorAll<HTMLElement>('th')) {
+      for (const h of tableWrap.querySelectorAll<HTMLElement>('th[data-key]')) {
         h.onclick = () => {
           const key = h.dataset.key as keyof PlayerInfo;
           if (sortKey === key) desc = !desc;
@@ -392,6 +396,24 @@ export class BalanceEditor {
             desc = key !== 'name' && key !== 'signIn';
           }
           render();
+        };
+      }
+      for (const b of tableWrap.querySelectorAll<HTMLButtonElement>('.premove')) {
+        b.onclick = async () => {
+          const id = b.closest('tr')!.dataset.id!;
+          const p = data.players.find((x) => x.id === id)!;
+          if (!confirm(`Remove the account "${p.name}" (${p.email ?? 'no email'})?\n\nThis deletes their collection, decks and friendships and signs them out. Games they were in stay visible to the other player. This cannot be undone.`)) return;
+          try {
+            await balanceApi.deletePlayer(id);
+            data = await balanceApi.players();
+            renderStats();
+            render();
+            $('editor-msg').textContent = `Removed ${p.name}.`;
+            $('editor-msg').className = 'hint editor-msg ok';
+          } catch (e) {
+            $('editor-msg').textContent = e instanceof ApiError ? e.message : 'Could not remove that account.';
+            $('editor-msg').className = 'hint editor-msg error';
+          }
         };
       }
     };

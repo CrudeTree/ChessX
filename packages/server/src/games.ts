@@ -453,6 +453,23 @@ export class GameManager {
     return this.track(new LiveGame(row, this.db, this.userName));
   }
 
+  /** An account was deleted: vacate its seats in games held in memory so a later save does not resurrect it. */
+  forgetUser(userId: string): void {
+    for (const [id, g] of this.live) {
+      let touched = false;
+      if (g.row.white_user_id === userId) {
+        g.row.white_user_id = null;
+        touched = true;
+      }
+      if (g.row.black_user_id === userId) {
+        g.row.black_user_id = null;
+        touched = true;
+      }
+      if (!touched) continue;
+      if (!g.row.white_user_id && !g.row.black_user_id) this.live.delete(id);
+    }
+  }
+
   /** After a balance change: update every game in memory and resend its state. */
   rebalanceAll(): void {
     for (const g of this.live.values()) g.rebalance();
