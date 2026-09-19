@@ -1111,8 +1111,9 @@ describe('testing arena', () => {
     expect(pieceAt(g, s('e4'))!.stance).toBe('defense');
 
     g = applyArenaOp(g, { type: 'spawnPiece', kind: 'pawn', color: 'black', square: s('d5') });
-    g = applyArenaOp(g, { type: 'setStance', square: s('d5'), stance: 'defense' });
-    expect(pieceAt(g, s('d5'))!.defense).toBe(1);
+    expect(() => applyArenaOp(g, { type: 'setStance', square: s('d5'), stance: 'defense' })).toThrow(/cannot have Defense/);
+    g = applyArenaOp(g, { type: 'spawnPiece', kind: 'greedpot', color: 'white', square: s('c4') });
+    expect(() => applyArenaOp(g, { type: 'setStance', square: s('c4'), stance: 'defense' })).toThrow(/cannot have Defense/);
     g = applyArenaOp(g, { type: 'spawnPiece', kind: 'king', color: 'white', square: s('e1') });
     expect(() => applyArenaOp(g, { type: 'setStance', square: s('e1'), stance: 'defense' })).toThrow(/King/);
   });

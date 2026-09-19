@@ -174,7 +174,9 @@ export class InspectPanel {
     } else if (isKing) {
       this.stanceHint.textContent = 'The King cannot have Defense.';
     } else if (piece.defense <= 0) {
-      this.stanceHint.textContent = 'Only pieces with Defense can leave it. Standard pieces never start with Defense.';
+      this.stanceHint.textContent = gameView.arena
+        ? 'This piece cannot have Defense.'
+        : 'Only pieces with Defense can leave it. Standard pieces never start with Defense.';
     } else if (piece.summon) {
       this.stanceHint.textContent = 'A piece being sacrificed cannot leave Defense.';
     } else if (currentView?.turnInfo.stanceChanged.includes(piece.id)) {

@@ -111,6 +111,12 @@ export function getPieceDef(kind: string): PieceDef {
   return def;
 }
 
+/** True if this kind can ever hold Defense charges (tanks). Kings never can. */
+export function canHaveDefense(kind: string): boolean {
+  if (kind === 'king' || !hasPieceDef(kind)) return false;
+  return (getPieceDef(kind).defense ?? 0) > 0;
+}
+
 /** The definition as shipped in code, before any balance patch. */
 export function basePieceDef(kind: string): PieceDef {
   const def = base.get(kind);

@@ -1,4 +1,4 @@
-import { canAct, getCardDef, getPieceDef, opposite, previewAbilities, previewMoves, rankOf, type Action, type ArenaOp, type Color, type GameEvent, type Piece, type PlayerView, type Square } from '@chessx/engine';
+import { canAct, canHaveDefense, getCardDef, getPieceDef, opposite, previewAbilities, previewMoves, rankOf, type Action, type ArenaOp, type Color, type GameEvent, type Piece, type PlayerView, type Square } from '@chessx/engine';
 import { Application, Container, Graphics, Text, type FederatedPointerEvent } from 'pixi.js';
 import { preloadArt } from './art.js';
 import { CardSprite } from './CardSprite.js';
@@ -363,7 +363,9 @@ export class GameView {
     if (!piece || !this.view) return null;
     if (this.arena) {
       if (piece.kind === 'king' || piece.summon) return null;
-      return { type: 'setStance', square: piece.square, stance: piece.defense > 0 ? 'attack' : 'defense' };
+      if (piece.defense > 0) return { type: 'setStance', square: piece.square, stance: 'attack' };
+      if (canHaveDefense(piece.kind)) return { type: 'setStance', square: piece.square, stance: 'defense' };
+      return null;
     }
     for (const a of this.view.legalActions) {
       if (a.type === 'setStance' && a.square === piece.square) return a;

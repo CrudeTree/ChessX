@@ -3,7 +3,7 @@
 
 import { getCardDef, hasCard } from './cards/registry.js';
 import type { CardInstance, SummonCardDef } from './cards/types.js';
-import { hasPieceDef } from './pieces.js';
+import { canHaveDefense, getPieceDef, hasPieceDef } from './pieces.js';
 import { applyEffect, applySandboxAbility, beginSummon, IllegalActionError, offerOnSummonGrant, resolveSummon } from './rules.js';
 import {
   addPiece,
@@ -24,7 +24,7 @@ export type ArenaOp =
   | { type: 'removePiece'; square: Square }
   | { type: 'useAbility'; from: Square; to: Square; index?: number }
   | { type: 'setMana'; color: Color; mana: number }
-  /** Sandbox stance: enter Defense (1 charge) or leave it. King cannot. */
+  /** Sandbox stance: enter Defense (1 charge) only if the piece can have it; leave drops charges. */
   | { type: 'setStance'; square: Square; stance: 'attack' | 'defense' };
 
 const MANA_MAX = 99_999;
@@ -195,6 +195,9 @@ export function applyArenaOp(state: GameState, op: ArenaOp): GameState {
       if (piece.kind === 'king') throw new IllegalActionError('The King cannot have Defense.');
       if (piece.summon) throw new IllegalActionError('A piece being sacrificed cannot change stance.');
       if (op.stance === 'defense') {
+        if (!canHaveDefense(piece.kind)) {
+          throw new IllegalActionError(`${getPieceDef(piece.kind).name} cannot have Defense.`);
+        }
         if (piece.defense <= 0) {
           piece.defense = 1;
           piece.stance = 'defense';
