@@ -163,6 +163,7 @@ export const CATALOG: CardDef[] = [
     cost: 175,
     name: 'Dark Ritual',
     glyph: '🕯️',
+    art: '/art/dark_ritual.png',
     target: 'ownSummoning',
     text: 'Target friendly piece being sacrificed: its summon timer drops by 2.',
     effects: [{ kind: 'hastenSummon', turns: 2 }],
