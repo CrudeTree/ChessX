@@ -39,6 +39,23 @@ const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
+function closeArtLightbox(): void {
+  $('art-lightbox').classList.add('hidden');
+  $('art-lightbox-img').removeAttribute('src');
+}
+
+function openArtLightbox(from: HTMLImageElement): void {
+  const box = $('art-lightbox');
+  const img = $<HTMLImageElement>('art-lightbox-img');
+  const shown = from.clientWidth || 72;
+  const cap = Math.min(window.innerWidth * 0.9, window.innerHeight * 0.85);
+  const size = Math.min(shown * 5, cap);
+  img.src = from.currentSrc || from.src;
+  img.style.width = `${Math.max(size, 1)}px`;
+  img.style.height = 'auto';
+  box.classList.remove('hidden');
+}
+
 type Selection =
   | { kind: 'card'; id: string }
   | { kind: 'piece'; id: string }
@@ -94,6 +111,28 @@ export class BalanceEditor {
       this.filter = (e.target as HTMLInputElement).value.trim().toLowerCase();
       this.renderList();
     };
+    this.bindArtLightbox();
+  }
+
+  private bindArtLightbox(): void {
+    const box = $('art-lightbox');
+    $('editor').addEventListener('click', (e) => {
+      const t = e.target;
+      if (!(t instanceof HTMLImageElement)) return;
+      if (!t.closest('.eart, .epreview-img')) return;
+      if (!t.src) return;
+      e.preventDefault();
+      openArtLightbox(t);
+    });
+    $('art-lightbox-close').onclick = (e) => {
+      e.stopPropagation();
+      closeArtLightbox();
+    };
+    box.querySelector('.art-lightbox-frame')!.addEventListener('click', (e) => e.stopPropagation());
+    box.onclick = () => closeArtLightbox();
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !box.classList.contains('hidden')) closeArtLightbox();
+    });
   }
 
   open(): void {
@@ -105,6 +144,7 @@ export class BalanceEditor {
 
   private leave(): void {
     if (this.dirty && !confirm('You have unsaved changes. Leave anyway?')) return;
+    closeArtLightbox();
     this.back();
   }
 
@@ -255,7 +295,7 @@ export class BalanceEditor {
     wrap.className = 'eimage';
     const preview = document.createElement('div');
     preview.className = 'epreview-img';
-    preview.innerHTML = current ? `<img src="${esc(current)}" alt="">` : '<span class="muted">none</span>';
+    preview.innerHTML = current ? `<img src="${esc(current)}" alt="" title="Click to enlarge">` : '<span class="muted">none</span>';
     const col = document.createElement('div');
     col.className = 'eimage-col';
     col.innerHTML = `<div class="el">${esc(label)}<small>${esc(hint)}</small></div>`;
@@ -594,6 +634,8 @@ export class BalanceEditor {
     const h = document.createElement('div');
     h.className = 'ehead';
     h.innerHTML = `<div class="eart">${art}</div><div class="etitle"><h2>${esc(title)}</h2><div class="muted">${esc(sub)}</div></div>`;
+    const thumb = h.querySelector('.eart img');
+    if (thumb) thumb.setAttribute('title', 'Click to enlarge');
     if (modified) {
       const b = document.createElement('button');
       b.textContent = 'Reset this one';
