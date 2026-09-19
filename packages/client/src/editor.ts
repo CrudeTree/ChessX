@@ -1260,7 +1260,7 @@ export class BalanceEditor {
 
   private movementEditor(form: HTMLElement, base: MovementSpec, patch: MovementSpec | undefined, set: (m: MovementSpec | undefined) => void, glyph: string, isKing: boolean): void {
     const g = this.group(form, 'Movement');
-    const m = cloneMovement(patch ?? base) as { pawn?: boolean; relative?: boolean; leaps?: (readonly [number, number])[]; slides?: { dirs: (readonly [number, number])[]; range?: number }[] };
+    const m = cloneMovement(patch ?? base) as { pawn?: boolean; relative?: boolean; immobile?: boolean; leaps?: (readonly [number, number])[]; slides?: { dirs: (readonly [number, number])[]; range?: number }[] };
     const direct = patch === base; // custom card: the spec itself is being edited, nothing to "reset" to
     const commit = () => {
       const norm = (x: MovementSpec) => JSON.stringify(cloneMovement(x));
@@ -1302,6 +1302,7 @@ export class BalanceEditor {
         cell.onclick = () => {
           m.leaps = has(df, dr) ? (m.leaps ?? []).filter(([a, b]) => !(a === df && b === dr)) : [...(m.leaps ?? []), [df, dr] as const];
           if (!m.leaps.length) delete m.leaps;
+          if (m.leaps?.length) delete m.immobile;
           commit();
         };
         grid.appendChild(cell);
@@ -1387,6 +1388,24 @@ export class BalanceEditor {
     };
     flag('Pawn rules', 'pawn', 'forward push, double-step, diagonal attack, en passant, promotion', isKing);
     flag('Forward is toward the enemy', 'relative', 'otherwise ↑ means the same board direction for both sides');
+    const immobile = document.createElement('label');
+    const immobileCb = document.createElement('input');
+    immobileCb.type = 'checkbox';
+    immobileCb.checked = !!m.immobile;
+    immobileCb.onchange = () => {
+      if (immobileCb.checked) {
+        m.immobile = true;
+        delete m.leaps;
+        delete m.slides;
+        delete m.pawn;
+      } else delete m.immobile;
+      commit();
+    };
+    immobile.append(immobileCb, ' Cannot move or attack ');
+    const immobileHint = document.createElement('small');
+    immobileHint.textContent = 'sits on its square; still generates mana';
+    immobile.appendChild(immobileHint);
+    flags.appendChild(immobile);
 
     wrap.append(preview, leaps, slides, flags);
     g.appendChild(wrap);

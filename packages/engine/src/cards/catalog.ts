@@ -148,6 +148,26 @@ export const CATALOG: CardDef[] = [
     },
   },
   {
+    id: 'greedpot',
+    type: 'summon',
+    cost: 200,
+    name: 'Greedpot',
+    glyph: '🏺',
+    art: '/art/greedpot.png',
+    tier: 1,
+    sacrificeTier: 1,
+    summonTurns: 2,
+    text: 'Sacrifice a Tier 1 piece. Summons in 2 turns. Cannot move or attack. Generates 10 mana per turn.',
+    piece: {
+      kind: 'greedpot',
+      name: 'Greedpot',
+      glyph: '🏺',
+      tier: 1,
+      manaYield: 10,
+      movement: { immobile: true },
+    },
+  },
+  {
     id: 'thornback_boar',
     type: 'summon',
     cost: 200,
@@ -290,7 +310,7 @@ export const STARTER_CARDS: string[] = [
 ];
 
 export const REWARD_CARDS: string[] = [
-  'ziglet',
+  'ziglet', 'greedpot',
   'thornback_boar', 'frost_owl', 'iron_golem', 'shadow_panther', 'ancient_treant', 'storm_drake',
   'battle_trance',
 ];

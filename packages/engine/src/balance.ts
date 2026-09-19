@@ -143,6 +143,7 @@ export function cloneMovement(m: MovementSpec): MovementSpec {
   return {
     ...(m.pawn ? { pawn: true } : {}),
     ...(m.relative ? { relative: true } : {}),
+    ...(m.immobile ? { immobile: true } : {}),
     ...(m.leaps ? { leaps: m.leaps.map(([f, r]) => [f, r] as const) } : {}),
     ...(m.slides ? { slides: m.slides.map((s) => ({ dirs: s.dirs.map(([f, r]) => [f, r] as const), ...(s.range !== undefined ? { range: s.range } : {}) })) } : {}),
   };
@@ -277,7 +278,11 @@ function validateMovement(m: unknown, where: string, problems: string[]): void {
     }
   }
   const any = mv.pawn || (mv.leaps?.length ?? 0) > 0 || (mv.slides?.some((s) => s.dirs.length > 0) ?? false);
-  if (!any) problems.push(`${where}: the piece would not be able to move at all.`);
+  if (mv.immobile) {
+    if (any) problems.push(`${where}: an immobile piece cannot also have movement.`);
+  } else if (!any) {
+    problems.push(`${where}: the piece would not be able to move at all.`);
+  }
 }
 
 function validatePiece(p: PiecePatch, where: string, problems: string[], isKing: boolean): void {
@@ -462,7 +467,7 @@ export function describeMovement(m: MovementSpec): string {
     else if (set.size === 3 && set.has('-1,1') && set.has('1,1') && set.has('0,-1')) parts.push('hops 1 square diagonally forward or 1 square back');
     else parts.push(`jumps to ${set.size} fixed square${set.size === 1 ? '' : 's'}`);
   }
-  if (!parts.length) return 'Cannot move.';
+  if (m.immobile || !parts.length) return 'Cannot move or attack.';
   const text = parts.join(' or ');
   return text.charAt(0).toUpperCase() + text.slice(1) + '.';
 }
@@ -513,7 +518,8 @@ export function describeCard(card: CardDef): string {
     const mv = describeMovement(p.movement).replace(/\.$/, '');
     const ability = (p.abilities ?? []).map(describeAbility).filter(Boolean).join(' ');
     const defense = p.defense ? ` Starts with ${p.defense} Defense.` : '';
-    return `Sacrifice a ${tierWord(card.sacrificeTier ?? card.tier - 1)} piece. Summons in ${card.summonTurns} turn${card.summonTurns === 1 ? '' : 's'}. ${mv}.${defense}${ability ? ` ${ability.charAt(0).toUpperCase()}${ability.slice(1)}` : ''}`;
+    const mana = p.manaYield !== undefined && p.manaYield !== p.tier ? ` Generates ${p.manaYield} mana per turn.` : '';
+    return `Sacrifice a ${tierWord(card.sacrificeTier ?? card.tier - 1)} piece. Summons in ${card.summonTurns} turn${card.summonTurns === 1 ? '' : 's'}. ${mv}.${defense}${mana}${ability ? ` ${ability.charAt(0).toUpperCase()}${ability.slice(1)}` : ''}`;
   }
   const targetWord =
     card.target === 'ownPiece' ? 'Target friendly piece'

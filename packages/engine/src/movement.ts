@@ -49,6 +49,7 @@ export function pseudoMoves(state: GameState, piece: Piece, attacksOnly = false)
 
   const def = getPieceDef(piece.kind);
   const mv = def.movement;
+  if (mv.immobile) return out;
   const from = piece.square;
   const f = fileOf(from);
   const r = rankOf(from);
@@ -167,6 +168,7 @@ export interface MovementPattern {
  * the owner's perspective (forward is up), so no colour flipping is needed.
  */
 export function movementPattern(spec: MovementSpec, radius = 3): MovementPattern {
+  if (spec.immobile) return { moves: [], attacks: [], unbounded: false };
   const moves: [number, number][] = [];
   const attacks: [number, number][] = [];
   let unbounded = false;

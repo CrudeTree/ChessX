@@ -636,6 +636,14 @@ describe('cards', () => {
     expect(to.sort()).toEqual([s('d5'), s('e3'), s('f5')].sort());
   });
 
+  it('Greedpot cannot move or attack and yields 10 mana', () => {
+    const g = applyArenaOp(createArenaGame(1), { type: 'spawnPiece', kind: 'greedpot', color: 'white', square: s('e4') });
+    expect(previewMoves(g, pieceAt(g, s('e4'))!)).toEqual([]);
+    expect(getPieceDef('greedpot').manaYield).toBe(10);
+    expect(viewFor(g, 'white').players.white.manaIncome).toBe(10);
+    expect(describeCard(getCardDef('greedpot'))).toMatch(/Cannot move or attack.*10 mana/);
+  });
+
   it('Dark Ritual hastens a summon', () => {
     let g = newGame();
     const ox = giveCard(g, 'white', 'the_ox');
@@ -787,6 +795,7 @@ describe('balance patches', () => {
     expect(validateBalance({ cards: { the_ox: { piece: { defense: -1 } } }, pieces: {} })).toEqual([expect.stringMatching(/Defense/)]);
     expect(validateBalance({ cards: {}, pieces: { king: { movement: { pawn: true } } } })).toEqual([expect.stringMatching(/King/)]);
     expect(validateBalance({ cards: {}, pieces: { rook: { movement: { leaps: [] } } } })).toEqual([expect.stringMatching(/not be able to move/)]);
+    expect(validateBalance({ cards: { greedpot: { piece: { movement: { immobile: true }, manaYield: 10 } } }, pieces: {} })).toEqual([]);
     expect(validateBalance({ cards: { the_ox: { cost: 300, piece: { movement: { leaps: [[1, 2]], slides: [{ dirs: [[0, 1]], range: 2 }], relative: true } } } }, pieces: { queen: { manaYield: 10 } } })).toEqual([]);
   });
 
@@ -798,6 +807,7 @@ describe('balance patches', () => {
     expect(describeMovement({ leaps: [[-1, 1], [1, 1], [0, -1]], relative: true })).toBe(
       'Hops 1 square diagonally forward or 1 square back.',
     );
+    expect(describeMovement({ immobile: true })).toBe('Cannot move or attack.');
   });
 });
 

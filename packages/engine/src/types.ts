@@ -34,6 +34,8 @@ export interface MovementSpec {
   /** Standard pawn behaviour: push forward, attack diagonally, double-step, en passant, promotion. */
   pawn?: boolean;
   relative?: boolean;
+  /** Sits still: no moves and no attacks. */
+  immobile?: boolean;
 }
 
 /**
