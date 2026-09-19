@@ -437,6 +437,11 @@ export class GameView {
       const veiled = stormed.has(piece.square);
       const { x, y } = squareToXY(piece.square, this.flipped);
       let sprite = this.sprites.get(piece.id);
+      if (sprite && sprite.kind !== piece.kind) {
+        this.sprites.delete(piece.id);
+        if (!sprite.destroyed) sprite.destroy();
+        sprite = undefined;
+      }
       if (!sprite) {
         sprite = new PieceSprite(piece);
         sprite.update(piece, !this.arena && this.isLocked(piece), veiled);
@@ -622,6 +627,12 @@ export class GameView {
         case 'kingCaptured': {
           const { x, y } = squareToXY(ev.square, this.flipped);
           this.burst(x, y, COLORS.attack);
+          break;
+        }
+        case 'transformed': {
+          const { x, y } = squareToXY(ev.square, this.flipped);
+          this.burst(x, y, COLORS.card, 1.2);
+          this.floatText(x, y, getPieceDef(ev.to).name, COLORS.card, 0, MOBILE ? 14 : 16, 800);
           break;
         }
         case 'summoned': {
@@ -1595,6 +1606,8 @@ export function describeStatusNeutral(status: PlayerView['status']): string {
       return `Checkmate — ${w} wins!`;
     case 'kingCaptured':
       return `King captured — ${w} wins!`;
+    case 'regentsFallen':
+      return `Both Regents fallen — ${w} wins!`;
     case 'resigned':
       return `${w} wins by resignation`;
     case 'timeout':
@@ -1612,6 +1625,8 @@ export function describeStatus(status: PlayerView['status'], you: Color): string
       return status.winner === you ? 'Checkmate — you win!' : 'Checkmate — you lose';
     case 'kingCaptured':
       return status.winner === you ? 'King captured — you win!' : 'Your King was captured';
+    case 'regentsFallen':
+      return status.winner === you ? 'Both Regents fallen — you win!' : 'Both of your Regents fell';
     case 'resigned':
       return status.winner === you ? 'Opponent resigned — you win!' : 'You resigned';
     case 'timeout':

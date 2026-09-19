@@ -4,7 +4,7 @@
 import { getCardDef, hasCard } from './cards/registry.js';
 import type { CardInstance, SummonCardDef } from './cards/types.js';
 import { canHaveDefense, getPieceDef, hasPieceDef } from './pieces.js';
-import { applyEffect, applySandboxAbility, beginSummon, IllegalActionError, offerOnSummonGrant, resolveSummon, tickStorms } from './rules.js';
+import { applyEffect, applySandboxAbility, beginSummon, evaluateVitalLoss, IllegalActionError, offerOnSummonGrant, resolveSummon, tickStorms } from './rules.js';
 import {
   addPiece,
   cloneState,
@@ -65,9 +65,12 @@ export function giveCard(state: GameState, color: Color, cardId: string): string
 export function removePieceAt(state: GameState, square: Square): boolean {
   const piece = pieceAt(state, square);
   if (!piece) return false;
+  const owner = piece.owner;
+  const wasVital = !!getPieceDef(piece.kind).vital;
   state.events.push({ type: 'destroyed', pieceId: piece.id, kind: piece.kind, owner: piece.owner, square: piece.square });
   state.board[piece.square] = null;
   delete state.pieces[piece.id];
+  if (wasVital) evaluateVitalLoss(state, owner);
   return true;
 }
 

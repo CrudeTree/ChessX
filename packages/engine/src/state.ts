@@ -40,6 +40,8 @@ export interface PlayerState {
   pendingDraws: number;
   /** Mana pool. Each piece on the board generates its tier in mana at the end of its owner's turn. */
   mana: number;
+  /** After Schism: this player is never in check, and loses only when every Regent is gone. */
+  checkImmune?: boolean;
 }
 
 /** What the side to move has done so far this turn. Reset by `endTurn`. */
@@ -288,6 +290,7 @@ export function cloneState(state: GameState): GameState {
     turnsTaken: p.turnsTaken,
     pendingDraws: p.pendingDraws,
     mana: p.mana,
+    ...(p.checkImmune ? { checkImmune: true } : {}),
   });
   return {
     rules: state.rules,

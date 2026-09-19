@@ -28,7 +28,9 @@ export type Effect =
   /** Add mana to the caster's pool right away. */
   | { kind: 'gainMana'; amount: number }
   /** Shuffle the opponent's pieces on their back rank (empties move with them). */
-  | { kind: 'scrambleBackRank' };
+  | { kind: 'scrambleBackRank' }
+  /** Rooks become Regents, the King becomes a Sovereign; that player leaves check. */
+  | { kind: 'schism' };
 
 interface CardBase {
   id: string;

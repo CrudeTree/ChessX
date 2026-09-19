@@ -96,6 +96,9 @@ export function describeEvents(view: PlayerView, names: Record<'white' | 'black'
       case 'promoted':
         lines.push({ text: `Pawn promoted to ${getPieceDef(e.to).name} on ${squareName(e.square)}.`, important: true });
         break;
+      case 'transformed':
+        lines.push({ text: `${getPieceDef(e.from).name} on ${squareName(e.square)} becomes a ${getPieceDef(e.to).name}.`, important: true });
+        break;
       case 'check':
         lines.push({ text: `${names[e.color]} is in check!`, important: true });
         break;
@@ -111,6 +114,7 @@ export function describeEvents(view: PlayerView, names: Record<'white' | 'black'
         const text =
           s.kind === 'checkmate' ? `Checkmate! ${winnerName} wins.` :
           s.kind === 'kingCaptured' ? `King captured! ${winnerName} wins.` :
+          s.kind === 'regentsFallen' ? `Both Regents have fallen! ${winnerName} wins.` :
           s.kind === 'resigned' ? `${winnerName} wins by resignation.` :
           s.kind === 'stalemate' ? 'Stalemate.' : '';
         if (text) lines.push({ text, important: true });

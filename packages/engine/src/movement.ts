@@ -201,6 +201,7 @@ export function isSquareAttacked(state: GameState, square: Square, byColor: Colo
 
 /** A missing king counts as "in check" so a captured king is never considered safe. */
 export function isInCheck(state: GameState, color: Color): boolean {
+  if (state.players[color].checkImmune) return false;
   const king = findKing(state, color);
   if (!king) return true;
   return isSquareAttacked(state, king.square, color === 'white' ? 'black' : 'white');

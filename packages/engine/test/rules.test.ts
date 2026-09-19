@@ -661,6 +661,63 @@ describe('cards', () => {
     expect(() => act(g, { type: 'playCard', cardInstanceId: tooLate })).toThrow(/first turn/);
   });
 
+  it('Schism needs two Rooks and a King, then splits the crown', () => {
+    let g = newGame();
+    const oneRook = giveCard(g, 'white', 'schism');
+    g = applyArenaOp(g, { type: 'removePiece', square: s('a1') });
+    expect(legalActions(g).some((a) => a.type === 'playCard' && a.cardInstanceId === oneRook)).toBe(false);
+    expect(() => act(g, { type: 'playCard', cardInstanceId: oneRook })).toThrow(/two Rooks and a King/);
+
+    g = newGame();
+    const card = giveCard(g, 'white', 'schism');
+    expect(legalActions(g).some((a) => a.type === 'playCard' && a.cardInstanceId === card)).toBe(true);
+    g = act(g, { type: 'playCard', cardInstanceId: card });
+    expect(pieceAt(g, s('a1'))!.kind).toBe('regent');
+    expect(pieceAt(g, s('h1'))!.kind).toBe('regent');
+    expect(pieceAt(g, s('e1'))!.kind).toBe('sovereign');
+    expect(g.players.white.checkImmune).toBe(true);
+    expect(isInCheck(g, 'white')).toBe(false);
+    expect(describeCard(getCardDef('schism'))).toMatch(/Regents.*Sovereign/i);
+
+    const open = applyArenaOp(createArenaGame(1), { type: 'spawnPiece', kind: 'sovereign', color: 'white', square: s('e4') });
+    const queenLike = previewMoves(open, pieceAt(open, s('e4'))!).map((m) => m.to);
+    expect(queenLike).toContain(s('e8'));
+    expect(queenLike).toContain(s('a4'));
+    expect(queenLike).toContain(s('h7'));
+    const regentBoard = applyArenaOp(createArenaGame(1), { type: 'spawnPiece', kind: 'regent', color: 'white', square: s('e4') });
+    const kingLike = previewMoves(regentBoard, pieceAt(regentBoard, s('e4'))!).map((m) => m.to);
+    expect(kingLike.sort()).toEqual([s('d3'), s('d4'), s('d5'), s('e3'), s('e5'), s('f3'), s('f4'), s('f5')].sort());
+
+    g = applyArenaOp(g, { type: 'spawnPiece', kind: 'knight', color: 'black', square: s('d3') });
+    expect(isInCheck(g, 'white')).toBe(false);
+    expect(legalMoves(g).some((m) => m.from === s('b2'))).toBe(true);
+  });
+
+  it('capturing both Regents ends the game, and Arena Schism no-ops without the pieces', () => {
+    let empty = createArenaGame(1);
+    empty = applyArenaOp(empty, { type: 'dropCard', cardId: 'schism', color: 'white', square: s('e4') });
+    expect(Object.keys(empty.pieces)).toHaveLength(0);
+    expect(empty.players.white.checkImmune).toBeUndefined();
+
+    let g = createArenaGame(1);
+    g = applyArenaOp(g, { type: 'spawnPiece', kind: 'king', color: 'white', square: s('e1') });
+    g = applyArenaOp(g, { type: 'spawnPiece', kind: 'rook', color: 'white', square: s('a1') });
+    g = applyArenaOp(g, { type: 'dropCard', cardId: 'schism', color: 'white', square: s('e4') });
+    expect(pieceAt(g, s('e1'))!.kind).toBe('king');
+    expect(pieceAt(g, s('a1'))!.kind).toBe('rook');
+
+    g = applyArenaOp(g, { type: 'spawnPiece', kind: 'rook', color: 'white', square: s('h1') });
+    g = applyArenaOp(g, { type: 'dropCard', cardId: 'schism', color: 'white', square: s('e4') });
+    expect(pieceAt(g, s('a1'))!.kind).toBe('regent');
+    expect(pieceAt(g, s('h1'))!.kind).toBe('regent');
+    expect(pieceAt(g, s('e1'))!.kind).toBe('sovereign');
+
+    g = applyArenaOp(g, { type: 'removePiece', square: s('a1') });
+    expect(g.status.kind).toBe('playing');
+    g = applyArenaOp(g, { type: 'removePiece', square: s('h1') });
+    expect(g.status).toEqual({ kind: 'regentsFallen', winner: 'black' });
+  });
+
   it('reward creatures have sensible movement patterns', () => {
     let g = newGame();
     const boar = giveCard(g, 'white', 'thornback_boar');

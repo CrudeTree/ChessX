@@ -72,7 +72,7 @@ export const EMPTY_BALANCE: Balance = { cards: {}, pieces: {} };
 
 const RETIRED = new Set(RETIRED_CARDS);
 
-const LIVE_EFFECTS = new Set<Effect['kind']>(['destroy', 'draw', 'hastenSummon', 'freeStance', 'gainMana', 'scrambleBackRank']);
+const LIVE_EFFECTS = new Set<Effect['kind']>(['destroy', 'draw', 'hastenSummon', 'freeStance', 'gainMana', 'scrambleBackRank', 'schism']);
 
 function sanitizeAbility(a: PieceAbility): PieceAbility {
   if (a?.kind === 'stormCloud') {
@@ -341,6 +341,7 @@ function validateEffects(effects: unknown, where: string, problems: string[]): v
         if (!isInt(e.amount, 1, 999)) problems.push(`${where}: mana gained must be 1–999.`);
         break;
       case 'scrambleBackRank':
+      case 'schism':
         break;
       default:
         problems.push(`${where}: unknown effect.`);
@@ -506,6 +507,8 @@ function describeEffect(e: Effect, target: string): string {
       return `Gain ${e.amount} mana.`;
     case 'scrambleBackRank':
       return `Rearrange the opponent's back rank.`;
+    case 'schism':
+      return `Needs two Rooks and a King. Your Rooks become Regents that move like Kings. Your King becomes a Sovereign that moves like a Queen. You are no longer in check. If both Regents are captured, you lose.`;
   }
 }
 

@@ -332,6 +332,17 @@ export const CATALOG: CardDef[] = [
     text: 'On your first turn only. Rearrange the opponent\'s back rank.',
     effects: [{ kind: 'scrambleBackRank' }],
   },
+  {
+    id: 'schism',
+    type: 'spell',
+    cost: 200,
+    name: 'Schism',
+    glyph: '👑',
+    art: '/art/schism.png',
+    target: 'none',
+    text: 'Needs two Rooks and a King. Your Rooks become Regents that move like Kings. Your King becomes a Sovereign that moves like a Queen. You are no longer in check. If both Regents are captured, you lose.',
+    effects: [{ kind: 'schism' }],
+  },
 ];
 
 registerCards(CATALOG);
@@ -354,7 +365,7 @@ export const STARTER_CARDS: string[] = [
 export const REWARD_CARDS: string[] = [
   'ziglet', 'greedpot', 'thunderhead',
   'thornback_boar', 'frost_owl', 'iron_golem', 'shadow_panther', 'ancient_treant', 'storm_drake',
-  'battle_trance', 'leyburst', 'disarray',
+  'battle_trance', 'leyburst', 'disarray', 'schism',
 ];
 
 /** The deck every new player starts with: 3 copies of each starter card. */

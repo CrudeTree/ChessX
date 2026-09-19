@@ -567,7 +567,7 @@ function renderHome(): void {
     row.onclick = () => openGame(g.id);
     const s = g.status;
     const winner = 'winner' in s ? s.winner : null;
-    const how = s.kind === 'timeout' ? 'on time' : s.kind === 'resigned' ? 'by resignation' : s.kind === 'kingCaptured' ? 'king captured' : s.kind === 'checkmate' ? 'checkmate' : 'draw';
+    const how = s.kind === 'timeout' ? 'on time' : s.kind === 'resigned' ? 'by resignation' : s.kind === 'kingCaptured' ? 'king captured' : s.kind === 'regentsFallen' ? 'both Regents fallen' : s.kind === 'checkmate' ? 'checkmate' : 'draw';
     let result: string;
     let cls = '';
     if (s.kind === 'stalemate') result = 'Draw';

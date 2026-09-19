@@ -95,6 +95,13 @@ export interface PieceDef {
   description?: string;
   /** Activated from the board; empty/undefined means the piece has none. */
   abilities?: PieceAbility[];
+  /** Optional board picture (URL path). Used when the kind is not a summon. */
+  art?: string;
+  /**
+   * After Schism: if this player has no remaining vital pieces, they lose.
+   * Regents are vital; ordinary kings are handled separately.
+   */
+  vital?: boolean;
 }
 
 /** A summon in progress: this piece is being sacrificed and cannot move. */
@@ -144,7 +151,9 @@ export type GameStatus =
   | { kind: 'kingCaptured'; winner: Color }
   | { kind: 'resigned'; winner: Color }
   /** The side to move ran out of turn clock. */
-  | { kind: 'timeout'; winner: Color };
+  | { kind: 'timeout'; winner: Color }
+  /** Both of a Schism player's Regents were captured. */
+  | { kind: 'regentsFallen'; winner: Color };
 
 /** Events emitted while applying an action. The client uses these for animation and the log. */
 export type GameEvent =
@@ -158,6 +167,7 @@ export type GameEvent =
   | { type: 'destroyed'; pieceId: string; kind: string; owner: Color; square: Square }
   | { type: 'kingCaptured'; owner: Color; square: Square }
   | { type: 'promoted'; pieceId: string; square: Square; to: string }
+  | { type: 'transformed'; pieceId: string; square: Square; from: string; to: string }
   | { type: 'cardPlayed'; color: Color; cardId: string; target?: Square }
   | { type: 'summonStarted'; color: Color; cardId: string; square: Square; turns: number }
   | { type: 'summonTick'; square: Square; turnsRemaining: number }

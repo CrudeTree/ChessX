@@ -1,9 +1,9 @@
 import { getCardDef } from './cards/registry.js';
 import type { CardInstance, Effect, SummonCardDef, TargetRule } from './cards/types.js';
 import { isInCheck, lastRank, pseudoMoves, type MoveCandidate } from './movement.js';
-import { getPieceDef } from './pieces.js';
+import { getPieceDef, REGENT, SOVEREIGN } from './pieces.js';
 import { shuffleInPlace } from './rng.js';
-import { cloneState, drawCards, freshTurnInfo, manaFrom, pieceAt, piecesOf, stormAt, type GameState } from './state.js';
+import { cloneState, drawCards, findKing, freshTurnInfo, manaFrom, pieceAt, piecesOf, stormAt, type GameState } from './state.js';
 import {
   fileOf,
   inBounds,
@@ -72,6 +72,7 @@ export function legalActions(state: GameState, color: Color = state.turn): Actio
     const card = getCardDef(inst.cardId);
     if (card.cost > state.players[color].mana) continue;
     if (card.type === 'spell' && card.firstTurnOnly && state.players[color].turnsTaken !== 1) continue;
+    if (card.type === 'spell' && card.effects.some((e) => e.kind === 'schism') && !canPlaySchism(state, color)) continue;
     for (const target of cardTargets(state, inst, color)) {
       out.push({ type: 'playCard', cardInstanceId: inst.instanceId, target });
     }
@@ -427,12 +428,47 @@ function removePiece(state: GameState, piece: Piece): void {
 
 /** Destroy a piece. If it was being sacrificed, the pending summon fails and its card is destroyed. */
 function destroyPiece(state: GameState, piece: Piece): void {
+  const owner = piece.owner;
+  const wasVital = !!getPieceDef(piece.kind).vital;
   state.events.push({ type: 'destroyed', pieceId: piece.id, kind: piece.kind, owner: piece.owner, square: piece.square });
   if (piece.summon) {
     state.players[piece.owner].graveyard.push({ instanceId: piece.summon.cardInstanceId, cardId: piece.summon.cardId });
     state.events.push({ type: 'summonFailed', color: piece.owner, cardId: piece.summon.cardId, square: piece.square });
   }
   removePiece(state, piece);
+  if (wasVital) evaluateVitalLoss(state, owner);
+}
+
+export function evaluateVitalLoss(state: GameState, owner: Color): void {
+  if (!state.players[owner].checkImmune) return;
+  if (state.status.kind !== 'playing') return;
+  const remaining = piecesOf(state, owner).some((p) => getPieceDef(p.kind).vital);
+  if (remaining) return;
+  state.status = { kind: 'regentsFallen', winner: opposite(owner) };
+  if (!state.events.some((e) => e.type === 'gameOver')) {
+    state.events.push({ type: 'gameOver', status: state.status });
+  }
+}
+
+function canPlaySchism(state: GameState, color: Color): boolean {
+  if (state.players[color].checkImmune) return false;
+  const rooks = piecesOf(state, color).filter((p) => p.kind === 'rook' && !p.summon);
+  return rooks.length >= 2 && !!findKing(state, color);
+}
+
+function applySchism(state: GameState, color: Color): void {
+  const rooks = piecesOf(state, color).filter((p) => p.kind === 'rook' && !p.summon);
+  const king = findKing(state, color);
+  if (rooks.length < 2 || !king) return;
+  state.players[color].checkImmune = true;
+  for (const rook of rooks) {
+    const from = rook.kind;
+    rook.kind = REGENT.kind;
+    state.events.push({ type: 'transformed', pieceId: rook.id, square: rook.square, from, to: rook.kind });
+  }
+  const from = king.kind;
+  king.kind = SOVEREIGN.kind;
+  state.events.push({ type: 'transformed', pieceId: king.id, square: king.square, from, to: king.kind });
 }
 
 // ---------------------------------------------------------------------------
@@ -454,6 +490,9 @@ function performCard(state: GameState, action: Extract<Action, { type: 'playCard
 
   if (card.type === 'spell' && card.firstTurnOnly && player.turnsTaken !== 1) {
     throw new IllegalActionError(`${card.name} can only be played on your first turn.`);
+  }
+  if (card.type === 'spell' && card.effects.some((e) => e.kind === 'schism') && !canPlaySchism(state, color)) {
+    throw new IllegalActionError(`${card.name} needs two Rooks and a King on the board.`);
   }
   if (card.cost > player.mana) throw new IllegalActionError(`Not enough mana: ${card.name} costs ${card.cost}, you have ${player.mana}.`);
 
@@ -536,6 +575,10 @@ export function applyEffect(state: GameState, effect: Effect, color: Color, targ
     }
     case 'scrambleBackRank': {
       scrambleOpponentBackRank(state, color);
+      return;
+    }
+    case 'schism': {
+      applySchism(state, color);
       return;
     }
   }

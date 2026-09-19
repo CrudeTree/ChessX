@@ -78,6 +78,7 @@ function defaultEffect(kind: Effect['kind']): Effect {
     case 'destroy':
     case 'freeStance':
     case 'scrambleBackRank':
+    case 'schism':
       return { kind };
     case 'gainMana':
       return { kind, amount: 60 };
@@ -1218,6 +1219,7 @@ export class BalanceEditor {
       ['freeStance', 'Leave Defense and still act'],
       ['gainMana', 'Gain mana'],
       ['scrambleBackRank', "Rearrange the opponent's back rank"],
+      ['schism', 'Rooks become Regents, King becomes Sovereign'],
     ];
     card.effects.forEach((e, i) => {
       const row = document.createElement('div');

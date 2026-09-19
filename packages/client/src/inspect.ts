@@ -114,7 +114,7 @@ export class InspectPanel {
     const isKing = piece.kind === 'king';
     const ownerName = solo ? (piece.owner === 'white' ? 'White' : 'Black') : this.ctx.names()[piece.owner];
 
-    const typeLine = `${isKing ? `Tier ${def.tier} · royal piece` : card ? `Tier ${def.tier} creature · summoned by ${card.name}` : `Tier ${def.tier} · basic piece`} · +${def.manaYield ?? def.tier} mana / turn`;
+    const typeLine = `${isKing ? `Tier ${def.tier} · royal piece` : def.vital ? `Tier ${def.tier} · crown piece` : card ? `Tier ${def.tier} creature · summoned by ${card.name}` : `Tier ${def.tier} · basic piece`} · +${def.manaYield ?? def.tier} mana / turn`;
 
     const status: string[] = [];
     if (piece.summon) {
@@ -144,7 +144,7 @@ export class InspectPanel {
         <div class="zoom-owner">${esc(ownerName)}</div>
       </div>
       <div class="zoom-type">${esc(typeLine)}</div>
-      ${artBanner(card?.art, card?.cardArtZoom)}
+      ${artBanner(card?.art ?? def.art, card?.cardArtZoom)}
       ${movementMap(def.movement, `<span class="glyph ${isBasic ? 'chess' : 'emoji'} ${piece.owner}">${def.glyph}</span>`)}
       ${piece.defense > 0 ? `<div class="zoom-stats"><div class="stat def">Defense<b>${piece.defense}</b></div></div>` : ''}
       ${isKing ? '' : `<div class="zoom-stance ${piece.stance}">${piece.defense > 0 ? `🛡 Defense mode — ${piece.defense} charge${piece.defense === 1 ? '' : 's'}` : '⚔ Attack mode'}</div>`}

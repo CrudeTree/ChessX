@@ -75,7 +75,7 @@ games.onFinished = (game) => {
   const status = game.state?.status;
   if (!status || status.kind === 'playing') return;
   const winner = 'winner' in status ? status.winner : null;
-  const checkmate = status.kind === 'checkmate' || status.kind === 'kingCaptured';
+  const checkmate = status.kind === 'checkmate' || status.kind === 'kingCaptured' || status.kind === 'regentsFallen';
   for (const uid of game.participants()) {
     const won = winner !== null && game.seatOf(uid) === winner;
     const report = progression.award(uid, game.id, won, checkmate);

@@ -12,7 +12,7 @@ function summonCard(kind: string) {
 
 function artFor(kind: string): Texture | undefined {
   const card = summonCard(kind);
-  const url = card?.boardArt ?? card?.art;
+  const url = card?.boardArt ?? card?.art ?? getPieceDef(kind).art;
   return url ? artTextures.get(url) : undefined;
 }
 
@@ -23,6 +23,7 @@ function artFor(kind: string): Texture | undefined {
  */
 export class PieceSprite extends Container {
   pieceId: string;
+  kind: string;
   square: number;
   private ring = new Graphics();
   private stanceMark = new Graphics();
@@ -37,6 +38,7 @@ export class PieceSprite extends Container {
   constructor(piece: Piece) {
     super();
     this.pieceId = piece.id;
+    this.kind = piece.kind;
     this.square = piece.square;
     const def = getPieceDef(piece.kind);
     const standard = isStandard(piece.kind);
@@ -95,6 +97,7 @@ export class PieceSprite extends Container {
   }
 
   update(piece: Piece, locked: boolean, veiled = false): void {
+    this.kind = piece.kind;
     this.square = piece.square;
     const def = getPieceDef(piece.kind);
     const standard = isStandard(piece.kind);

@@ -1,4 +1,4 @@
-import { allCards } from '@chessx/engine';
+import { allCards, allPieceDefs } from '@chessx/engine';
 import { Assets, Texture } from 'pixi.js';
 
 /** Card artwork textures, keyed by the image URL. Loaded at startup and whenever the catalog changes. */
@@ -10,6 +10,9 @@ function artUrls(): string[] {
   for (const c of allCards()) {
     if (c.art) urls.add(c.art);
     if (c.boardArt) urls.add(c.boardArt);
+  }
+  for (const p of allPieceDefs()) {
+    if (p.art) urls.add(p.art);
   }
   return [...urls];
 }

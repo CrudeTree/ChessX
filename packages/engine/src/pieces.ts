@@ -26,6 +26,30 @@ const KNIGHT_LEAPS = [
 
 export const DIRS = { ORTHOGONAL, DIAGONAL, ALL: ALL_DIRS, KNIGHT: KNIGHT_LEAPS };
 
+/** After Schism: a Rook that now moves like a King. Both must fall or that player loses. */
+export const REGENT: PieceDef = {
+  kind: 'regent',
+  name: 'Regent',
+  glyph: '👑',
+  tier: 3,
+  movement: { leaps: ALL_DIRS },
+  art: '/art/regent.png',
+  vital: true,
+  description:
+    'Moves one square in any direction. After Schism, you lose if every Regent you have is captured. Can be taken like a normal piece — there is no check.',
+};
+
+/** After Schism: the old King, now moving like a Queen. Not royal. */
+export const SOVEREIGN: PieceDef = {
+  kind: 'sovereign',
+  name: 'Sovereign',
+  glyph: '⚜️',
+  tier: 6,
+  movement: { slides: [{ dirs: ALL_DIRS }] },
+  art: '/art/sovereign.png',
+  description: 'Moves like a Queen. Not royal: capturing it does not end the game, and you are not in check.',
+};
+
 export const STANDARD_PIECES: Record<string, PieceDef> = {
   pawn: {
     kind: 'pawn',
@@ -82,6 +106,8 @@ export const STANDARD_PIECES: Record<string, PieceDef> = {
 /** Definitions as shipped in code. `registry` is what the game actually uses (base + balance patches). */
 const base = new Map<string, PieceDef>(Object.entries(STANDARD_PIECES));
 const registry = new Map<string, PieceDef>(Object.entries(STANDARD_PIECES));
+registerPieceDef(REGENT);
+registerPieceDef(SOVEREIGN);
 
 /** Register a piece as shipped (used by the card catalog for creatures). */
 export function registerPieceDef(def: PieceDef): void {
