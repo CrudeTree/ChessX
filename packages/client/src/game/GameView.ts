@@ -1338,7 +1338,8 @@ export class GameView {
       } else {
         d.sprite.position.set(home.x, home.y);
         if (!d.moved) {
-          // A simple click: keep the piece selected so the player can click a target.
+          // A simple click: keep the piece selected so move dots stay visible. Arena
+          // relocates only on a drag; a second click never walks the piece.
           this.selection = { square: d.from, targets: d.targets };
           this.drawHighlights(d.targets, d.from);
           const piece = this.view?.pieces[d.sprite.pieceId];
@@ -1399,14 +1400,11 @@ export class GameView {
     if (this.arena) {
       if (square === sel.square) return false;
       const marked = sel.targets.bySquare.get(square);
-      if (this.view?.pendingGrant && marked?.type !== 'useAbility') return false;
+      // Click-to-activate (grant / ability) is fine; click-to-walk is not.
+      if (marked?.type !== 'useAbility') return false;
       this.selection = null;
       this.highlightLayer.removeChildren();
-      if (marked?.type === 'useAbility') {
-        this.onArena({ type: 'useAbility', from: sel.square, to: square, index: marked.index });
-      } else {
-        this.onArena({ type: 'relocate', from: sel.square, to: square });
-      }
+      this.onArena({ type: 'useAbility', from: sel.square, to: square, index: marked.index });
       return true;
     }
     const action = sel.targets.bySquare.get(square);
