@@ -92,7 +92,9 @@ export class InspectPanel {
       <div class="zoom-status">${esc(needs)}</div>
     `;
     this.flash();
-    this.resetStanceButton('Drag the card onto a highlighted target to play it.');
+    this.resetStanceButton(
+      this.ctx.gameView.arena ? 'Drag this onto the board or into a hand.' : 'Drag the card onto a highlighted target to play it.',
+    );
   }
 
   /** " · you have N" / how many more turns of income are needed, when we know the viewer's pool. */
@@ -158,6 +160,11 @@ export class InspectPanel {
       <div class="zoom-status">${status.map(esc).join('<br>')}</div>
     `;
     this.flash();
+
+    if (piece.id === 'catalog-preview') {
+      this.resetStanceButton('Drag this onto the board to place it.');
+      return;
+    }
 
     const action = gameView.stanceActionFor(piece.id);
     const toDefense = piece.stance === 'attack';

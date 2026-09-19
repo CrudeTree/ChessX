@@ -24,10 +24,13 @@ export class ArenaPalette {
   onOp: (op: ArenaOp) => void = () => {};
   /** Fired when a palette drag begins (close the mobile sheet so the board is free). */
   onDragStart: () => void = () => {};
+  /** Fired when a list row is inspected (open the inspect sheet on phones). */
+  onSelect: () => void = () => {};
   private color: Color = 'white';
   private filter = '';
   private cards: CardDef[] = [];
   private ghost: HTMLElement | null = null;
+  private selected: DragItem | null = null;
 
   constructor(private gameView: GameView) {
     $('arena-white').onclick = () => this.setColor('white');
@@ -36,6 +39,7 @@ export class ArenaPalette {
       this.filter = (e.target as HTMLInputElement).value.trim().toLowerCase();
       this.renderList();
     };
+    gameView.onCatalogHighlightClear = () => this.markSelected(null);
   }
 
   /** `all` = developer catalog; otherwise only the given owned card ids. */
@@ -60,6 +64,7 @@ export class ArenaPalette {
     this.color = c;
     $('arena-white').classList.toggle('active', c === 'white');
     $('arena-black').classList.toggle('active', c === 'black');
+    if (this.selected) this.inspectItem(this.selected);
   }
 
   private matches(name: string, extra: string): boolean {
@@ -83,9 +88,11 @@ export class ArenaPalette {
       b.type = 'button';
       b.className = 'editor-item';
       b.innerHTML = `<span class="n">${esc(name)}</span><span class="s">${esc(sub)}</span>`;
+      b.dataset.key = itemKey(item);
       b.title = item.kind === 'card'
         ? `Drag ${name} onto the board or into a hand`
         : `Drag onto the board to place ${name} (${this.color})`;
+      if (this.selected && b.dataset.key === itemKey(this.selected)) b.classList.add('active');
       this.bindDrag(b, item);
       list.appendChild(b);
       return true;
@@ -128,9 +135,29 @@ export class ArenaPalette {
     );
   }
 
+  private inspectItem(item: DragItem): void {
+    this.markSelected(item);
+    if (item.kind === 'card') {
+      if (item.card.type === 'summon') this.gameView.inspectCatalogPiece(item.card.piece.kind, this.color);
+      else this.gameView.inspectCatalogCard(item.card.id);
+    } else {
+      this.gameView.inspectCatalogPiece(item.def.kind, this.color);
+    }
+    this.onSelect();
+  }
+
+  private markSelected(item: DragItem | null): void {
+    this.selected = item;
+    const key = item ? itemKey(item) : null;
+    for (const el of $('arena-list').querySelectorAll('.editor-item')) {
+      el.classList.toggle('active', (el as HTMLElement).dataset.key === key);
+    }
+  }
+
   private bindDrag(el: HTMLElement, item: DragItem): void {
     el.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
+      this.inspectItem(item);
       const startX = e.clientX;
       const startY = e.clientY;
       let dragging = false;
@@ -187,6 +214,10 @@ export class ArenaPalette {
     this.ghost?.remove();
     this.ghost = null;
   }
+}
+
+function itemKey(item: DragItem): string {
+  return item.kind === 'card' ? `card:${item.card.id}` : `piece:${item.def.kind}`;
 }
 
 /** Card ids a non-developer may use in the arena. */

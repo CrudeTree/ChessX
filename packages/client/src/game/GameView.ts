@@ -1,4 +1,4 @@
-import { canAct, getCardDef, opposite, previewAbilities, previewMoves, type Action, type ArenaOp, type Color, type GameEvent, type Piece, type PlayerView, type Square } from '@chessx/engine';
+import { canAct, getCardDef, getPieceDef, opposite, previewAbilities, previewMoves, type Action, type ArenaOp, type Color, type GameEvent, type Piece, type PlayerView, type Square } from '@chessx/engine';
 import { Application, Container, Graphics, Text, type FederatedPointerEvent } from 'pixi.js';
 import { preloadArt } from './art.js';
 import { CardSprite } from './CardSprite.js';
@@ -84,6 +84,8 @@ export class GameView {
   onArena: (op: ArenaOp) => void = () => {};
   /** Fired whenever the inspected piece/card changes or its data refreshes (null = nothing inspected). */
   onInspect: (target: InspectTarget | null) => void = () => {};
+  /** Board/hand inspect replaced a catalog pick — clear the arena list highlight. */
+  onCatalogHighlightClear: () => void = () => {};
   /** Practice mode: one player controls both sides, board stays white-at-bottom. */
   hotseat = false;
   /** Testing arena: palette drops and free relocate/remove. */
@@ -131,6 +133,8 @@ export class GameView {
   private selection: Selection | null = null;
   private inspected: string | null = null;
   private inspectedCard: string | null = null;
+  /** Arena list pick: a preview piece/card that is not on the board. */
+  private catalogInspect: InspectTarget | null = null;
   /** A finger/pointer went down on a hand card; we decide tap / swipe / drag once it moves. */
   private pendingCard: { sprite: CardSprite; homeX: number; homeY: number; homeLayer: Container; homeScale: number; startX: number; startY: number; scrollStart: number } | null = null;
   private handScrolling = false;
@@ -280,22 +284,31 @@ export class GameView {
     this.view = null;
     this.pendingView = null;
     this.inspectedCard = null;
+    this.catalogInspect = null;
     this.setInspected(null);
   }
 
   // -------------------------------------------------------------------------
   // Inspection (zoomed card in the side panel)
 
-  private setInspected(pieceId: string | null): void {
+  private setInspected(pieceId: string | null, clearCatalog = false): void {
     this.inspected = pieceId;
     this.inspectLayer.removeChildren();
     const piece = pieceId && this.view ? this.view.pieces[pieceId] : undefined;
+    if (clearCatalog || piece) {
+      if (this.catalogInspect) {
+        this.catalogInspect = null;
+        this.onCatalogHighlightClear();
+      }
+    }
     if (piece) {
       this.inspectedCard = null;
       const { x, y } = squareToXY(piece.square, this.flipped);
       const g = new Graphics().roundRect(x - SQ / 2 + 2, y - SQ / 2 + 2, SQ - 4, SQ - 4, 6).stroke({ width: 3, color: COLORS.select, alpha: 0.9 });
       this.inspectLayer.addChild(g);
       this.onInspect({ kind: 'piece', piece });
+    } else if (this.catalogInspect) {
+      this.onInspect(this.catalogInspect);
     } else if (this.inspectedCard) {
       this.onInspect({ kind: 'card', cardId: this.inspectedCard });
     } else {
@@ -307,8 +320,45 @@ export class GameView {
   private inspectCard(cardId: string): void {
     this.inspectedCard = cardId;
     this.inspected = null;
+    if (this.catalogInspect) {
+      this.catalogInspect = null;
+      this.onCatalogHighlightClear();
+    }
     this.inspectLayer.removeChildren();
     this.onInspect({ kind: 'card', cardId });
+  }
+
+  /** Arena catalog: show a card in the inspect panel the same way a hand card does. */
+  inspectCatalogCard(cardId: string): void {
+    this.inspected = null;
+    this.inspectedCard = null;
+    this.inspectLayer.removeChildren();
+    this.catalogInspect = { kind: 'card', cardId };
+    this.onInspect(this.catalogInspect);
+  }
+
+  /** Arena catalog: show a piece def as if it were sitting on the board. */
+  inspectCatalogPiece(kind: string, owner: Color): void {
+    const def = getPieceDef(kind);
+    const piece: Piece = {
+      id: 'catalog-preview',
+      kind,
+      owner,
+      square: 0,
+      atk: def.atk,
+      def: def.def,
+      maxDef: def.def,
+      hp: def.hp,
+      maxHp: def.hp,
+      hasMoved: true,
+      stance: 'attack',
+      base: { atk: def.atk, def: def.def, hp: def.hp },
+    };
+    this.inspected = null;
+    this.inspectedCard = null;
+    this.inspectLayer.removeChildren();
+    this.catalogInspect = { kind: 'piece', piece };
+    this.onInspect(this.catalogInspect);
   }
 
   /** The legal stance-change for a piece, if any (only exists on its owner's turn). */
@@ -1250,7 +1300,7 @@ export class GameView {
     }
     if (this.tryActOnSquare(square)) return;
     this.clearSelection();
-    if (!this.view?.board[square]) this.setInspected(null);
+    if (!this.view?.board[square]) this.setInspected(null, true);
   }
 
   private onPointerMove(e: FederatedPointerEvent): void {

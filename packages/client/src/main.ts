@@ -758,6 +758,7 @@ function setupMobileChrome(): void {
     origArena(op);
   };
   arenaPalette.onDragStart = () => setSheet(null);
+  arenaPalette.onSelect = () => setSheet('inspect', { peek: true });
 }
 
 function renderMobileBar(view: PlayerView | null): void {
