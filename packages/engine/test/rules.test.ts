@@ -793,7 +793,18 @@ describe('creature abilities', () => {
 
   afterEach(() => applyBalance(EMPTY_BALANCE));
 
-  it('Nullglass Knight grants +1 DEF to an adjacent friendly piece once per turn', () => {
+  it('on summon, auto-grants when exactly one neighbour is eligible', () => {
+    applyBalance({ cards: {}, pieces: {}, customCards: [knight] });
+    let g = createArenaGame(1);
+    g = applyArenaOp(g, { type: 'spawnPiece', kind: 'pawn', color: 'white', square: s('e5') });
+    g = applyArenaOp(g, { type: 'spawnPiece', kind: 'custom_ngk', color: 'white', square: s('e4') });
+    expect(g.pendingGrant).toBeUndefined();
+    expect(pieceAt(g, s('e5'))!.def).toBe(1);
+    expect(pieceAt(g, s('e5'))!.maxDef).toBe(1);
+    expect(g.events.some((e) => e.type === 'abilityUsed' && e.def === 1)).toBe(true);
+  });
+
+  it('on summon, requires a choice when several neighbours are eligible', () => {
     applyBalance({ cards: {}, pieces: {}, customCards: [knight] });
     let g = newGame();
     const card = giveCard(g, 'white', 'custom_ngk');
@@ -801,24 +812,26 @@ describe('creature abilities', () => {
     g = move(g, 'a2', 'a3');
     g = move(g, 'a7', 'a6');
     expect(pieceAt(g, s('e2'))!.kind).toBe('custom_ngk');
-
-    const d2 = pieceAt(g, s('d2'))!;
-    expect(d2.def).toBe(0);
+    expect(g.pendingGrant?.from).toBe(s('e2'));
+    expect(g.pendingGrant?.targets).toEqual(expect.arrayContaining([s('d2'), s('f2')]));
+    expect(legalMoves(g)).toHaveLength(0);
+    expect(() => act(g, { type: 'setStance', square: s('e2'), stance: 'defense' })).toThrow(/Choose which adjacent/);
     expect(legalActions(g).some((a) => a.type === 'useAbility' && a.from === s('e2') && a.to === s('d2'))).toBe(true);
-    expect(legalActions(g).some((a) => a.type === 'useAbility' && a.from === s('e2') && a.to === s('e4'))).toBe(false); // not adjacent
-    expect(legalActions(g).some((a) => a.type === 'useAbility' && a.to === s('e7'))).toBe(false); // enemy
-    expect(legalActions(g).some((a) => a.type === 'useAbility' && a.to === s('e1'))).toBe(false); // king
+    expect(legalActions(g).some((a) => a.type === 'useAbility' && a.from === s('e2') && a.to === s('e4'))).toBe(false);
+    expect(legalActions(g).some((a) => a.type === 'useAbility' && a.to === s('e7'))).toBe(false);
+    expect(legalActions(g).some((a) => a.type === 'useAbility' && a.to === s('e1'))).toBe(false);
 
     g = act(g, { type: 'useAbility', from: s('e2'), to: s('d2') });
-    expect(g.turn).toBe('white'); // does not end the turn
+    expect(g.pendingGrant).toBeUndefined();
+    expect(g.turn).toBe('white');
     expect(pieceAt(g, s('d2'))!.def).toBe(1);
     expect(pieceAt(g, s('d2'))!.maxDef).toBe(1);
     expect(g.events.some((e) => e.type === 'abilityUsed' && e.def === 1)).toBe(true);
     expect(() => act(g, { type: 'useAbility', from: s('e2'), to: s('f2') })).toThrow(/already used/);
-    expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(true); // can still move
+    expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(true);
   });
 
-  it('works in Defense mode, but not while the piece is being sacrificed', () => {
+  it('works in Defense mode after the on-summon grant is resolved', () => {
     applyBalance({ cards: {}, pieces: {}, customCards: [knight] });
     let g = newGame();
     const card = giveCard(g, 'white', 'custom_ngk');
@@ -826,14 +839,43 @@ describe('creature abilities', () => {
     expect(legalActions(g).some((a) => a.type === 'useAbility')).toBe(false); // still summoning
     g = move(g, 'a2', 'a3');
     g = move(g, 'a7', 'a6');
-    g = act(g, { type: 'setStance', square: s('e2'), stance: 'defense' });
-    expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(false);
-    expect(legalActions(g).some((a) => a.type === 'useAbility' && a.from === s('e2'))).toBe(false); // frozen by stance
-    g = move(g, 'b2', 'b3');
-    g = move(g, 'b7', 'b6');
-    expect(legalActions(g).some((a) => a.type === 'useAbility' && a.from === s('e2') && a.to === s('d2'))).toBe(true);
     g = act(g, { type: 'useAbility', from: s('e2'), to: s('d2') });
     expect(pieceAt(g, s('d2'))!.def).toBe(1);
+    g = act(g, { type: 'setStance', square: s('e2'), stance: 'defense' });
+    expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(false);
+    expect(legalActions(g).some((a) => a.type === 'useAbility' && a.from === s('e2'))).toBe(false);
+    g = move(g, 'b2', 'b3');
+    g = move(g, 'b7', 'b6');
+    expect(legalActions(g).some((a) => a.type === 'useAbility' && a.from === s('e2') && a.to === s('f2'))).toBe(true);
+    g = act(g, { type: 'useAbility', from: s('e2'), to: s('f2') });
+    expect(pieceAt(g, s('f2'))!.def).toBe(1);
+  });
+
+  it('arena: several neighbours flash until one is chosen', () => {
+    applyBalance({ cards: {}, pieces: {}, customCards: [knight] });
+    let g = createArenaGame(1);
+    g = applyArenaOp(g, { type: 'spawnPiece', kind: 'pawn', color: 'white', square: s('e5') });
+    g = applyArenaOp(g, { type: 'spawnPiece', kind: 'pawn', color: 'white', square: s('d4') });
+    g = applyArenaOp(g, { type: 'spawnPiece', kind: 'custom_ngk', color: 'white', square: s('e4') });
+    expect(g.pendingGrant?.targets).toEqual(expect.arrayContaining([s('d4'), s('e5')]));
+    expect(g.pendingGrant?.targets).toHaveLength(2);
+    expect(pieceAt(g, s('e5'))!.def).toBe(0);
+    expect(() => applyArenaOp(g, { type: 'relocate', from: s('e4'), to: s('f4') })).toThrow(/Choose which adjacent/);
+    g = applyArenaOp(g, { type: 'useAbility', from: s('e4'), to: s('e5') });
+    expect(g.pendingGrant).toBeUndefined();
+    expect(pieceAt(g, s('e5'))!.def).toBe(1);
+    expect(pieceAt(g, s('d4'))!.def).toBe(0);
+  });
+
+  it('arena: dropping the card onto an empty square also grants on arrival', () => {
+    applyBalance({ cards: {}, pieces: {}, customCards: [knight] });
+    let g = createArenaGame(1);
+    g = applyArenaOp(g, { type: 'spawnPiece', kind: 'pawn', color: 'white', square: s('e5') });
+    g = applyArenaOp(g, { type: 'giveCard', color: 'white', cardId: 'custom_ngk' });
+    const inst = g.players.white.hand[0]!;
+    g = applyArenaOp(g, { type: 'dropCard', cardId: 'custom_ngk', color: 'white', square: s('e4'), fromHand: inst.instanceId });
+    expect(pieceAt(g, s('e5'))!.def).toBe(1);
+    expect(g.pendingGrant).toBeUndefined();
   });
 
   it('grants +1 DEF from the arena without spending a turn', () => {
@@ -859,8 +901,12 @@ describe('creature abilities', () => {
     const legacy = { ...knight, piece: { ...piece } };
     applyBalance({ cards: {}, pieces: {}, customCards: [legacy] });
     expect(getPieceDef('custom_ngk').abilities).toEqual([{ kind: 'grantAdjacent', def: 1 }]);
-    expect(describeAbility({ kind: 'grantAdjacent', def: 1 })).toBe('Once per turn: grant an adjacent friendly piece +1 DEF.');
-    expect(describeCard(getCardDef('custom_ngk') as SummonCardDef)).toMatch(/Once per turn: grant an adjacent friendly piece \+1 DEF/);
+    expect(describeAbility({ kind: 'grantAdjacent', def: 1 })).toBe(
+      'On summon, grant an adjacent friendly piece +1 DEF. If several are adjacent, choose one.',
+    );
+    expect(describeCard(getCardDef('custom_ngk') as SummonCardDef)).toMatch(
+      /On summon, grant an adjacent friendly piece \+1 DEF/,
+    );
   });
 
   it('rejects a grant ability with no stat change', () => {

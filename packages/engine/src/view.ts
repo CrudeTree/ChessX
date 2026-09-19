@@ -2,7 +2,7 @@ import type { CardInstance } from './cards/types.js';
 import { isInCheck } from './movement.js';
 import { legalActions } from './rules.js';
 import { manaIncome, type GameState, type RuleConstants, type TurnInfo, type TurnPhase } from './state.js';
-import type { Action, Color, GameEvent, GameStatus, Piece, Square } from './types.js';
+import type { Action, Color, GameEvent, GameStatus, PendingGrant, Piece, Square } from './types.js';
 
 export interface PlayerViewSide {
   turnsTaken: number;
@@ -39,6 +39,8 @@ export interface PlayerView {
   inCheck: boolean;
   /** Legal actions for you. Empty when it is not your turn. */
   legalActions: Action[];
+  /** Summoned creature is waiting for you to pick a grant target. */
+  pendingGrant: PendingGrant | null;
 }
 
 export interface ViewOptions {
@@ -78,5 +80,6 @@ export function viewFor(state: GameState, you: Color, opts?: ViewOptions): Playe
     events: state.events,
     inCheck: !opts?.sandbox && state.status.kind === 'playing' && isInCheck(state, state.turn),
     legalActions: opts?.sandbox || state.turn !== you ? [] : legalActions(state, you),
+    pendingGrant: state.pendingGrant ?? null,
   };
 }

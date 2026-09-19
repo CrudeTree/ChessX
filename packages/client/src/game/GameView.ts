@@ -93,6 +93,10 @@ export class GameView {
     return this.view?.players[color]?.mana ?? 0;
   }
 
+  hasPendingGrant(): boolean {
+    return !!this.view?.pendingGrant;
+  }
+
   private tweens!: Tweens;
   private boardLayer = new Container();
   private lastMoveLayer = new Container();
@@ -398,6 +402,23 @@ export class GameView {
     this.renderBanner();
     // Refresh the inspected piece (it may have moved, changed stats, or died).
     this.setInspected(this.inspected && view.pieces[this.inspected] ? this.inspected : null);
+    this.showPendingGrant();
+  }
+
+  /** After a summon with several grant targets: keep those neighbours flashing. */
+  private showPendingGrant(): void {
+    const view = this.view;
+    const pending = view?.pendingGrant;
+    if (!view || !pending) return;
+    if (!this.arena && !this.hotseat && view.turn !== view.you) return;
+    const bySquare = new Map<Square, Action>();
+    for (const to of pending.targets) {
+      bySquare.set(to, { type: 'useAbility', from: pending.from, to, index: pending.index });
+    }
+    const targets = { bySquare, anywhere: null };
+    this.selection = { square: pending.from, targets };
+    this.drawHighlights(targets, pending.from);
+    this.setInspected(pending.pieceId);
   }
 
   private syncVoid(pieceId: string, active: boolean, x: number, y: number): void {
@@ -1115,6 +1136,12 @@ export class GameView {
     e.stopPropagation();
     this.setInspected(piece.id);
 
+    if (this.view.pendingGrant) {
+      this.showPendingGrant();
+      this.onPieceTap(piece);
+      return;
+    }
+
     if (!this.arena && (!this.myTurn || piece.owner !== this.view.you)) {
       this.clearSelection();
       this.onPieceTap(piece); // cannot be dragged, so this is a tap
@@ -1150,6 +1177,7 @@ export class GameView {
   /** Lift a card out of the hand and start dragging it toward the board. */
   private beginCardDrag(p: NonNullable<typeof this.pendingCard>, e: FederatedPointerEvent): boolean {
     const { sprite, homeX, homeY, homeLayer, homeScale } = p;
+    if (this.view?.pendingGrant) return false;
     if (this.arena) {
       this.selection = null;
       this.drag = { kind: 'card', sprite, homeX, homeY, homeLayer, homeScale, targets: { bySquare: new Map(), anywhere: null }, startX: p.startX, startY: p.startY, moved: true };
@@ -1185,6 +1213,10 @@ export class GameView {
   private onStagePointerDown(e: FederatedPointerEvent): void {
     if (this.drag) return;
     const square = xyToSquare(e.global.x, e.global.y, this.flipped);
+    if (this.view?.pendingGrant) {
+      if (square !== null) this.tryActOnSquare(square);
+      return;
+    }
     if (square === null) {
       this.clearSelection();
       return;
@@ -1340,6 +1372,7 @@ export class GameView {
     if (this.arena) {
       if (square === sel.square) return false;
       const marked = sel.targets.bySquare.get(square);
+      if (this.view?.pendingGrant && marked?.type !== 'useAbility') return false;
       this.selection = null;
       this.highlightLayer.removeChildren();
       if (marked?.type === 'useAbility') {

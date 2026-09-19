@@ -169,6 +169,7 @@ export class ArenaPalette {
   }
 
   private drop(item: DragItem, x: number, y: number): void {
+    if (this.gameView.hasPendingGrant()) return;
     const target = this.gameView.dropTarget(x, y);
     if (item.kind === 'card') {
       if (target.zone === 'hand') this.onOp({ type: 'giveCard', color: target.color, cardId: item.card.id });

@@ -855,7 +855,9 @@ setInterval(() => {
 function renderStatus(view: PlayerView): void {
   if (arena) {
     statusEl.className = 'status';
-    statusEl.textContent = 'Sandbox — drag pieces and cards. No turns.';
+    statusEl.textContent = view.pendingGrant
+      ? 'Choose a highlighted unit to grant +1 DEF.'
+      : 'Sandbox — drag pieces and cards. No turns.';
     endTurnBtn.classList.add('hidden');
     turnTrack.classList.add('hidden');
     return;
@@ -908,6 +910,8 @@ function renderStatus(view: PlayerView): void {
 
   if (mustDraw) {
     statusEl.textContent = mine || solo ? `${who}: the draw timer is full — click ${whose} deck to draw a card.` : 'Opponent is drawing a card…';
+  } else if (view.pendingGrant) {
+    statusEl.textContent = mine || solo ? `${who}: choose a highlighted unit to grant +1 DEF.` : 'Opponent is choosing a grant target.';
   } else if (view.inCheck) {
     statusEl.textContent = mine || solo ? `${who} ${solo ? 'is' : 'are'} in CHECK! Play cards if you like, then move the King to safety.` : 'Opponent is in check.';
   } else if (mine || solo) {

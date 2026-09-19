@@ -132,9 +132,11 @@ export class InspectPanel {
       const used = currentView?.turnInfo.abilitiesUsed.includes(piece.id);
       const text = describeAbility(ability);
       if (!text) continue;
-      if (used) status.push(`Already used its ability this turn (${text.replace(/\.$/, '')}).`);
+      if (currentView?.pendingGrant?.pieceId === piece.id) {
+        status.push('Choose a highlighted neighbour to grant +1 DEF.');
+      } else if (used) status.push(`Already used its ability this turn (${text.replace(/\.$/, '')}).`);
       else if (piece.summon) status.push('Cannot use its ability while being sacrificed.');
-      else status.push(`${text.charAt(0).toUpperCase()}${text.slice(1)} Select this piece, then a highlighted neighbour. Does not end your turn.`);
+      else status.push(`${text.charAt(0).toUpperCase()}${text.slice(1)}`);
     }
 
     this.zoomEl.className = `zoom ${card ? 'summon' : 'basic'} owner-${piece.owner}`;

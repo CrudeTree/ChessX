@@ -439,8 +439,7 @@ export function describeAbility(a: PieceAbility): string {
     a.target === 'enemyAdjacent' ? 'an adjacent enemy piece'
     : a.target === 'anyAdjacent' ? 'an adjacent piece'
     : 'an adjacent friendly piece';
-  const once = a.oncePerTurn === false ? '' : 'Once per turn: ';
-  return `${once}grant ${who} ${statDelta(a)}.`;
+  return `On summon, grant ${who} ${statDelta(a)}. If several are adjacent, choose one.`;
 }
 
 /**

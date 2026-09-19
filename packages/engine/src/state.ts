@@ -2,7 +2,7 @@ import type { CardInstance } from './cards/types.js';
 import { hasCard } from './cards/registry.js';
 import { getPieceDef } from './pieces.js';
 import { shuffleInPlace } from './rng.js';
-import type { Color, GameEvent, GameStatus, Piece, Square } from './types.js';
+import type { Color, GameEvent, GameStatus, PendingGrant, Piece, Square } from './types.js';
 import { sq } from './types.js';
 
 export interface RuleConstants {
@@ -83,6 +83,8 @@ export interface GameState {
   rngState: number;
   /** Events produced by the most recent action. */
   events: GameEvent[];
+  /** Set when a summoned creature must pick which neighbour gets its grant. */
+  pendingGrant?: PendingGrant;
 }
 
 export interface GameConfig {
@@ -307,5 +309,8 @@ export function cloneState(state: GameState): GameState {
     nextId: state.nextId,
     rngState: state.rngState,
     events: state.events.slice(),
+    pendingGrant: state.pendingGrant
+      ? { ...state.pendingGrant, targets: state.pendingGrant.targets.slice() }
+      : undefined,
   };
 }

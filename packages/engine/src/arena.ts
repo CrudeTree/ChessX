@@ -4,7 +4,7 @@
 import { getCardDef, hasCard } from './cards/registry.js';
 import type { CardInstance, SummonCardDef } from './cards/types.js';
 import { hasPieceDef } from './pieces.js';
-import { applyEffect, applySandboxAbility, beginSummon, IllegalActionError, resolveSummon } from './rules.js';
+import { applyEffect, applySandboxAbility, beginSummon, IllegalActionError, offerOnSummonGrant, resolveSummon } from './rules.js';
 import {
   addPiece,
   cloneState,
@@ -102,6 +102,7 @@ function playSandboxCard(state: GameState, cardId: string, color: Color, square:
     if (!occupant) {
       const spawned = addPiece(state, card.piece.kind, color, square, true);
       state.events.push({ type: 'summoned', color, cardId: card.id, pieceId: spawned.id, square });
+      offerOnSummonGrant(state, spawned);
       return;
     }
     beginSummon(state, card as SummonCardDef, inst, occupant);
@@ -119,6 +120,10 @@ export function applyArenaOp(state: GameState, op: ArenaOp): GameState {
   const next = cloneState(state);
   next.events = [];
   next.seq++;
+
+  if (next.pendingGrant && op.type !== 'useAbility') {
+    throw new IllegalActionError('Choose which adjacent piece receives the grant.');
+  }
 
   switch (op.type) {
     case 'giveCard': {
@@ -143,7 +148,8 @@ export function applyArenaOp(state: GameState, op: ArenaOp): GameState {
       assertSquare(op.square);
       if (!hasPieceDef(op.kind)) throw new IllegalActionError(`Unknown piece: ${op.kind}`);
       removePieceAt(next, op.square);
-      addPiece(next, op.kind, op.color, op.square, true);
+      const spawned = addPiece(next, op.kind, op.color, op.square, true);
+      offerOnSummonGrant(next, spawned);
       break;
     }
     case 'relocate': {

@@ -42,6 +42,14 @@ export interface MovementSpec {
  */
 export type AbilityTarget = 'ownAdjacent' | 'enemyAdjacent' | 'anyAdjacent';
 
+/** After a summon: the owner must pick which adjacent piece receives the grant. */
+export interface PendingGrant {
+  pieceId: string;
+  from: Square;
+  targets: Square[];
+  index: number;
+}
+
 export interface PieceAbility {
   kind: 'grantAdjacent';
   atk?: number;

@@ -45,6 +45,7 @@ export function legalActions(state: GameState, color: Color = state.turn): Actio
   if (state.status.kind !== 'playing' || color !== state.turn) return [];
   // The draw phase comes first: while a draw is owed nothing else is allowed.
   if (state.players[color].pendingDraws > 0) return [{ type: 'draw' }];
+  if (state.pendingGrant) return grantChoiceActions(state);
 
   const out: Action[] = [];
   const inCheck = isInCheck(state, color);
@@ -149,6 +150,9 @@ export function applyAction(state: GameState, action: Action): GameState {
   }
 
   if (player.pendingDraws > 0) throw new IllegalActionError('Draw a card first (click your deck).');
+  if (next.pendingGrant && action.type !== 'useAbility') {
+    throw new IllegalActionError('Choose which adjacent piece receives the grant.');
+  }
 
   if (action.type === 'playCard') {
     const inst = player.hand.find((c) => c.instanceId === action.cardInstanceId);
@@ -485,6 +489,7 @@ export function resolveSummon(state: GameState, sacrifice: Piece): void {
   state.board[square] = summoned.id;
   state.players[owner].graveyard.push({ instanceId: pending.cardInstanceId, cardId: pending.cardId });
   state.events.push({ type: 'summoned', color: owner, cardId: card.id, pieceId: summoned.id, square });
+  offerOnSummonGrant(state, summoned);
 }
 
 function modifyStats(state: GameState, target: Piece, delta: { atk?: number; def?: number; hp?: number }): void {
@@ -583,6 +588,50 @@ function matchesAbilityTarget(user: Piece, target: Piece, ability: PieceAbility)
   return true;
 }
 
+function grantChoiceActions(state: GameState): Action[] {
+  const pending = state.pendingGrant;
+  if (!pending) return [];
+  const piece = state.pieces[pending.pieceId];
+  if (!piece) return [];
+  const ability = getPieceDef(piece.kind).abilities?.[pending.index];
+  if (!ability) return [];
+  const out: Action[] = [];
+  for (const to of pending.targets) {
+    const target = pieceAt(state, to);
+    if (!target || !matchesAbilityTarget(piece, target, ability)) continue;
+    out.push({ type: 'useAbility', from: piece.square, to, index: pending.index });
+  }
+  return out;
+}
+
+/**
+ * After a creature appears: grantAdjacent auto-fires if exactly one valid
+ * neighbour, otherwise the owner must pick among the flashing targets.
+ */
+export function offerOnSummonGrant(state: GameState, piece: Piece): void {
+  const abilities = getPieceDef(piece.kind).abilities ?? [];
+  for (let i = 0; i < abilities.length; i++) {
+    const ability = abilities[i]!;
+    if (ability.kind !== 'grantAdjacent') continue;
+    const targets = neighborsOf(piece.square)
+      .map((n) => pieceAt(state, n))
+      .filter((t): t is Piece => !!t && matchesAbilityTarget(piece, t, ability));
+    if (targets.length === 1) {
+      performAbility(state, { type: 'useAbility', from: piece.square, to: targets[0]!.square, index: i }, piece.owner);
+      return;
+    }
+    if (targets.length > 1) {
+      state.pendingGrant = {
+        pieceId: piece.id,
+        from: piece.square,
+        targets: targets.map((t) => t.square),
+        index: i,
+      };
+      return;
+    }
+  }
+}
+
 /** Adjacent ability targets, ignoring turn and once-per-turn (arena overlay). */
 export function previewAbilities(state: Pick<GameState, 'board' | 'pieces'>, piece: Piece): Extract<Action, { type: 'useAbility' }>[] {
   const abilities = getPieceDef(piece.kind).abilities ?? [];
@@ -628,6 +677,7 @@ function performAbility(state: GameState, action: Extract<Action, { type: 'useAb
 
   if (ability.kind === 'grantAdjacent') modifyStats(state, target, ability);
   if (ability.oncePerTurn !== false) state.turnInfo.abilitiesUsed.push(piece.id);
+  state.pendingGrant = undefined;
   state.events.push({
     type: 'abilityUsed',
     pieceId: piece.id,
