@@ -36,6 +36,23 @@ export interface MovementSpec {
   relative?: boolean;
 }
 
+/**
+ * An activated ability a creature uses from the board (not by playing a card).
+ * `grantAdjacent`: pick one neighbouring piece and permanently change its stats.
+ */
+export type AbilityTarget = 'ownAdjacent' | 'enemyAdjacent' | 'anyAdjacent';
+
+export interface PieceAbility {
+  kind: 'grantAdjacent';
+  atk?: number;
+  def?: number;
+  hp?: number;
+  /** Who may be targeted. Defaults to a friendly neighbour. */
+  target?: AbilityTarget;
+  /** Defaults to true. */
+  oncePerTurn?: boolean;
+}
+
 export interface PieceDef {
   /** Unique kind id, e.g. "knight" or "the_ox". */
   kind: string;
@@ -51,6 +68,8 @@ export interface PieceDef {
   /** Mana produced at the end of the owner's turn. Defaults to the tier. */
   manaYield?: number;
   description?: string;
+  /** Activated from the board; empty/undefined means the piece has none. */
+  abilities?: PieceAbility[];
 }
 
 /** A summon in progress: this piece is being sacrificed and cannot move. */
@@ -96,6 +115,8 @@ export type Action =
   | { type: 'move'; from: Square; to: Square; promotion?: PromotionKind }
   | { type: 'playCard'; cardInstanceId: string; target?: Square }
   | { type: 'setStance'; square: Square; stance: Stance }
+  /** Use a creature's board ability on `to` (an adjacent piece). */
+  | { type: 'useAbility'; from: Square; to: Square; index?: number }
   /** Take a pending draw (click the deck). */
   | { type: 'draw' }
   /** Finish the turn. Illegal while in check or while a draw is owed. */
@@ -129,6 +150,7 @@ export type GameEvent =
   | { type: 'summoned'; color: Color; cardId: string; pieceId: string; square: Square }
   | { type: 'summonFailed'; color: Color; cardId: string; square: Square }
   | { type: 'statsChanged'; pieceId: string; square: Square; atk: number; def: number; hp: number; maxHp: number }
+  | { type: 'abilityUsed'; pieceId: string; from: Square; to: Square; targetId: string; atk?: number; def?: number; hp?: number }
   | { type: 'drew'; color: Color; count: number }
   /** The draw timer completed: this player must click their deck before acting. */
   | { type: 'drawReady'; color: Color }

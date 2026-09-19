@@ -3,7 +3,7 @@
 //  - /ws         game traffic, authenticated by the session cookie — WebSocket
 //  - everything else: the built client (production)
 
-import { currentBalance } from '@chessx/engine';
+import { allCards, currentBalance, hasCard, hasPieceDef, STANDARD_KINDS, type ArenaOp } from '@chessx/engine';
 import { PROTOCOL_VERSION, decode, encode, levelFor, type ClientMessage, type PlayerInfo, type ServerMessage, type SiteStats } from '@chessx/protocol';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -404,17 +404,36 @@ function open(t: SocketTransport, game: LiveGame): void {
   game.attach(t);
 }
 
+/** Players may only grant/spawn cards they own; developers may use the full catalog. */
+function assertArenaAllowed(userId: string, op: ArenaOp): void {
+  const row = db.userById(userId);
+  const isDev = !!row && admin.isAdmin(row);
+  if (op.type === 'giveCard') {
+    if (!hasCard(op.cardId)) throw new GameError('Unknown card.');
+    if (!isDev && !progression.owns(userId, op.cardId)) throw new GameError('You have not unlocked that card.');
+    return;
+  }
+  if (op.type === 'spawnPiece') {
+    if (!hasPieceDef(op.kind)) throw new GameError('Unknown piece.');
+    if (STANDARD_KINDS.includes(op.kind) || isDev) return;
+    const card = allCards().find((c) => c.type === 'summon' && c.piece.kind === op.kind);
+    if (!card || !progression.owns(userId, card.id)) throw new GameError('You have not unlocked that piece.');
+  }
+}
+
 function handleMessage(t: SocketTransport, msg: ClientMessage): void {
   switch (msg.type) {
     case 'listGames':
       t.send({ type: 'games', games: games.summariesFor(t.userId) });
       return;
     case 'createGame':
-    case 'createSolo': {
+    case 'createSolo':
+    case 'createArena': {
       const deck = progression.deckForPlay(t.userId, msg.deckSlot);
-      const game = games.create(t.userId, msg.type === 'createSolo', deck);
+      const arena = msg.type === 'createArena';
+      const game = games.create(t.userId, msg.type !== 'createGame', deck, { arena });
       open(t, game);
-      console.log(`[game ${game.row.code}] ${msg.type === 'createSolo' ? 'practice' : 'created'} by ${t.userId}`);
+      console.log(`[game ${game.row.code}] ${arena ? 'arena' : msg.type === 'createSolo' ? 'practice' : 'created'} by ${t.userId}`);
       return;
     }
     case 'joinGame': {
@@ -456,6 +475,11 @@ function handleMessage(t: SocketTransport, msg: ClientMessage): void {
     case 'action':
       if (!t.game) return t.error('You are not in a game.');
       t.game.act(t, msg.action);
+      return;
+    case 'arenaSetup':
+      if (!t.game) return t.error('You are not in a game.');
+      assertArenaAllowed(t.userId, msg.op);
+      t.game.arenaOp(t, msg.op);
       return;
 
     // ---- friends

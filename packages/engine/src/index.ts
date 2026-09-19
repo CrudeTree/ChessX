@@ -8,3 +8,4 @@ export * from './movement.js';
 export * from './rules.js';
 export * from './view.js';
 export * from './balance.js';
+export * from './arena.js';

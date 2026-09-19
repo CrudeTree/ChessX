@@ -1,4 +1,4 @@
-import type { Action, Balance, Color, GameStatus, Piece, PlayerView } from '@chessx/engine';
+import type { Action, ArenaOp, Balance, Color, GameStatus, Piece, PlayerView } from '@chessx/engine';
 
 export const PROTOCOL_VERSION = 2;
 
@@ -205,6 +205,10 @@ export type ClientMessage =
   | { type: 'createGame'; deckSlot: number }
   /** Practice game: you control both sides (the chosen deck is used for both). */
   | { type: 'createSolo'; deckSlot: number }
+  /** Testing arena: practice rules plus a free-setup palette. Memory only, no rewards. */
+  | { type: 'createArena'; deckSlot: number }
+  /** Place or grant something in the testing arena. */
+  | { type: 'arenaSetup'; op: ArenaOp }
   | { type: 'joinGame'; code: string; deckSlot: number }
   /** Open one of your games in this tab. */
   | { type: 'openGame'; gameId: string }
@@ -235,7 +239,7 @@ export type ServerMessage =
   | { type: 'user'; user: UserInfo }
   | { type: 'games'; games: GameSummary[] }
   /** This tab is now attached to a game. */
-  | { type: 'seated'; gameId: string; code: string; color: Color; room: RoomInfo; solo: boolean }
+  | { type: 'seated'; gameId: string; code: string; color: Color; room: RoomInfo; solo: boolean; arena?: boolean }
   | { type: 'room'; room: RoomInfo }
   | { type: 'state'; view: PlayerView; clocks: Clocks }
   /** One or more chat lines (the full history when opening a game). */

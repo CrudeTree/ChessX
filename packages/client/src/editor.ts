@@ -11,6 +11,7 @@ import {
   basePieceDef,
   cloneMovement,
   currentBalance,
+  describeAbility,
   describeCard,
   describeMovement,
   DIRS,
@@ -24,6 +25,7 @@ import {
   type CustomCard,
   type Effect,
   type MovementSpec,
+  type PieceAbility,
   type PiecePatch,
   type RulesPatch,
 } from '@chessx/engine';
@@ -867,6 +869,7 @@ export class BalanceEditor {
       this.movementEditor(form, card.piece.movement, card.piece.movement, (m) => {
         if (m) card.piece.movement = m;
       }, card.piece.glyph, false);
+      this.abilitiesEditor(form, card);
     } else {
       const targeting = this.group(form, 'Targeting');
       targeting.append(
@@ -924,6 +927,93 @@ export class BalanceEditor {
     hint.className = 'hint';
     hint.innerHTML = `Generated from the numbers: <i>${esc(generated)}</i>`;
     textG.append(ta, hint, useGen);
+  }
+
+  /** Activated board ability for a creature (e.g. Nullglass Knight granting adjacent DEF). */
+  private abilitiesEditor(form: HTMLElement, card: Extract<CustomCard, { type: 'summon' }>): void {
+    const g = this.group(form, 'Board ability');
+    const abilities = card.piece.abilities ?? [];
+    const hint = document.createElement('p');
+    hint.className = 'hint';
+    hint.textContent = 'Used from the board: select the creature, then a neighbouring piece. Does not end the turn.';
+    g.appendChild(hint);
+    abilities.forEach((a, i) => {
+      const row = document.createElement('div');
+      row.className = 'eeffect';
+      row.appendChild(
+        this.selectField(
+          'Ability',
+          a.kind,
+          [['grantAdjacent', 'Grant stats to an adjacent piece']],
+          () => undefined,
+        ),
+      );
+      const num = (label: string, key: 'atk' | 'def' | 'hp') => {
+        row.appendChild(
+          this.plainNum(label, a[key] ?? 0, (v) => {
+            if (v) a[key] = v;
+            else delete a[key];
+            this.refreshQuiet();
+          }),
+        );
+      };
+      if (a.kind === 'grantAdjacent') {
+        num('ATK', 'atk');
+        num('DEF', 'def');
+        num('HP', 'hp');
+        row.appendChild(
+          this.selectField(
+            'Target',
+            a.target ?? 'ownAdjacent',
+            [
+              ['ownAdjacent', 'Your adjacent piece'],
+              ['enemyAdjacent', 'An adjacent enemy'],
+              ['anyAdjacent', 'Any adjacent piece'],
+            ],
+            (v) => {
+              a.target = v;
+              this.refresh();
+            },
+          ),
+        );
+        const once = document.createElement('label');
+        once.className = 'eflag';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = a.oncePerTurn !== false;
+        cb.onchange = () => {
+          a.oncePerTurn = cb.checked;
+          this.refreshQuiet();
+        };
+        once.append(cb, ' once per turn');
+        row.appendChild(once);
+      }
+      const preview = document.createElement('p');
+      preview.className = 'hint';
+      preview.textContent = describeAbility(a);
+      row.appendChild(preview);
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.textContent = '✕ remove';
+      del.onclick = () => {
+        abilities.splice(i, 1);
+        card.piece.abilities = abilities;
+        this.refresh();
+      };
+      row.appendChild(del);
+      g.appendChild(row);
+    });
+    if (!abilities.length) {
+      const add = document.createElement('button');
+      add.type = 'button';
+      add.textContent = '+ Grant adjacent stats';
+      add.onclick = () => {
+        const next: PieceAbility = { kind: 'grantAdjacent', def: 1 };
+        card.piece.abilities = [...abilities, next];
+        this.refresh();
+      };
+      g.appendChild(add);
+    }
   }
 
   private customEffectsEditor(form: HTMLElement, card: Extract<CustomCard, { type: 'spell' }>): void {

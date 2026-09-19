@@ -58,6 +58,20 @@ export function describeEvents(view: PlayerView, names: Record<'white' | 'black'
         });
         break;
       }
+      case 'abilityUsed': {
+        const owner = ownerOf(e.pieceId);
+        const bits = [
+          e.atk ? `${e.atk > 0 ? '+' : ''}${e.atk} ATK` : '',
+          e.def ? `${e.def > 0 ? '+' : ''}${e.def} DEF` : '',
+          e.hp ? `${e.hp > 0 ? '+' : ''}${e.hp} HP` : '',
+        ].filter(Boolean);
+        const grant = bits.length ? bits.join(', ') : 'its ability';
+        lines.push({
+          text: `${names[owner ?? 'white']}: ${pieceName(e.pieceId)} ${squareName(e.from)} grants ${pieceName(e.targetId)} on ${squareName(e.to)} ${grant}`,
+          color: owner,
+        });
+        break;
+      }
       case 'cardPlayed': {
         const card = getCardDef(e.cardId);
         const where = e.target !== undefined ? ` on ${squareName(e.target)}` : '';

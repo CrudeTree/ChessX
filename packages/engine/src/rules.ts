@@ -4,12 +4,16 @@ import { isInCheck, lastRank, pseudoMoves, type MoveCandidate } from './movement
 import { getPieceDef } from './pieces.js';
 import { cloneState, drawCards, freshTurnInfo, manaFrom, pieceAt, piecesOf, type GameState } from './state.js';
 import {
+  fileOf,
+  inBounds,
   opposite,
   rankOf,
+  sq,
   squareName,
   type Action,
   type Color,
   type Piece,
+  type PieceAbility,
   type PromotionKind,
   type Square,
 } from './types.js';
@@ -27,14 +31,15 @@ const PROMOTIONS: PromotionKind[] = ['queen', 'rook', 'bishop', 'knight'];
  *
  *  1. Draw — if the draw timer completed, the only legal action is `draw`.
  *  2. Main — play any number of cards (summons or spells) you have the mana for,
- *     and switch any pieces' stance (a piece that switched is frozen for the turn).
+ *     switch any pieces' stance (a piece that switched is frozen for the turn),
+ *     and use creature board abilities (once per turn unless the ability says otherwise).
  *  3. Move — move or attack with one piece. The move ends the turn automatically.
  *
  * `endTurn` is only a *pass*: legal when you have no legal move at all (and are
  * not in check — with no move and no card that helps, that is checkmate).
  *
- * Moves may never leave your own king in check. Cards and stance changes
- * cannot expose your king, so they are not filtered.
+ * Moves may never leave your own king in check. Cards, stance changes and
+ * abilities cannot expose your king, so they are not filtered.
  */
 export function legalActions(state: GameState, color: Color = state.turn): Action[] {
   if (state.status.kind !== 'playing' || color !== state.turn) return [];
@@ -72,6 +77,20 @@ export function legalActions(state: GameState, color: Color = state.turn): Actio
   for (const piece of piecesOf(state, color)) {
     if (canChangeStance(piece) && !frozen.has(piece.id)) {
       out.push({ type: 'setStance', square: piece.square, stance: piece.stance === 'attack' ? 'defense' : 'attack' });
+    }
+  }
+
+  for (const piece of piecesOf(state, color)) {
+    if (piece.summon || frozen.has(piece.id)) continue;
+    const abilities = getPieceDef(piece.kind).abilities ?? [];
+    for (let i = 0; i < abilities.length; i++) {
+      const ability = abilities[i]!;
+      if (ability.oncePerTurn !== false && state.turnInfo.abilitiesUsed.includes(piece.id)) continue;
+      for (const n of neighborsOf(piece.square)) {
+        const target = pieceAt(state, n);
+        if (!target || !matchesAbilityTarget(piece, target, ability)) continue;
+        out.push(abilities.length > 1 ? { type: 'useAbility', from: piece.square, to: n, index: i } : { type: 'useAbility', from: piece.square, to: n });
+      }
     }
   }
 
@@ -138,7 +157,11 @@ export function applyAction(state: GameState, action: Action): GameState {
       throw new IllegalActionError(`Not enough mana: ${card.name} costs ${card.cost}, you have ${player.mana}.`);
     }
   }
-  if ((action.type === 'move' || action.type === 'setStance') && isFrozenThisTurn(next, action.type === 'move' ? action.from : action.square)) {
+  const frozenSquare =
+    action.type === 'move' || action.type === 'useAbility' ? action.from
+    : action.type === 'setStance' ? action.square
+    : undefined;
+  if (frozenSquare !== undefined && isFrozenThisTurn(next, frozenSquare)) {
     throw new IllegalActionError('That piece changed stance this turn and cannot act again until your next turn.');
   }
 
@@ -235,6 +258,9 @@ function performAction(state: GameState, action: Action, color: Color): void {
       break;
     case 'setStance':
       performStance(state, action, color);
+      break;
+    case 'useAbility':
+      performAbility(state, action, color);
       break;
     case 'draw':
     case 'endTurn':
@@ -530,6 +556,65 @@ function applyEffect(state: GameState, effect: Effect, color: Color, target: Pie
 
 function emitStats(state: GameState, p: Piece): void {
   state.events.push({ type: 'statsChanged', pieceId: p.id, square: p.square, atk: p.atk, def: p.def, hp: p.hp, maxHp: p.maxHp });
+}
+
+// ---------------------------------------------------------------------------
+// Creature board abilities
+
+function neighborsOf(square: Square): Square[] {
+  const f = fileOf(square);
+  const r = rankOf(square);
+  const out: Square[] = [];
+  for (let df = -1; df <= 1; df++) {
+    for (let dr = -1; dr <= 1; dr++) {
+      if (df === 0 && dr === 0) continue;
+      if (inBounds(f + df, r + dr)) out.push(sq(f + df, r + dr));
+    }
+  }
+  return out;
+}
+
+function matchesAbilityTarget(user: Piece, target: Piece, ability: PieceAbility): boolean {
+  if (target.id === user.id || target.kind === 'king') return false;
+  const mine = target.owner === user.owner;
+  const rule = ability.target ?? 'ownAdjacent';
+  if (rule === 'ownAdjacent') return mine;
+  if (rule === 'enemyAdjacent') return !mine;
+  return true;
+}
+
+function performAbility(state: GameState, action: Extract<Action, { type: 'useAbility' }>, color: Color): void {
+  const piece = pieceAt(state, action.from);
+  if (!piece) throw new IllegalActionError(`No piece on ${squareName(action.from)}.`);
+  if (piece.owner !== color) throw new IllegalActionError('That is not your piece.');
+  if (piece.summon) throw new IllegalActionError('A piece being sacrificed cannot use abilities.');
+
+  const def = getPieceDef(piece.kind);
+  const index = action.index ?? 0;
+  const ability = def.abilities?.[index];
+  if (!ability) throw new IllegalActionError(`${def.name} has no such ability.`);
+  if (ability.oncePerTurn !== false && state.turnInfo.abilitiesUsed.includes(piece.id)) {
+    throw new IllegalActionError(`${def.name} already used its ability this turn.`);
+  }
+
+  const target = pieceAt(state, action.to);
+  if (!target) throw new IllegalActionError(`Nothing on ${squareName(action.to)} to use the ability on.`);
+  if (!neighborsOf(piece.square).includes(action.to) || !matchesAbilityTarget(piece, target, ability)) {
+    throw new IllegalActionError(`${def.name} cannot use that ability on ${squareName(action.to)}.`);
+  }
+
+  if (ability.kind === 'grantAdjacent') modifyStats(state, target, ability);
+  if (ability.oncePerTurn !== false) state.turnInfo.abilitiesUsed.push(piece.id);
+  state.events.push({
+    type: 'abilityUsed',
+    pieceId: piece.id,
+    from: action.from,
+    to: action.to,
+    targetId: target.id,
+    atk: ability.atk,
+    def: ability.def,
+    hp: ability.hp,
+  });
 }
 
 // ---------------------------------------------------------------------------

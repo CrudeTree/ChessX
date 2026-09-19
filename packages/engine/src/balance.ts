@@ -8,7 +8,7 @@ import { allCards, baseCardDef, hasCard, setCardDef, setCustomCards } from './ca
 import type { CardDef, Effect, TargetRule } from './cards/types.js';
 import { basePieceDef, getPieceDef, hasPieceDef, setPieceDef, STANDARD_KINDS } from './pieces.js';
 import { BASE_RULES, DEFAULT_RULES, type GameState } from './state.js';
-import type { Color, MovementSpec, PieceDef } from './types.js';
+import type { AbilityTarget, Color, MovementSpec, PieceAbility, PieceDef } from './types.js';
 
 export interface PiecePatch {
   atk?: number;
@@ -17,6 +17,7 @@ export interface PiecePatch {
   /** Mana produced per turn (default: the tier). */
   manaYield?: number;
   movement?: MovementSpec;
+  abilities?: PieceAbility[];
 }
 
 export interface CardPatch {
@@ -90,6 +91,7 @@ function patchPiece(base: PieceDef, p: PiecePatch | undefined, tier?: number): P
   if (p.hp !== undefined) out.hp = p.hp;
   if (p.manaYield !== undefined) out.manaYield = p.manaYield;
   if (p.movement) out.movement = cloneMovement(p.movement);
+  if (p.abilities !== undefined) out.abilities = p.abilities.map((a) => ({ ...a }));
   return out;
 }
 
@@ -134,6 +136,7 @@ export function applyBalance(balance: Balance): void {
     ...(balance.customCards?.length ? { customCards: balance.customCards.map((c) => ({ ...c })) } : {}),
   };
   // Admin-created cards become part of the base catalog first (patches may then apply to them too).
+  if (current.customCards) awakenNamedCreatureAbilities(current.customCards);
   setCustomCards((current.customCards ?? []).map(({ give: _give, ...card }) => card as CardDef));
   for (const base of allCards()) setCardDef(patchedCard(base.id, current.cards[base.id]));
   for (const kind of STANDARD_KINDS) setPieceDef(patchPiece(basePieceDef(kind), current.pieces[kind]));
@@ -206,7 +209,29 @@ function validatePiece(p: PiecePatch, where: string, problems: string[], isKing:
   if (p.hp !== undefined && !isInt(p.hp, 1, 99)) problems.push(`${where}: HP must be 1–99.`);
   if (p.manaYield !== undefined && !isInt(p.manaYield, 0, 999)) problems.push(`${where}: mana per turn must be 0–999.`);
   if (p.movement !== undefined) validateMovement(p.movement, where, problems);
+  if (p.abilities !== undefined) validateAbilities(p.abilities, where, problems);
   if (isKing && p.movement && (p.movement as MovementSpec).pawn) problems.push(`${where}: the King cannot use pawn movement.`);
+  if (isKing && p.abilities?.length) problems.push(`${where}: the King cannot have board abilities.`);
+}
+
+const ABILITY_TARGETS: AbilityTarget[] = ['ownAdjacent', 'enemyAdjacent', 'anyAdjacent'];
+
+function validateAbilities(list: unknown, where: string, problems: string[]): void {
+  if (!Array.isArray(list)) return void problems.push(`${where}: abilities must be a list.`);
+  for (const a of list as PieceAbility[]) {
+    if (a?.kind !== 'grantAdjacent') {
+      problems.push(`${where}: unknown ability.`);
+      continue;
+    }
+    for (const k of ['atk', 'def', 'hp'] as const) {
+      if (a[k] !== undefined && !isInt(a[k], -99, 99)) problems.push(`${where}: ability ${k} must be -99–99.`);
+    }
+    if (a.atk === undefined && a.def === undefined && a.hp === undefined) {
+      problems.push(`${where}: a grant ability needs at least one of ATK/DEF/HP.`);
+    }
+    if (a.target !== undefined && !ABILITY_TARGETS.includes(a.target)) problems.push(`${where}: bad ability target.`);
+    if (a.oncePerTurn !== undefined && typeof a.oncePerTurn !== 'boolean') problems.push(`${where}: oncePerTurn must be true or false.`);
+  }
 }
 
 function validateEffects(effects: unknown, where: string, problems: string[]): void {
@@ -263,7 +288,7 @@ function validateCustomCard(c: unknown, problems: string[]): void {
     else {
       if (p.kind !== card.id) problems.push(`${where}: creature kind must match the card id.`);
       if (!isInt(p.tier, 1, 6)) problems.push(`${where}: creature tier must be 1–6.`);
-      validatePiece({ atk: p.atk, def: p.def, hp: p.hp, manaYield: p.manaYield, movement: p.movement }, where, problems, false);
+      validatePiece({ atk: p.atk, def: p.def, hp: p.hp, manaYield: p.manaYield, movement: p.movement, abilities: p.abilities }, where, problems, false);
       if (p.atk === undefined || p.def === undefined || p.hp === undefined || !p.movement) problems.push(`${where}: creature needs ATK, DEF, HP and movement.`);
     }
   } else if (card.type === 'spell') {
@@ -401,12 +426,45 @@ function describeEffect(e: Effect, target: string): string {
   }
 }
 
+const statDelta = (x: { atk?: number; def?: number; hp?: number }): string =>
+  (['atk', 'def', 'hp'] as const)
+    .filter((k) => x[k])
+    .map((k) => `${x[k]! > 0 ? '+' : ''}${x[k]} ${k.toUpperCase()}`)
+    .join(', ');
+
+/** Rules text for a creature's activated board ability. */
+export function describeAbility(a: PieceAbility): string {
+  if (a.kind !== 'grantAdjacent') return '';
+  const who =
+    a.target === 'enemyAdjacent' ? 'an adjacent enemy piece'
+    : a.target === 'anyAdjacent' ? 'an adjacent piece'
+    : 'an adjacent friendly piece';
+  const once = a.oncePerTurn === false ? '' : 'Once per turn: ';
+  return `${once}grant ${who} ${statDelta(a)}.`;
+}
+
+/**
+ * Older custom cards described a board ability in free text only. Wire the
+ * matching creature so that text actually does something. Never overwrites an
+ * abilities list the admin already set (including an empty one).
+ */
+function awakenNamedCreatureAbilities(cards: CustomCard[]): void {
+  for (const card of cards) {
+    if (card.type !== 'summon') continue;
+    if (card.piece.abilities !== undefined) continue;
+    if (!/null\s*glass\s*knight/i.test(card.name)) continue; // "Nullglass Knight" and close spellings
+    card.piece.abilities = [{ kind: 'grantAdjacent', def: 1 }];
+  }
+}
+
 /** Rules text for a card from its current numbers. */
 export function describeCard(card: CardDef): string {
   if (card.type === 'summon') {
     const p = card.piece;
     const mv = describeMovement(p.movement).replace(/\.$/, '');
-    return `Sacrifice a ${tierWord(card.sacrificeTier ?? card.tier - 1)} piece. Summons in ${card.summonTurns} turn${card.summonTurns === 1 ? '' : 's'}. ${mv}. ${p.atk} ATK / ${p.def} DEF / ${p.hp} HP.`;
+    const ability = (p.abilities ?? []).map(describeAbility).filter(Boolean).join(' ');
+    const stats = `${p.atk} ATK / ${p.def} DEF / ${p.hp} HP.`;
+    return `Sacrifice a ${tierWord(card.sacrificeTier ?? card.tier - 1)} piece. Summons in ${card.summonTurns} turn${card.summonTurns === 1 ? '' : 's'}. ${mv}. ${stats}${ability ? ` ${ability.charAt(0).toUpperCase()}${ability.slice(1)}` : ''}`;
   }
   const targetWord =
     card.target === 'ownPiece' ? 'Target friendly piece'

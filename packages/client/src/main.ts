@@ -16,6 +16,7 @@ import { Binder, cardElement } from './binder.js';
 import { BalanceEditor } from './editor.js';
 import { FriendsPanel } from './friends.js';
 import { initPush, onServiceWorkerMessage } from './push.js';
+import { ArenaPalette, ownedCardIds } from './arena.js';
 import { GameView } from './game/GameView.js';
 import { configureLayout, MOBILE } from './game/layout.js';
 import { InspectPanel } from './inspect.js';
@@ -40,7 +41,7 @@ function show(screen: Screen): void {
   binderScreen.classList.toggle('hidden', screen !== 'binder');
   editorScreen.classList.toggle('hidden', screen !== 'editor');
   gameScreen.classList.toggle('hidden', screen !== 'game');
-  chatEl.classList.toggle('hidden', screen !== 'game');
+  chatEl.classList.toggle('hidden', screen !== 'game' || arena);
 }
 
 // ---------------------------------------------------------------------------
@@ -48,10 +49,13 @@ function show(screen: Screen): void {
 
 const net = new Net();
 const gameView = new GameView();
+const arenaPalette = new ArenaPalette(gameView);
+arenaPalette.onOp = (op) => net.send({ type: 'arenaSetup', op });
 let user: UserInfo | null = null;
 let you: Color | null = null;
 let room: RoomInfo | null = null;
 let solo = false;
+let arena = false;
 let currentGameId: string | null = null;
 let currentView: PlayerView | null = null;
 let currentClocks: Clocks | null = null;
@@ -220,8 +224,13 @@ async function refreshProfile(): Promise<void> {
   }
 }
 
+function fillArenaCatalog(): void {
+  arenaPalette.setCatalog(ownedCardIds(profile?.collection ?? []), !!user?.admin);
+}
+
 function setProfile(p: Profile): void {
   profile = p;
+  if (arena) fillArenaCatalog();
   const level = levelFor(p.xp);
   const from = xpForLevel(level);
   const to = xpForLevel(level + 1);
@@ -307,6 +316,7 @@ function rerenderAfterBalance(): void {
   }
   if (!binderScreen.classList.contains('hidden') && profile) void refreshProfile().then(() => profile && binder.open(profile));
   if (!discardEl.classList.contains('hidden')) renderDiscard();
+  if (arena) fillArenaCatalog();
 }
 
 // ---------------------------------------------------------------------------
@@ -429,6 +439,10 @@ $('new-game').onclick = () => {
 $('practice').onclick = () => {
   const deckSlot = chosenDeckSlot();
   if (deckSlot !== null) net.send({ type: 'createSolo', deckSlot });
+};
+$('arena-start').onclick = () => {
+  const deckSlot = chosenDeckSlot();
+  if (deckSlot !== null) net.send({ type: 'createArena', deckSlot });
 };
 $<HTMLFormElement>('join-form').onsubmit = (e) => {
   e.preventDefault();
@@ -620,6 +634,10 @@ function leaveGameUi(): void {
   you = null;
   room = null;
   solo = false;
+  arena = false;
+  gameView.arena = false;
+  arenaPalette.setActive(false);
+  document.querySelector<HTMLElement>('#mtabs [data-sheet="chat"]')?.classList.remove('hidden');
   currentGameId = null;
   currentView = null;
   currentClocks = null;
@@ -652,7 +670,10 @@ function showGame(): Promise<void> {
     gameInit = (async () => {
       configureLayout(window.innerWidth);
       // Desktop: park the chat under the card panel so it never overlaps anything.
-      if (!MOBILE) $('inspect').appendChild(chatEl);
+      if (!MOBILE) {
+        $('inspect').appendChild($('arena'));
+        $('inspect').appendChild(chatEl);
+      }
       const mount = $('board-mount');
       try {
         await gameView.init(mount);
@@ -672,6 +693,7 @@ function showGame(): Promise<void> {
       }
       viewReady = true;
       gameView.onAction = (action) => net.send({ type: 'action', action });
+      gameView.onArena = (op) => net.send({ type: 'arenaSetup', op });
       gameView.onOpenDiscard = (color) => openDiscard(color);
       inspect.render(null);
       setupMobileChrome();
@@ -698,7 +720,7 @@ let openSheet: string | null = null;
  */
 function setSheet(id: string | null, opts: { peek?: boolean } = {}): void {
   const peek = !!opts.peek && id === 'inspect';
-  for (const s of ['inspect', 'side', 'chat']) $(s).classList.toggle('open', MOBILE && id === s);
+  for (const s of ['inspect', 'side', 'chat', 'arena']) $(s).classList.toggle('open', MOBILE && id === s);
   $('inspect').classList.toggle('peek', MOBILE && peek);
   for (const b of document.querySelectorAll<HTMLButtonElement>('#mtabs button')) b.classList.toggle('active', b.dataset.sheet === id);
   $('sheet-backdrop').classList.toggle('hidden', !MOBILE || id === null || peek);
@@ -731,6 +753,12 @@ function setupMobileChrome(): void {
     setSheet(null);
     origAction(a);
   };
+  const origArena = gameView.onArena;
+  gameView.onArena = (op) => {
+    setSheet(null);
+    origArena(op);
+  };
+  arenaPalette.onDragStart = () => setSheet(null);
 }
 
 function renderMobileBar(view: PlayerView | null): void {
@@ -773,10 +801,10 @@ function panelColors(): { me: Color; opp: Color } {
 
 function renderRoom(): void {
   if (!room || !you) return;
-  roomCode.textContent = solo ? 'PRACTICE' : room.code;
+  roomCode.textContent = arena ? 'ARENA' : solo ? 'PRACTICE' : room.code;
   const hint = $('room-hint');
-  hint.textContent = solo ? '' : 'Send this to a friend. They enter it under "Join".';
-  hint.classList.toggle('hidden', solo);
+  hint.textContent = arena ? 'Drag cards into a hand and pieces onto the board.' : solo ? '' : 'Send this to a friend. They enter it under "Join".';
+  hint.classList.toggle('hidden', solo && !arena);
   const { me, opp } = panelColors();
   for (const [id, color] of [
     ['me', me],
@@ -1105,10 +1133,16 @@ net.onMessage = async (msg: ServerMessage) => {
       you = msg.color;
       room = msg.room;
       solo = msg.solo;
+      arena = !!msg.arena;
       currentGameId = msg.gameId;
       rememberOpenGame(msg.gameId);
       if (!applyingRoute) pushRoute({ screen: 'game', id: msg.gameId });
       gameView.hotseat = solo;
+      gameView.arena = arena;
+      fillArenaCatalog();
+      arenaPalette.setActive(arena);
+      chatEl.classList.toggle('hidden', arena);
+      document.querySelector<HTMLElement>('#mtabs [data-sheet="chat"]')?.classList.toggle('hidden', arena);
       renderRoom();
       renderClocks();
       renderMobileBar(currentView);

@@ -2351,6 +2351,123 @@ button.danger {
   min-height: 16px;
 }
 
+/* ---------------------------------------------------------- Testing arena */
+#arena {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+#inspect > #arena {
+  flex: 0 1 260px;
+  min-height: 180px;
+  padding: 10px;
+  border-radius: 12px;
+  background: #16161f;
+  border: 1px solid #2e2e42;
+}
+
+.arena-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.arena-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.arena-toggles button {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.arena-toggles button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.arena-hint {
+  margin: 0;
+  font-size: 12px;
+}
+
+#arena-search {
+  width: 100%;
+}
+
+.arena-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 8px;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+  padding-right: 2px;
+  scrollbar-width: thin;
+}
+
+.arena-list .bcard {
+  min-height: 0;
+  cursor: grab;
+  padding: 6px;
+  gap: 4px;
+}
+
+.arena-list .bcard .bart {
+  height: 56px;
+  font-size: 28px;
+}
+
+.arena-list .bcard .btext {
+  display: none;
+}
+
+.arena-list .bcard,
+.arena-piece {
+  touch-action: none;
+  user-select: none;
+}
+
+.arena-piece {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  border-radius: 10px;
+  background: #222232;
+  border: 1px solid #3a3a52;
+  cursor: grab;
+  font-size: 11px;
+  text-align: center;
+}
+
+.arena-piece img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+}
+
+.arena-piece .glyph {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.arena-ghost {
+  position: fixed;
+  z-index: 80;
+  pointer-events: none;
+  width: 100px;
+  transform: translate(-50%, -50%) scale(0.9);
+  opacity: 0.95;
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.55));
+}
+
 /* ------------------------------------------------------------------- Chat */
 #chat {
   position: fixed;
@@ -2744,7 +2861,8 @@ button,
   /* Side panels become bottom sheets */
   #inspect,
   #side,
-  #chat {
+  #chat,
+  #arena {
     position: fixed;
     left: 0;
     right: 0;
@@ -2766,14 +2884,16 @@ button,
 
   #inspect.open,
   #side.open,
-  #chat.open {
+  #chat.open,
+  #arena.open {
     transform: none;
   }
 
   /* Grab-handle so the sheets read as dismissible. */
   #inspect::before,
   #side::before,
-  #chat::before {
+  #chat::before,
+  #arena::before {
     content: '';
     display: block;
     width: 44px;

@@ -1,4 +1,4 @@
-import { canAct, getCardDef, opposite, type Action, type Color, type GameEvent, type Piece, type PlayerView, type Square } from '@chessx/engine';
+import { canAct, getCardDef, opposite, type Action, type ArenaOp, type Color, type GameEvent, type Piece, type PlayerView, type Square } from '@chessx/engine';
 import { Application, Container, Graphics, Text, type FederatedPointerEvent } from 'pixi.js';
 import { preloadArt } from './art.js';
 import { CardSprite } from './CardSprite.js';
@@ -64,6 +64,8 @@ interface Selection {
 /** What the side panel should show: a piece on the board or a card in hand. */
 export type InspectTarget = { kind: 'piece'; piece: Piece } | { kind: 'card'; cardId: string };
 
+export type ArenaDrop = { zone: 'square'; square: Square } | { zone: 'hand'; color: Color } | { zone: 'none' };
+
 /**
  * Renders the board + hand with PixiJS and turns pointer input into engine
  * Actions. It never decides legality itself: everything it offers the player
@@ -72,10 +74,18 @@ export type InspectTarget = { kind: 'piece'; piece: Piece } | { kind: 'card'; ca
 export class GameView {
   app = new Application();
   onAction: (a: Action) => void = () => {};
+  /** Testing-arena setup (spawn / grant / remove). */
+  onArena: (op: ArenaOp) => void = () => {};
   /** Fired whenever the inspected piece/card changes or its data refreshes (null = nothing inspected). */
   onInspect: (target: InspectTarget | null) => void = () => {};
   /** Practice mode: one player controls both sides, board stays white-at-bottom. */
   hotseat = false;
+  /** Testing arena: palette drops and free relocate/remove. */
+  arena = false;
+
+  manaOf(color: Color): number {
+    return this.view?.players[color]?.mana ?? 0;
+  }
 
   private tweens!: Tweens;
   private boardLayer = new Container();
@@ -457,6 +467,17 @@ export class GameView {
           this.flash(x, y, COLORS.select);
           break;
         }
+        case 'abilityUsed': {
+          const dest = squareToXY(ev.to, this.flipped);
+          this.burst(dest.x, dest.y, COLORS.ability, 0.9);
+          const bits = [
+            ev.atk ? `${ev.atk > 0 ? '+' : ''}${ev.atk} ATK` : '',
+            ev.def ? `${ev.def > 0 ? '+' : ''}${ev.def} DEF` : '',
+            ev.hp ? `${ev.hp > 0 ? '+' : ''}${ev.hp} HP` : '',
+          ].filter(Boolean);
+          if (bits.length) this.floatText(dest.x, dest.y, bits.join(' '), COLORS.ability);
+          break;
+        }
         case 'summonStarted': {
           const { x, y } = squareToXY(ev.square, this.flipped);
           this.flash(x, y, COLORS.summon);
@@ -526,6 +547,12 @@ export class GameView {
         const { x, y } = squareToXY(ev.target, this.flipped);
         g.rect(x - SQ / 2, y - SQ / 2, SQ, SQ).fill({ color: COLORS.card, alpha: 0.3 });
       }
+      if (ev.type === 'abilityUsed') {
+        for (const s of [ev.from, ev.to]) {
+          const { x, y } = squareToXY(s, this.flipped);
+          g.rect(x - SQ / 2, y - SQ / 2, SQ, SQ).fill({ color: COLORS.ability, alpha: 0.28 });
+        }
+      }
     }
     this.lastMoveLayer.addChild(g);
   }
@@ -545,7 +572,11 @@ export class GameView {
     const pulse = new Graphics();
     for (const [square, action] of targets.bySquare) {
       const { x, y } = squareToXY(square, this.flipped);
-      const color = action.type === 'playCard' ? COLORS.card : this.view?.board[square] ? COLORS.attack : COLORS.move;
+      const color =
+        action.type === 'playCard' ? COLORS.card
+        : action.type === 'useAbility' ? COLORS.ability
+        : this.view?.board[square] ? COLORS.attack
+        : COLORS.move;
       pulse.roundRect(x - SQ / 2 + 3, y - SQ / 2 + 3, SQ - 6, SQ - 6, 6).fill({ color, alpha: 0.28 });
       pulse.roundRect(x - SQ / 2 + 3, y - SQ / 2 + 3, SQ - 6, SQ - 6, 6).stroke({ width: 3, color, alpha: 1 });
     }
@@ -896,14 +927,67 @@ export class GameView {
     return !!this.view && this.view.status.kind === 'playing' && this.view.turn === this.view.you;
   }
 
+  private clientToLocal(clientX: number, clientY: number): { x: number; y: number } | null {
+    const canvas = this.app.canvas;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    return {
+      x: ((clientX - rect.left) * CANVAS_W) / rect.width,
+      y: ((clientY - rect.top) * CANVAS_H) / rect.height,
+    };
+  }
+
+  /** Where a palette drag would land, in board/hand space. */
+  dropTarget(clientX: number, clientY: number): ArenaDrop {
+    const p = this.clientToLocal(clientX, clientY);
+    if (!p) return { zone: 'none' };
+    const square = xyToSquare(p.x, p.y, this.flipped);
+    if (square !== null) return { zone: 'square', square };
+    if (p.y >= HAND_Y - 16 && p.y <= HAND_Y + CARD_H + 16 && p.x >= HAND_X0 - 24 && p.x <= HAND_X1 + 24) {
+      return { zone: 'hand', color: this.hotseat ? 'white' : (this.view?.you ?? 'white') };
+    }
+    if (p.y >= OPP_HAND_Y - OPP_CARD_H && p.y <= OPP_HAND_Y + OPP_CARD_H && p.x >= OPP_HAND_X0 - 24 && p.x <= OPP_HAND_X1 + 24) {
+      return { zone: 'hand', color: this.hotseat ? 'black' : opposite(this.view?.you ?? 'white') };
+    }
+    return { zone: 'none' };
+  }
+
+  /** Highlight a palette drop target (or clear when `none`). */
+  previewDrop(target: ArenaDrop): void {
+    this.highlightLayer.removeChildren();
+    this.pulsingHighlights = null;
+    if (target.zone === 'none') return;
+    const g = new Graphics();
+    if (target.zone === 'square') {
+      const { x, y } = squareToXY(target.square, this.flipped);
+      g.roundRect(x - SQ / 2 + 3, y - SQ / 2 + 3, SQ - 6, SQ - 6, 6).fill({ color: COLORS.ability, alpha: 0.32 });
+      g.roundRect(x - SQ / 2 + 3, y - SQ / 2 + 3, SQ - 6, SQ - 6, 6).stroke({ width: 3, color: COLORS.ability, alpha: 1 });
+    } else {
+      const mine = this.hotseat ? target.color === 'white' : target.color === this.view?.you;
+      if (mine) {
+        g.roundRect(HAND_X0, HAND_Y, HAND_X1 - HAND_X0, CARD_H, 10).fill({ color: COLORS.ability, alpha: 0.22 });
+        g.roundRect(HAND_X0, HAND_Y, HAND_X1 - HAND_X0, CARD_H, 10).stroke({ width: 3, color: COLORS.ability, alpha: 0.9 });
+      } else {
+        const w = OPP_HAND_X1 - OPP_HAND_X0;
+        g.roundRect(OPP_HAND_X0, OPP_HAND_Y - OPP_CARD_H / 2, w, OPP_CARD_H, 8).fill({ color: COLORS.ability, alpha: 0.22 });
+        g.roundRect(OPP_HAND_X0, OPP_HAND_Y - OPP_CARD_H / 2, w, OPP_CARD_H, 8).stroke({ width: 3, color: COLORS.ability, alpha: 0.9 });
+      }
+    }
+    this.highlightLayer.addChild(g);
+  }
+
   private moveTargetsFrom(square: Square): Targets {
     const bySquare = new Map<Square, Action>();
     if (!this.view) return { bySquare, anywhere: null };
     for (const a of this.view.legalActions) {
-      if (a.type !== 'move' || a.from !== square) continue;
-      const existing = bySquare.get(a.to) as MoveAction | undefined;
-      // Several promotion options share a square; default to queen.
-      if (!existing || a.promotion === 'queen') bySquare.set(a.to, a);
+      if (a.type === 'move' && a.from === square) {
+        const existing = bySquare.get(a.to) as MoveAction | undefined;
+        // Several promotion options share a square; default to queen.
+        if (!existing || a.promotion === 'queen') bySquare.set(a.to, a);
+      } else if (a.type === 'useAbility' && a.from === square && !bySquare.has(a.to)) {
+        bySquare.set(a.to, a);
+      }
     }
     return { bySquare, anywhere: null };
   }
@@ -931,13 +1015,13 @@ export class GameView {
     e.stopPropagation();
     this.setInspected(piece.id);
 
-    if (!this.myTurn || piece.owner !== this.view.you) {
+    if (!this.arena && (!this.myTurn || piece.owner !== this.view.you)) {
       this.clearSelection();
       this.onPieceTap(piece); // cannot be dragged, so this is a tap
       return;
     }
     const targets = this.moveTargetsFrom(piece.square);
-    if (targets.bySquare.size === 0) {
+    if (!this.arena && targets.bySquare.size === 0) {
       this.clearSelection();
       this.onPieceTap(piece);
       return;
@@ -1050,11 +1134,24 @@ export class GameView {
       d.sprite.cursor = 'grab';
       const home = squareToXY(d.from, this.flipped);
       if (action) {
-        // Snap to destination immediately; the server's state will confirm.
-        const dest = squareToXY(square!, this.flipped);
+        this.highlightLayer.removeChildren();
+        if (action.type === 'useAbility') {
+          // The piece stays put; the ability lands on the neighbour.
+          d.sprite.position.set(home.x, home.y);
+        } else {
+          // Snap to destination immediately; the server's state will confirm.
+          const dest = squareToXY(square!, this.flipped);
+          d.sprite.position.set(dest.x, dest.y);
+        }
+        this.onAction(action);
+      } else if (this.arena && square !== null && square !== d.from) {
+        const dest = squareToXY(square, this.flipped);
         d.sprite.position.set(dest.x, dest.y);
         this.highlightLayer.removeChildren();
-        this.onAction(action);
+        this.onArena({ type: 'relocate', from: d.from, to: square });
+      } else if (this.arena && d.moved && square === null) {
+        this.highlightLayer.removeChildren();
+        this.onArena({ type: 'removePiece', square: d.from });
       } else {
         d.sprite.position.set(home.x, home.y);
         if (!d.moved) {

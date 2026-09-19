@@ -135,6 +135,7 @@ export const COLORS = {
   move: 0x22d3ee,
   attack: 0xe0503c,
   card: 0x8f6cff,
+  ability: 0xffb020,
   select: 0xf0c75e,
   lastMove: 0xf0c75e,
   atk: 0xd9534f,

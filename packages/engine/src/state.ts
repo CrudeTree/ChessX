@@ -48,11 +48,13 @@ export interface TurnInfo {
   cardsPlayed: number;
   /** Pieces that changed stance this turn; they cannot act or switch again until the turn ends. */
   stanceChanged: string[];
+  /** Pieces that used a once-per-turn board ability this turn. */
+  abilitiesUsed: string[];
   /** En passant square created by a double pawn push this turn (handed to the opponent at end of turn). */
   enPassant: Square | null;
 }
 
-export const freshTurnInfo = (): TurnInfo => ({ cardsPlayed: 0, stanceChanged: [], enPassant: null });
+export const freshTurnInfo = (): TurnInfo => ({ cardsPlayed: 0, stanceChanged: [], abilitiesUsed: [], enPassant: null });
 
 /**
  * Where the side to move is in their turn:
@@ -256,7 +258,12 @@ export function upgradeState(state: GameState): GameState {
   // Older turn info tracked a single "major action"; a saved mid-turn state that had
   // already moved is simply treated as still in its main phase (the next move ends it).
   const ti = state.turnInfo as Partial<TurnInfo> & { majorAction?: unknown };
-  state.turnInfo = { cardsPlayed: ti.cardsPlayed ?? 0, stanceChanged: ti.stanceChanged ?? [], enPassant: ti.enPassant ?? null };
+  state.turnInfo = {
+    cardsPlayed: ti.cardsPlayed ?? 0,
+    stanceChanged: ti.stanceChanged ?? [],
+    abilitiesUsed: ti.abilitiesUsed ?? [],
+    enPassant: ti.enPassant ?? null,
+  };
   // Card/piece numbers may have been edited since this game was saved.
   rebasePieces(state);
   return state;
@@ -284,7 +291,11 @@ export function cloneState(state: GameState): GameState {
   });
   return {
     rules: state.rules,
-    turnInfo: { ...state.turnInfo, stanceChanged: state.turnInfo.stanceChanged.slice() },
+    turnInfo: {
+      ...state.turnInfo,
+      stanceChanged: state.turnInfo.stanceChanged.slice(),
+      abilitiesUsed: (state.turnInfo.abilitiesUsed ?? []).slice(),
+    },
     pieces,
     board: state.board.slice(),
     players: { white: clonePlayer(state.players.white), black: clonePlayer(state.players.black) },

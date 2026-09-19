@@ -34,6 +34,11 @@ export class Progression {
     return this.db.collectionFor(userId).map((r) => ({ cardId: r.card_id, count: r.count, isNew: r.seen === 0 }));
   }
 
+  /** Whether this player has at least one copy of the card. */
+  owns(userId: string, cardId: string): boolean {
+    return this.db.collectionFor(userId).some((r) => r.card_id === cardId && r.count > 0);
+  }
+
   decks(userId: string): DeckInfo[] {
     const rows = new Map(this.db.decksFor(userId).map((r) => [r.slot, r]));
     const out: DeckInfo[] = [];

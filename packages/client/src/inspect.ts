@@ -2,6 +2,7 @@
 
 import {
   allCards,
+  describeAbility,
   getCardDef,
   getPieceDef,
   movementPattern,
@@ -126,6 +127,14 @@ export class InspectPanel {
     }
     if (currentView?.turnInfo.stanceChanged.includes(piece.id)) {
       status.push('Changed stance this turn: cannot act or switch again until the turn ends.');
+    }
+    for (const ability of def.abilities ?? []) {
+      const used = currentView?.turnInfo.abilitiesUsed.includes(piece.id);
+      const text = describeAbility(ability);
+      if (!text) continue;
+      if (used) status.push(`Already used its ability this turn (${text.replace(/\.$/, '')}).`);
+      else if (piece.summon) status.push('Cannot use its ability while being sacrificed.');
+      else status.push(`${text.charAt(0).toUpperCase()}${text.slice(1)} Select this piece, then a highlighted neighbour. Does not end your turn.`);
     }
 
     this.zoomEl.className = `zoom ${card ? 'summon' : 'basic'} owner-${piece.owner}`;

@@ -5,6 +5,7 @@
 
 import {
   applyAction,
+  applyArenaOp,
   createGame,
   IllegalActionError,
   opposite,
@@ -13,6 +14,7 @@ import {
   starterDeck,
   viewFor,
   type Action,
+  type ArenaOp,
   type Color,
   type GameState,
 } from '@chessx/engine';
@@ -53,6 +55,8 @@ export class LiveGame {
   private lastChatAt = new Map<string, number>();
   /** Cards played during the current turn (drives the opponent's clock grace). */
   private cardsThisTurn = 0;
+  /** Testing arena: free setup, memory only (also `solo`). */
+  arena = false;
 
   /** Fired after anything that changes how the game appears on the home page. */
   onChanged: (game: LiveGame) => void = () => {};
@@ -220,7 +224,7 @@ export class LiveGame {
     this.watchers.add(t);
     this.checkTimeout();
     const color = this.colorOf(t.userId)!;
-    t.send({ type: 'seated', gameId: this.id, code: this.row.code, color: this.seatOf(t.userId) ?? color, room: this.info(), solo: this.solo });
+    t.send({ type: 'seated', gameId: this.id, code: this.row.code, color: this.seatOf(t.userId) ?? color, room: this.info(), solo: this.solo, arena: this.arena });
     this.broadcastRoom();
     this.sendState(t);
     t.send({ type: 'chat', messages: this.chat });
@@ -275,6 +279,22 @@ export class LiveGame {
       const nextUser = next.turn === 'white' ? this.row.white_user_id : this.row.black_user_id;
       if (nextUser) this.onYourTurn(this, nextUser);
     }
+  }
+
+  /** Testing-arena setup: grant a card, spawn/move/remove a piece, or set mana. */
+  arenaOp(t: Transport, op: ArenaOp): void {
+    if (!this.arena) throw new GameError('That only works in the testing arena.');
+    if (!this.state) throw new GameError('Waiting for an opponent to join.');
+    if (!this.isParticipant(t.userId)) throw new GameError('You are not a player in this game.');
+    let next: GameState;
+    try {
+      next = applyArenaOp(this.state, op);
+    } catch (e) {
+      if (e instanceof IllegalActionError) throw new GameError(e.message);
+      throw e;
+    }
+    this.state = next;
+    this.broadcastState();
   }
 
   chatMessage(t: Transport, rawText: string): void {
@@ -415,7 +435,7 @@ export class GameManager {
     return row ? this.get(row.id) : undefined;
   }
 
-  create(userId: string, solo: boolean, deck: string[]): LiveGame {
+  create(userId: string, solo: boolean, deck: string[], opts?: { arena?: boolean }): LiveGame {
     let code = randomCode();
     while (this.db.codeExists(code)) code = randomCode();
     const now = Date.now();
@@ -441,10 +461,14 @@ export class GameManager {
       updated_at: now,
     };
     if (solo) {
-      // Practice: both seats are the same user, starts immediately, memory only — never saved,
-      // never listed, no rewards, gone when the player leaves.
+      // Practice / arena: both seats are the same user, starts immediately, memory only —
+      // never saved, never listed, no rewards, gone when the player leaves.
       const game = this.track(new LiveGame(row, this.db, this.userName));
-      game.state = createGame({ decks: { white: deck, black: deck.slice() } });
+      game.arena = !!opts?.arena;
+      game.state = createGame({
+        decks: { white: deck, black: deck.slice() },
+        ...(game.arena ? { rules: { startingMana: 9999 } } : {}),
+      });
       row.turn_started_at = now;
       row.status_kind = 'playing';
       return game;
