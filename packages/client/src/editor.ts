@@ -82,6 +82,7 @@ function defaultEffect(kind: Effect['kind']): Effect {
     case 'swap':
     case 'spawnPawn':
     case 'castlePush':
+    case 'gild':
       return { kind };
     case 'gainMana':
       return { kind, amount: 60 };
@@ -1226,6 +1227,7 @@ export class BalanceEditor {
       ['swap', 'Swap two pieces'],
       ['spawnPawn', 'Spawn a pawn on your back rank'],
       ['castlePush', 'Push a pawn next to a castled King'],
+      ['gild', 'Turn an enemy pawn into a Greedpot you control'],
     ];
     card.effects.forEach((e, i) => {
       const row = document.createElement('div');

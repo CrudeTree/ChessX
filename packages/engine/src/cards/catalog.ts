@@ -378,6 +378,17 @@ export const CATALOG: CardDef[] = [
     text: 'If the opponent has castled, push a pawn next to their King one square forward.',
     effects: [{ kind: 'castlePush' }],
   },
+  {
+    id: 'gild',
+    type: 'spell',
+    cost: 150,
+    name: 'Gild',
+    glyph: '🏺',
+    art: '/art/gild.png',
+    target: 'enemyPiece',
+    text: 'Turn an enemy Pawn into a Greedpot you control.',
+    effects: [{ kind: 'gild' }],
+  },
 ];
 
 registerCards(CATALOG);
@@ -401,7 +412,7 @@ export const REWARD_CARDS: string[] = [
   'ziglet', 'greedpot', 'thunderhead',
   'thornback_boar', 'frost_owl', 'iron_golem', 'shadow_panther', 'ancient_treant', 'storm_drake',
   'battle_trance', 'leyburst', 'disarray', 'schism',
-  'transpose', 'muster', 'fissure',
+  'transpose', 'muster', 'fissure', 'gild',
 ];
 
 /** The deck every new player starts with: 3 copies of each starter card. */

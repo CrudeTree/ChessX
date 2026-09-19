@@ -36,7 +36,9 @@ export type Effect =
   /** Place a friendly pawn on the targeted empty back-rank square. */
   | { kind: 'spawnPawn' }
   /** Push the targeted pawn one square forward (only legal if the opponent has castled). */
-  | { kind: 'castlePush' };
+  | { kind: 'castlePush' }
+  /** Turn an enemy pawn into a Greedpot you control. */
+  | { kind: 'gild' };
 
 interface CardBase {
   id: string;

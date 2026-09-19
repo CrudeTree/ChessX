@@ -111,7 +111,7 @@ The server is authoritative: the client only ever offers the player actions from
 
 **Summon cards.** Pieces have tiers: Pawn = 1, Knight/Bishop = 2, Rook = 3, Queen = 4, King = 6 (never sacrificable). A tier-N summon card is played by dropping it on one of your pieces of tier N−1, which becomes the sacrifice. A void opens beneath it with a timer. While the timer runs the sacrificed piece cannot move or attack. The timer ticks down at the start of each of your turns; when it reaches 0 the piece is replaced by the summoned creature. If the sacrifice is destroyed first, the summon fails and the card is lost.
 
-**Spell cards** resolve immediately: destroy, draw, hasten a summon, drop Defense (Battle Trance), gain mana (Leyburst), scramble the opponent's back rank (Disarray, first turn only), split the crown (Schism), swap two pieces (Transpose), spawn a back-rank pawn (Muster), or push a pawn beside a castled king (Fissure). Kings can't be targeted unless a card says so.
+**Spell cards** resolve immediately: destroy, draw, hasten a summon, drop Defense (Battle Trance), gain mana (Leyburst), scramble the opponent's back rank (Disarray, first turn only), split the crown (Schism), swap two pieces (Transpose), spawn a back-rank pawn (Muster), push a pawn beside a castled king (Fissure), or turn an enemy pawn into a Greedpot you control (Gild). Kings can't be targeted unless a card says so.
 
 ### Progression, collection and decks
 
@@ -167,6 +167,7 @@ Reward cards (unlocked through play):
 | Transpose       | Spell  | Swap the positions of two pieces.                                                 |
 | Muster          | Spell  | Put a Pawn on an empty square of your back rank.                                  |
 | Fissure         | Spell  | If the opponent has castled, push a pawn next to their King one square forward.   |
+| Gild            | Spell  | Turn an enemy Pawn into a Greedpot you control.                                   |
 
 ### Adding a card
 

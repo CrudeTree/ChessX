@@ -239,6 +239,9 @@ export function cardTargets(state: GameState, inst: CardInstance, color: Color):
   if (card.effects.some((e) => e.kind === 'castlePush')) {
     return castlePushSquares(state, color);
   }
+  if (card.effects.some((e) => e.kind === 'gild')) {
+    return gildSquares(state, color);
+  }
   if (card.target === 'none') return [undefined];
   return Object.values(state.pieces)
     .filter((p) => matchesTarget(p, card.target, color, card.allowKing ?? false))
@@ -274,6 +277,12 @@ function pawnForward(pawn: Piece): Square | undefined {
   const r = rankOf(pawn.square) + (pawn.owner === 'white' ? 1 : -1);
   if (!inBounds(f, r)) return undefined;
   return sq(f, r);
+}
+
+export function gildSquares(state: GameState, color: Color): Square[] {
+  return Object.values(state.pieces)
+    .filter((p) => p.owner !== color && p.kind === 'pawn' && !p.summon)
+    .map((p) => p.square);
 }
 
 export function castlePushSquares(state: GameState, color: Color): Square[] {
@@ -702,11 +711,28 @@ export function applyEffect(state: GameState, effect: Effect, color: Color, targ
       applySchism(state, color);
       return;
     }
+    case 'gild': {
+      if (target) applyGild(state, target, color);
+      return;
+    }
     case 'swap':
     case 'spawnPawn':
     case 'castlePush':
       return;
   }
+}
+
+export function applyGild(state: GameState, target: Piece, color: Color): void {
+  if (target.kind !== 'pawn' || target.owner === color || target.summon) return;
+  const from = target.kind;
+  target.kind = 'greedpot';
+  target.owner = color;
+  target.defense = 0;
+  target.stance = 'attack';
+  target.hasMoved = true;
+  state.turnInfo.stanceChanged = state.turnInfo.stanceChanged.filter((id) => id !== target.id);
+  state.skipTurn = state.skipTurn.filter((id) => id !== target.id);
+  state.events.push({ type: 'transformed', pieceId: target.id, square: target.square, from, to: target.kind });
 }
 
 /** The rank the opponent started on (white's far side is 7, black's is 0). */

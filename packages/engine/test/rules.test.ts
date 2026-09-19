@@ -819,6 +819,34 @@ describe('cards', () => {
     expect(describeCard(getCardDef('greedpot'))).toMatch(/Cannot move or attack.*10 mana/);
   });
 
+  it('Gild turns an enemy pawn into a Greedpot you control', () => {
+    let g = newGame();
+    const card = giveCard(g, 'white', 'gild');
+    const targets = legalActions(g)
+      .filter((a): a is Extract<Action, { type: 'playCard' }> => a.type === 'playCard' && a.cardInstanceId === card)
+      .map((a) => a.target!)
+      .sort();
+    expect(targets).toEqual([...'abcdefgh'].map((f) => s(`${f}7`)).sort());
+    expect(() => act(g, { type: 'playCard', cardInstanceId: card, target: s('e2') })).toThrow(IllegalActionError);
+    expect(() => act(g, { type: 'playCard', cardInstanceId: card, target: s('b8') })).toThrow(IllegalActionError);
+    g = act(g, { type: 'playCard', cardInstanceId: card, target: s('e7') });
+    const pot = pieceAt(g, s('e7'))!;
+    expect(pot.kind).toBe('greedpot');
+    expect(pot.owner).toBe('white');
+    expect(pot.stance).toBe('attack');
+    expect(legalMoves(g).some((m) => m.from === s('e7'))).toBe(false);
+    expect(g.events.some((e) => e.type === 'transformed' && e.from === 'pawn' && e.to === 'greedpot')).toBe(true);
+
+    let arena = createArenaGame(1);
+    arena = applyArenaOp(arena, { type: 'spawnPiece', kind: 'pawn', color: 'black', square: s('e4') });
+    arena = applyArenaOp(arena, { type: 'dropCard', cardId: 'gild', color: 'white', square: s('e4') });
+    expect(pieceAt(arena, s('e4'))!.kind).toBe('greedpot');
+    expect(pieceAt(arena, s('e4'))!.owner).toBe('white');
+    arena = applyArenaOp(arena, { type: 'spawnPiece', kind: 'pawn', color: 'white', square: s('d4') });
+    arena = applyArenaOp(arena, { type: 'dropCard', cardId: 'gild', color: 'white', square: s('d4') });
+    expect(pieceAt(arena, s('d4'))!.kind).toBe('pawn');
+  });
+
   it('Thunderhead spends 50 mana to hide an enemy on a tile; the owner still sees it', () => {
     let g = createArenaGame(1);
     g = applyArenaOp(g, { type: 'spawnPiece', kind: 'thunderhead', color: 'white', square: s('e4') });

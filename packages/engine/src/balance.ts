@@ -72,7 +72,7 @@ export const EMPTY_BALANCE: Balance = { cards: {}, pieces: {} };
 
 const RETIRED = new Set(RETIRED_CARDS);
 
-const LIVE_EFFECTS = new Set<Effect['kind']>(['destroy', 'draw', 'hastenSummon', 'freeStance', 'gainMana', 'scrambleBackRank', 'schism', 'swap', 'spawnPawn', 'castlePush']);
+const LIVE_EFFECTS = new Set<Effect['kind']>(['destroy', 'draw', 'hastenSummon', 'freeStance', 'gainMana', 'scrambleBackRank', 'schism', 'swap', 'spawnPawn', 'castlePush', 'gild']);
 
 function sanitizeAbility(a: PieceAbility): PieceAbility {
   if (a?.kind === 'stormCloud') {
@@ -345,6 +345,7 @@ function validateEffects(effects: unknown, where: string, problems: string[]): v
       case 'swap':
       case 'spawnPawn':
       case 'castlePush':
+      case 'gild':
         break;
       default:
         problems.push(`${where}: unknown effect.`);
@@ -518,6 +519,8 @@ function describeEffect(e: Effect, target: string): string {
       return `Put a Pawn on an empty square of your back rank.`;
     case 'castlePush':
       return `If the opponent has castled, push a pawn next to their King one square forward.`;
+    case 'gild':
+      return `Turn an enemy Pawn into a Greedpot you control.`;
   }
 }
 
