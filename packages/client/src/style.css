@@ -2552,8 +2552,6 @@ button.danger {
   border: none;
 }
 
-#game.arena-mode #stance,
-#game.arena-mode #stance-hint,
 #game.arena-mode #turn-track,
 #game.arena-mode #end-turn,
 #game.arena-mode .clock,

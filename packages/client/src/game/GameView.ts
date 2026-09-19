@@ -361,6 +361,10 @@ export class GameView {
   stanceActionFor(pieceId: string): Extract<Action, { type: 'setStance' }> | null {
     const piece = this.view?.pieces[pieceId];
     if (!piece || !this.view) return null;
+    if (this.arena) {
+      if (piece.kind === 'king' || piece.summon) return null;
+      return { type: 'setStance', square: piece.square, stance: piece.defense > 0 ? 'attack' : 'defense' };
+    }
     for (const a of this.view.legalActions) {
       if (a.type === 'setStance' && a.square === piece.square) return a;
     }
@@ -371,7 +375,9 @@ export class GameView {
   toggleInspectedStance(): void {
     if (!this.inspected) return;
     const action = this.stanceActionFor(this.inspected);
-    if (action) this.onAction(action);
+    if (!action) return;
+    if (this.arena) this.onArena({ type: 'setStance', square: action.square, stance: action.stance });
+    else this.onAction(action);
   }
 
   /** Cannot act right now: frozen in Defense, being sacrificed, or switched stance this turn. */

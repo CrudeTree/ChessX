@@ -23,7 +23,9 @@ export type ArenaOp =
   | { type: 'relocate'; from: Square; to: Square }
   | { type: 'removePiece'; square: Square }
   | { type: 'useAbility'; from: Square; to: Square; index?: number }
-  | { type: 'setMana'; color: Color; mana: number };
+  | { type: 'setMana'; color: Color; mana: number }
+  /** Sandbox stance: enter Defense (1 charge) or leave it. King cannot. */
+  | { type: 'setStance'; square: Square; stance: 'attack' | 'defense' };
 
 const MANA_MAX = 99_999;
 
@@ -184,6 +186,26 @@ export function applyArenaOp(state: GameState, op: ArenaOp): GameState {
         throw new IllegalActionError(`Mana must be 0–${MANA_MAX}.`);
       }
       next.players[op.color].mana = op.mana;
+      break;
+    }
+    case 'setStance': {
+      assertSquare(op.square);
+      const piece = pieceAt(next, op.square);
+      if (!piece) throw new IllegalActionError('No piece on that square.');
+      if (piece.kind === 'king') throw new IllegalActionError('The King cannot have Defense.');
+      if (piece.summon) throw new IllegalActionError('A piece being sacrificed cannot change stance.');
+      if (op.stance === 'defense') {
+        if (piece.defense <= 0) {
+          piece.defense = 1;
+          piece.stance = 'defense';
+          next.events.push({ type: 'defenseGranted', pieceId: piece.id, square: piece.square, amount: 1, remaining: 1 });
+          next.events.push({ type: 'stanceChanged', pieceId: piece.id, square: piece.square, stance: 'defense' });
+        }
+      } else if (piece.defense > 0) {
+        piece.defense = 0;
+        piece.stance = 'attack';
+        next.events.push({ type: 'stanceChanged', pieceId: piece.id, square: piece.square, stance: 'attack' });
+      }
       break;
     }
     default:

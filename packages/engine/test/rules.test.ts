@@ -1079,4 +1079,22 @@ describe('testing arena', () => {
     expect(g.players.white.mana).toBe(500);
     expect(() => applyArenaOp(g, { type: 'giveCard', color: 'white', cardId: 'nope' })).toThrow(IllegalActionError);
   });
+
+  it('can put a non-king into Defense and take it back out', () => {
+    let g = createArenaGame(1);
+    g = applyArenaOp(g, { type: 'spawnPiece', kind: 'stone_sentinel', color: 'white', square: s('e4') });
+    expect(pieceAt(g, s('e4'))!.defense).toBe(1);
+    g = applyArenaOp(g, { type: 'setStance', square: s('e4'), stance: 'attack' });
+    expect(pieceAt(g, s('e4'))!.defense).toBe(0);
+    expect(pieceAt(g, s('e4'))!.stance).toBe('attack');
+    g = applyArenaOp(g, { type: 'setStance', square: s('e4'), stance: 'defense' });
+    expect(pieceAt(g, s('e4'))!.defense).toBe(1);
+    expect(pieceAt(g, s('e4'))!.stance).toBe('defense');
+
+    g = applyArenaOp(g, { type: 'spawnPiece', kind: 'pawn', color: 'black', square: s('d5') });
+    g = applyArenaOp(g, { type: 'setStance', square: s('d5'), stance: 'defense' });
+    expect(pieceAt(g, s('d5'))!.defense).toBe(1);
+    g = applyArenaOp(g, { type: 'spawnPiece', kind: 'king', color: 'white', square: s('e1') });
+    expect(() => applyArenaOp(g, { type: 'setStance', square: s('e1'), stance: 'defense' })).toThrow(/King/);
+  });
 });

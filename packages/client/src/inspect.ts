@@ -159,11 +159,18 @@ export class InspectPanel {
     }
 
     const action = gameView.stanceActionFor(piece.id);
-    this.stanceBtn.textContent = 'Leave Defense';
-    this.stanceBtn.className = 'to-attack';
+    const entering = action?.stance === 'defense';
+    this.stanceBtn.textContent = entering ? 'Enter Defense' : 'Leave Defense';
+    this.stanceBtn.className = entering ? 'to-defense' : 'to-attack';
     this.stanceBtn.disabled = !action;
-    if (action) {
-      this.stanceHint.textContent = 'Drops all Defense charges. This piece skips the rest of the turn.';
+    if (action && entering) {
+      this.stanceHint.textContent = gameView.arena
+        ? 'Sandbox: gives this piece 1 Defense so you can test absorbs and leaving.'
+        : 'Puts this piece in Defense.';
+    } else if (action) {
+      this.stanceHint.textContent = gameView.arena
+        ? 'Sandbox: drops Defense. No skip in the arena.'
+        : 'Drops all Defense charges. This piece skips the rest of the turn.';
     } else if (isKing) {
       this.stanceHint.textContent = 'The King cannot have Defense.';
     } else if (piece.defense <= 0) {
