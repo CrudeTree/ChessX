@@ -511,7 +511,7 @@ function describeEffect(e: Effect, target: string): string {
     case 'scrambleBackRank':
       return `Rearrange the opponent's back rank.`;
     case 'schism':
-      return `Needs two Rooks and a King. Your Rooks become Regents that move like Kings. Your King becomes a Sovereign that moves like a Queen. You are no longer in check. If both Regents are captured, you lose.`;
+      return `Needs two Rooks and a King. Your Rooks become Regents that move like Kings. Your King becomes a Sovereign that moves like a Queen. You can no longer be in check. If both Regents are captured, you lose.`;
     case 'swap':
       return `Swap the positions of two pieces.`;
     case 'spawnPawn':

@@ -341,7 +341,7 @@ export const CATALOG: CardDef[] = [
     glyph: '👑',
     art: '/art/schism.png',
     target: 'none',
-    text: 'Needs two Rooks and a King. Your Rooks become Regents that move like Kings. Your King becomes a Sovereign that moves like a Queen. You are no longer in check. If both Regents are captured, you lose.',
+    text: 'Needs two Rooks and a King. Your Rooks become Regents that move like Kings. Your King becomes a Sovereign that moves like a Queen. You can no longer be in check. If both Regents are captured, you lose.',
     effects: [{ kind: 'schism' }],
   },
   {
