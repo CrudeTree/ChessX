@@ -709,6 +709,12 @@ describe('balance patches', () => {
     expect(validateBalance({ cards: {}, pieces: {}, customCards: [wolf, zap] })).toEqual([]);
     expect(validateBalance({ cards: {}, pieces: {}, customCards: [{ ...wolf, id: 'wolf' }] })).toEqual(expect.arrayContaining([expect.stringMatching(/bad id|kind must match/)]));
     expect(validateBalance({ cards: {}, pieces: {}, customCards: [{ ...wolf, art: 'https://evil.example/x.png' }] })).toEqual([expect.stringMatching(/card image/)]);
+    expect(validateBalance({ cards: {}, pieces: {}, customCards: [{ ...wolf, boardArtZoom: 3 }] })).toEqual(
+      expect.arrayContaining([expect.stringMatching(/board zoom/)]),
+    );
+
+    applyBalance({ cards: {}, pieces: {}, customCards: [{ ...wolf, boardArtZoom: 1.5 }, zap] });
+    expect(getCardDef('custom_wolf').boardArtZoom).toBe(1.5);
 
     applyBalance({ cards: {}, pieces: {}, customCards: [wolf, zap] });
     expect(getCardDef('custom_wolf').name).toBe('Dire Wolf');

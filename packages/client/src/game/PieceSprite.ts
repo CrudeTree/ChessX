@@ -1,4 +1,4 @@
-import { allCards, getPieceDef, STANDARD_PIECES, type Piece } from '@chessx/engine';
+import { allCards, clampBoardArtZoom, getPieceDef, STANDARD_PIECES, type Piece } from '@chessx/engine';
 import { Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
 import { artTextures } from './art.js';
 import { CHESS_FONT, COLORS, EMOJI_FONT, SQ, UI_FONT } from './layout.js';
@@ -6,8 +6,12 @@ import { CHESS_FONT, COLORS, EMOJI_FONT, SQ, UI_FONT } from './layout.js';
 const isStandard = (kind: string) => kind in STANDARD_PIECES;
 
 /** The board sprite for a summoned creature: its own board picture if it has one, else the card art. */
+function summonCard(kind: string) {
+  return allCards().find((c) => c.type === 'summon' && c.piece.kind === kind);
+}
+
 function artFor(kind: string): Texture | undefined {
-  const card = allCards().find((c) => c.type === 'summon' && c.piece.kind === kind);
+  const card = summonCard(kind);
   const url = card?.boardArt ?? card?.art;
   return url ? artTextures.get(url) : undefined;
 }
@@ -63,11 +67,14 @@ export class PieceSprite extends Container {
       this.art.anchor.set(0.5);
       // The art has ~10% empty margin inside its frame, so a little over a square
       // reads as square-sized; lifted so it stands on the plinth above the badges.
-      const size = SQ * 1.12;
+      // boardArtZoom crops in (closer) or shows more of the picture (further).
+      const size = SQ * 1.12 * clampBoardArtZoom(summonCard(piece.kind)?.boardArtZoom);
       this.art.scale.set((size / tex.height) * (piece.owner === 'black' ? -1 : 1), size / tex.height);
       this.art.y = -8 * k;
       this.glyph.visible = false;
-      this.addChild(this.art);
+      const mask = new Graphics().roundRect(-SQ / 2 + 2, -SQ / 2 + 2, SQ - 4, SQ - 4, 8).fill(0xffffff);
+      this.art.mask = mask;
+      this.addChild(mask, this.art);
     }
     this.addChild(this.badges);
 

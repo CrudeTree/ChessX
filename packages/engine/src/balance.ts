@@ -5,7 +5,7 @@
 // keeps following the code.
 
 import { allCards, baseCardDef, hasCard, setCardDef, setCustomCards } from './cards/registry.js';
-import type { CardDef, Effect, TargetRule } from './cards/types.js';
+import { BOARD_ART_ZOOM_MAX, BOARD_ART_ZOOM_MIN, type CardDef, type Effect, type TargetRule } from './cards/types.js';
 import { basePieceDef, getPieceDef, hasPieceDef, setPieceDef, STANDARD_KINDS } from './pieces.js';
 import { BASE_RULES, DEFAULT_RULES, type GameState } from './state.js';
 import type { AbilityTarget, Color, MovementSpec, PieceAbility, PieceDef } from './types.js';
@@ -36,6 +36,8 @@ export interface CardPatch {
   art?: string;
   /** Replacement board sprite for the creature (an uploaded image URL). */
   boardArt?: string;
+  /** How large the creature looks on the board (0.5–2, default 1). */
+  boardArtZoom?: number;
 }
 
 /** Game-wide numbers (apply to games created after the change). */
@@ -106,6 +108,7 @@ export function patchedCard(id: string, patch: CardPatch | undefined): CardDef {
     if (patch?.summonTurns !== undefined) card.summonTurns = patch.summonTurns;
     if (patch?.art !== undefined) card.art = patch.art;
     if (patch?.boardArt !== undefined) card.boardArt = patch.boardArt;
+    if (patch?.boardArtZoom !== undefined) card.boardArtZoom = patch.boardArtZoom;
     // Hand-written text stays until the numbers change; then it is regenerated (unless set explicitly).
     card.text = patch?.text ?? (numbersChanged(patch) ? describeCard(card) : base.text);
     return card;
@@ -121,7 +124,7 @@ export function patchedCard(id: string, patch: CardPatch | undefined): CardDef {
 /** Did the patch touch anything the rules text describes? (Pictures and cost do not.) */
 function numbersChanged(patch: CardPatch | undefined): boolean {
   if (!patch) return false;
-  return Object.keys(patch).some((k) => k !== 'art' && k !== 'boardArt' && k !== 'text' && k !== 'cost');
+  return Object.keys(patch).some((k) => k !== 'art' && k !== 'boardArt' && k !== 'boardArtZoom' && k !== 'text' && k !== 'cost');
 }
 
 /**
@@ -265,6 +268,7 @@ function validateEffects(effects: unknown, where: string, problems: string[]): v
 const TARGET_RULES: TargetRule[] = ['none', 'ownPiece', 'enemyPiece', 'anyPiece', 'ownSummoning', 'ownDefending'];
 const GIVES: CardGive[] = ['everyone', 'reward', 'none'];
 const artOk = (u: unknown) => typeof u === 'string' && ART_URL.test(u);
+const zoomOk = (z: unknown) => typeof z === 'number' && Number.isFinite(z) && z >= BOARD_ART_ZOOM_MIN && z <= BOARD_ART_ZOOM_MAX;
 
 /** Check an admin-created card is complete and sane. */
 function validateCustomCard(c: unknown, problems: string[]): void {
@@ -277,6 +281,7 @@ function validateCustomCard(c: unknown, problems: string[]): void {
   if (typeof card.text !== 'string' || card.text.length > 300) problems.push(`${where}: text must be 0–300 characters.`);
   if (card.art !== undefined && !artOk(card.art)) problems.push(`${where}: card image must be an uploaded image.`);
   if (card.boardArt !== undefined && !artOk(card.boardArt)) problems.push(`${where}: board sprite must be an uploaded image.`);
+  if (card.boardArtZoom !== undefined && !zoomOk(card.boardArtZoom)) problems.push(`${where}: board zoom must be ${BOARD_ART_ZOOM_MIN}–${BOARD_ART_ZOOM_MAX}.`);
   if (!isInt(card.cost, 0, 9999)) problems.push(`${where}: cost must be 0–9999.`);
   if (!GIVES.includes(card.give)) problems.push(`${where}: choose who receives the card.`);
   if (card.type === 'summon') {
@@ -333,6 +338,7 @@ export function validateBalance(b: unknown): string[] {
     if (patch.text !== undefined && (typeof patch.text !== 'string' || patch.text.length > 300)) problems.push(`${where}: text too long.`);
     if (patch.art !== undefined && !artOk(patch.art)) problems.push(`${where}: card image must be an uploaded image.`);
     if (patch.boardArt !== undefined && !artOk(patch.boardArt)) problems.push(`${where}: board sprite must be an uploaded image.`);
+    if (patch.boardArtZoom !== undefined && !zoomOk(patch.boardArtZoom)) problems.push(`${where}: board zoom must be ${BOARD_ART_ZOOM_MIN}–${BOARD_ART_ZOOM_MAX}.`);
     if (base.type === 'summon') {
       if (patch.tier !== undefined && !isInt(patch.tier, 1, 6)) problems.push(`${where}: tier must be 1–6.`);
       if (patch.sacrificeTier !== undefined && !isInt(patch.sacrificeTier, 1, 4)) problems.push(`${where}: sacrifice tier must be 1–4 (nothing above the Queen can be sacrificed).`);

@@ -9,6 +9,10 @@ import {
   BASE_RULES,
   baseCardDef,
   basePieceDef,
+  BOARD_ART_ZOOM_DEFAULT,
+  BOARD_ART_ZOOM_MAX,
+  BOARD_ART_ZOOM_MIN,
+  clampBoardArtZoom,
   cloneMovement,
   currentBalance,
   describeAbility,
@@ -349,6 +353,59 @@ export class BalanceEditor {
       row.append(clear);
     }
     col.append(row, knock);
+    wrap.append(preview, col);
+    return wrap;
+  }
+
+  /** Slider that crops the board sprite in (closer) or out (further). */
+  private artZoomField(
+    url: string | undefined,
+    value: number | undefined,
+    def: number | undefined,
+    set: (v: number | undefined) => void,
+  ): HTMLElement {
+    const fallback = def ?? BOARD_ART_ZOOM_DEFAULT;
+    const live = clampBoardArtZoom(value ?? fallback);
+    const wrap = document.createElement('div');
+    wrap.className = `ezoom ${value !== undefined ? 'changed' : ''}`;
+    const preview = document.createElement('div');
+    preview.className = 'ezoom-preview';
+    preview.style.setProperty('--art-zoom', String(live));
+    preview.innerHTML = url
+      ? `<img src="${esc(url)}" alt="" draggable="false">`
+      : '<span class="muted">—</span>';
+    const col = document.createElement('div');
+    col.className = 'ezoom-col';
+    const label = document.createElement('div');
+    label.className = 'el';
+    const pct = document.createElement('strong');
+    const setPct = (z: number) => {
+      pct.textContent = z === BOARD_ART_ZOOM_DEFAULT ? '100% (default)' : `${Math.round(z * 100)}%`;
+    };
+    setPct(live);
+    label.append('Board zoom', document.createElement('small'));
+    label.lastElementChild!.textContent = 'Closer crops in on the creature; further shows more of the picture.';
+    const row = document.createElement('div');
+    row.className = 'ezoom-row';
+    const far = document.createElement('span');
+    far.textContent = 'Further';
+    const near = document.createElement('span');
+    near.textContent = 'Closer';
+    const input = document.createElement('input');
+    input.type = 'range';
+    input.min = String(Math.round(BOARD_ART_ZOOM_MIN * 100));
+    input.max = String(Math.round(BOARD_ART_ZOOM_MAX * 100));
+    input.step = '5';
+    input.value = String(Math.round(live * 100));
+    input.oninput = () => {
+      const z = clampBoardArtZoom(Number(input.value) / 100);
+      preview.style.setProperty('--art-zoom', String(z));
+      setPct(z);
+      set(z === fallback ? undefined : z);
+      this.refreshQuiet();
+    };
+    row.append(far, input, near);
+    col.append(label, row, pct);
     wrap.append(preview, col);
     return wrap;
   }
@@ -722,6 +779,14 @@ export class BalanceEditor {
       images.appendChild(
         this.imageField('Board sprite', 'the piece on the board; uses the card image unless set', live.type === 'summon' ? live.boardArt ?? live.art : undefined, base.boardArt ?? base.art, (u) => setC('boardArt')(u)),
       );
+      images.appendChild(
+        this.artZoomField(
+          live.type === 'summon' ? live.boardArt ?? live.art : undefined,
+          patch.boardArtZoom,
+          base.boardArtZoom,
+          setC('boardArtZoom'),
+        ),
+      );
     }
 
     if (base.type === 'summon') {
@@ -890,6 +955,12 @@ export class BalanceEditor {
     images.appendChild(this.imageField('Card image', 'shown on the card in hand, the binder and the inspector', card.art, undefined, (u) => (card.art = u)));
     if (card.type === 'summon') {
       images.appendChild(this.imageField('Board sprite', 'the piece on the board; uses the card image unless set', card.boardArt ?? card.art, card.art, (u) => (card.boardArt = u)));
+      images.appendChild(
+        this.artZoomField(card.boardArt ?? card.art, card.boardArtZoom, BOARD_ART_ZOOM_DEFAULT, (v) => {
+          if (v === undefined) delete card.boardArtZoom;
+          else card.boardArtZoom = v;
+        }),
+      );
     }
 
     if (card.type === 'summon') {

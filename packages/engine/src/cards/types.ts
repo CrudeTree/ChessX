@@ -48,6 +48,20 @@ interface CardBase {
   art?: string;
   /** Optional separate picture for the piece on the board (summons). Defaults to `art`. */
   boardArt?: string;
+  /**
+   * How large the creature looks on the board. 1 is the default; above 1
+   * crops in (closer), below 1 shows more of the picture (further).
+   */
+  boardArtZoom?: number;
+}
+
+export const BOARD_ART_ZOOM_DEFAULT = 1;
+export const BOARD_ART_ZOOM_MIN = 0.5;
+export const BOARD_ART_ZOOM_MAX = 2;
+
+export function clampBoardArtZoom(z: number | undefined): number {
+  if (typeof z !== 'number' || !Number.isFinite(z)) return BOARD_ART_ZOOM_DEFAULT;
+  return Math.min(BOARD_ART_ZOOM_MAX, Math.max(BOARD_ART_ZOOM_MIN, Math.round(z * 20) / 20));
 }
 
 export interface SummonCardDef extends CardBase {
