@@ -20,6 +20,7 @@ import {
   legalMoves,
   parseSquare as s,
   pieceAt,
+  previewMoves,
   pruneUnknownCards,
   rebasePieces,
   REWARD_CARDS,
@@ -907,6 +908,13 @@ describe('stance', () => {
 });
 
 describe('testing arena', () => {
+  it('previewMoves lists the same destinations a knight has in a real game', () => {
+    let g = createArenaGame(1);
+    g = applyArenaOp(g, { type: 'spawnPiece', kind: 'knight', color: 'white', square: s('e4') });
+    const dests = previewMoves(g, pieceAt(g, s('e4'))!).map((c) => c.to).sort((a, b) => a - b);
+    expect(dests).toEqual([s('d6'), s('f6'), s('c5'), s('g5'), s('c3'), s('g3'), s('d2'), s('f2')].sort((a, b) => a - b));
+  });
+
   it('starts on an empty board with empty hands', () => {
     const g = createArenaGame(1);
     expect(Object.keys(g.pieces)).toHaveLength(0);

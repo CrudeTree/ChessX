@@ -32,6 +32,17 @@ export function canAct(piece: Piece): boolean {
   return !piece.summon && piece.stance !== 'defense';
 }
 
+/** Board slice `pseudoMoves` needs. Used by the arena overlay. */
+export type ReachBoard = Pick<GameState, 'board' | 'pieces' | 'enPassant'>;
+
+/**
+ * Squares this piece can reach from here, ignoring check, turn, and stance/summon
+ * locks. The arena uses this so a selected unit shows the same dots as a real game.
+ */
+export function previewMoves(state: ReachBoard, piece: Piece): MoveCandidate[] {
+  return pseudoMoves(state as GameState, { ...piece, summon: undefined, stance: 'attack' });
+}
+
 export function pseudoMoves(state: GameState, piece: Piece, attacksOnly = false): MoveCandidate[] {
   const out: MoveCandidate[] = [];
   if (!canAct(piece)) return out;

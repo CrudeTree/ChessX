@@ -1,4 +1,4 @@
-import { canAct, getCardDef, opposite, type Action, type ArenaOp, type Color, type GameEvent, type Piece, type PlayerView, type Square } from '@chessx/engine';
+import { canAct, getCardDef, opposite, previewMoves, type Action, type ArenaOp, type Color, type GameEvent, type Piece, type PlayerView, type Square } from '@chessx/engine';
 import { Application, Container, Graphics, Text, type FederatedPointerEvent } from 'pixi.js';
 import { preloadArt } from './art.js';
 import { CardSprite } from './CardSprite.js';
@@ -1068,6 +1068,17 @@ export class GameView {
   private moveTargetsFrom(square: Square): Targets {
     const bySquare = new Map<Square, Action>();
     if (!this.view) return { bySquare, anywhere: null };
+    if (this.arena) {
+      const piece = Object.values(this.view.pieces).find((p) => p.square === square);
+      if (!piece) return { bySquare, anywhere: null };
+      for (const cand of previewMoves(this.view, piece)) {
+        const existing = bySquare.get(cand.to) as MoveAction | undefined;
+        if (!existing || cand.promotion) {
+          bySquare.set(cand.to, { type: 'move', from: cand.from, to: cand.to, promotion: cand.promotion ? 'queen' : undefined });
+        }
+      }
+      return { bySquare, anywhere: null };
+    }
     for (const a of this.view.legalActions) {
       if (a.type === 'move' && a.from === square) {
         const existing = bySquare.get(a.to) as MoveAction | undefined;
@@ -1209,7 +1220,7 @@ export class GameView {
     if (!d) return;
     if (Math.hypot(e.global.x - d.startX, e.global.y - d.startY) > 4) d.moved = true;
     d.sprite.position.set(e.global.x, e.global.y);
-    if (this.arena) this.previewDrop(this.dropTargetLocal(e.global.x, e.global.y));
+    if (this.arena && d.kind !== 'piece') this.previewDrop(this.dropTargetLocal(e.global.x, e.global.y));
   }
 
   private onPointerUp(e: FederatedPointerEvent): void {
@@ -1236,6 +1247,12 @@ export class GameView {
       const home = squareToXY(d.from, this.flipped);
       if (action) {
         this.highlightLayer.removeChildren();
+        if (this.arena) {
+          const dest = squareToXY(square!, this.flipped);
+          d.sprite.position.set(dest.x, dest.y);
+          this.onArena({ type: 'relocate', from: d.from, to: square! });
+          return;
+        }
         if (action.type === 'useAbility') {
           // The piece stays put; the ability lands on the neighbour.
           d.sprite.position.set(home.x, home.y);
