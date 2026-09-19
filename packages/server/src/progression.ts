@@ -6,7 +6,7 @@
 //  - Every checkmate (or king capture) rolls a reward: a new card you don't own
 //    yet, or a spare copy of a card you already have.
 
-import { customCardsGiven, DEFAULT_RULES, hasCard, REWARD_CARDS, STARTER_CARDS, starterDeck, validateDeck } from '@chessx/engine';
+import { customCardsGiven, DEFAULT_RULES, hasCard, RETIRED_CARDS, REWARD_CARDS, STARTER_CARDS, starterDeck, validateDeck } from '@chessx/engine';
 import { DECK_SLOTS, levelFor, XP_PER_MATCH, XP_PER_WIN, type CollectionEntry, type DeckInfo, type Profile, type RewardReport } from '@chessx/protocol';
 import { toUserInfo } from './auth.js';
 import type { Db, UserRow } from './db.js';
@@ -15,6 +15,30 @@ export class ProgressionError extends Error {}
 
 export class Progression {
   constructor(private db: Db) {}
+
+  /** Strip retired cards from every collection and pad short decks with owned starters. */
+  purgeRetiredCards(): void {
+    for (const id of RETIRED_CARDS) this.db.removeCardEverywhere(id);
+    const min = DEFAULT_RULES.deckMin;
+    for (const row of this.db.allDecks()) {
+      const cards = (JSON.parse(row.cards_json) as string[]).filter((id) => hasCard(id));
+      if (!cards.length) continue;
+      if (cards.length < min) {
+        const owned = new Map(this.db.collectionFor(row.user_id).map((r) => [r.card_id, r.count]));
+        const used = new Map<string, number>();
+        for (const id of cards) used.set(id, (used.get(id) ?? 0) + 1);
+        for (const id of STARTER_CARDS) {
+          while (cards.length < min) {
+            const have = (owned.get(id) ?? 0) - (used.get(id) ?? 0);
+            if (have <= 0) break;
+            cards.push(id);
+            used.set(id, (used.get(id) ?? 0) + 1);
+          }
+        }
+      }
+      if (JSON.stringify(cards) !== row.cards_json) this.db.saveDeck(row.user_id, row.slot, row.name, cards);
+    }
+  }
 
   /** Give a fresh account its starter collection and Deck 1 (idempotent), plus any admin-created cards meant for everyone. */
   ensureStarter(userId: string): void {

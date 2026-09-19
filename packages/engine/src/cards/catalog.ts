@@ -25,16 +25,13 @@ export const CATALOG: CardDef[] = [
     art: '/art/the_ox.png',
     tier: 2,
     summonTurns: 3,
-    text: 'Sacrifice a Tier 1 piece. Summons in 3 turns. Moves up to 2 squares orthogonally. 2 ATK / 0 DEF / 2 HP.',
+    text: 'Sacrifice a Tier 1 piece. Summons in 3 turns. Moves up to 2 squares orthogonally.',
     piece: {
       kind: 'the_ox',
       name: 'The Ox',
       glyph: '🐂',
       tier: 2,
       movement: { slides: [{ dirs: DIRS.ORTHOGONAL, range: 2 }] },
-      atk: 2,
-      def: 0,
-      hp: 2,
     },
   },
   {
@@ -46,16 +43,14 @@ export const CATALOG: CardDef[] = [
     art: '/art/stone_sentinel.png',
     tier: 2,
     summonTurns: 2,
-    text: 'Sacrifice a Tier 1 piece. Summons in 2 turns. Moves 1 square in any direction. 1 ATK / 1 DEF / 3 HP.',
+    text: 'Sacrifice a Tier 1 piece. Summons in 2 turns. Moves 1 square in any direction. Starts in Defense.',
     piece: {
       kind: 'stone_sentinel',
       name: 'Stone Sentinel',
       glyph: '🗿',
       tier: 2,
       movement: { leaps: DIRS.ALL },
-      atk: 1,
-      def: 1,
-      hp: 3,
+      defense: 1,
     },
   },
   {
@@ -67,16 +62,13 @@ export const CATALOG: CardDef[] = [
     art: '/art/war_chariot.png',
     tier: 3,
     summonTurns: 3,
-    text: 'Sacrifice a Tier 2 piece. Summons in 3 turns. Moves like a Rook or a Knight. 2 ATK / 0 DEF / 2 HP.',
+    text: 'Sacrifice a Tier 2 piece. Summons in 3 turns. Moves like a Rook or a Knight.',
     piece: {
       kind: 'war_chariot',
       name: 'War Chariot',
       glyph: '🏇',
       tier: 3,
       movement: { leaps: DIRS.KNIGHT, slides: [{ dirs: DIRS.ORTHOGONAL }] },
-      atk: 2,
-      def: 0,
-      hp: 2,
     },
   },
   {
@@ -89,52 +81,17 @@ export const CATALOG: CardDef[] = [
     tier: 4,
     sacrificeTier: 4,
     summonTurns: 4,
-    text: 'Sacrifice a Tier 4 piece. Summons in 4 turns. Moves up to 3 squares in any direction. 3 ATK / 1 DEF / 3 HP.',
+    text: 'Sacrifice a Tier 4 piece. Summons in 4 turns. Moves up to 3 squares in any direction.',
     piece: {
       kind: 'elder_wyrm',
       name: 'Elder Wyrm',
       glyph: '🐉',
       tier: 4,
       movement: { slides: [{ dirs: DIRS.ALL, range: 3 }] },
-      atk: 3,
-      def: 1,
-      hp: 3,
     },
   },
 
   // ========================================================= STARTER SPELLS
-  {
-    id: 'iron_hide',
-    type: 'spell',
-    cost: 150,
-    name: 'Iron Hide',
-    glyph: '🥩',
-    target: 'ownPiece',
-    text: 'Target friendly piece gains +2 HP.',
-    effects: [{ kind: 'modifyStats', hp: 2 }],
-  },
-  {
-    id: 'whetstone',
-    type: 'spell',
-    cost: 150,
-    name: 'Whetstone',
-    glyph: '⚔️',
-    art: '/art/whetstone.png',
-    target: 'ownPiece',
-    allowKing: true,
-    text: 'Target friendly piece gains +1 ATK.',
-    effects: [{ kind: 'modifyStats', atk: 1 }],
-  },
-  {
-    id: 'shield_wall',
-    type: 'spell',
-    cost: 150,
-    name: 'Shield Wall',
-    glyph: '🛡️',
-    target: 'ownPiece',
-    text: 'Target friendly piece gains +1 DEF.',
-    effects: [{ kind: 'modifyStats', def: 1 }],
-  },
   {
     id: 'foresight',
     type: 'spell',
@@ -155,8 +112,8 @@ export const CATALOG: CardDef[] = [
     art: '/art/hex.png',
     target: 'enemyPiece',
     targetTier: 1,
-    text: 'Deal 1 damage to target enemy Tier 1 piece.',
-    effects: [{ kind: 'damage', amount: 1 }],
+    text: 'Destroy target enemy Tier 1 piece.',
+    effects: [{ kind: 'destroy' }],
   },
   {
     id: 'dark_ritual',
@@ -180,16 +137,13 @@ export const CATALOG: CardDef[] = [
     art: '/art/thornback_boar.png',
     tier: 2,
     summonTurns: 2,
-    text: 'Sacrifice a Tier 1 piece. Summons in 2 turns. Charges up to 2 squares forward or 1 square sideways. 2 ATK / 0 DEF / 1 HP.',
+    text: 'Sacrifice a Tier 1 piece. Summons in 2 turns. Charges up to 2 squares forward or 1 square sideways.',
     piece: {
       kind: 'thornback_boar',
       name: 'Thornback Boar',
       glyph: '🐗',
       tier: 2,
       movement: { slides: [{ dirs: FORWARD, range: 2 }], leaps: SIDEWAYS, relative: true },
-      atk: 2,
-      def: 0,
-      hp: 1,
     },
   },
   {
@@ -201,16 +155,13 @@ export const CATALOG: CardDef[] = [
     art: '/art/frost_owl.png',
     tier: 2,
     summonTurns: 2,
-    text: 'Sacrifice a Tier 1 piece. Summons in 2 turns. Moves like a Knight or 1 square diagonally. 1 ATK / 0 DEF / 2 HP.',
+    text: 'Sacrifice a Tier 1 piece. Summons in 2 turns. Moves like a Knight or 1 square diagonally.',
     piece: {
       kind: 'frost_owl',
       name: 'Frost Owl',
       glyph: '🦉',
       tier: 2,
       movement: { leaps: [...DIRS.KNIGHT, ...DIRS.DIAGONAL] },
-      atk: 1,
-      def: 0,
-      hp: 2,
     },
   },
   {
@@ -222,16 +173,14 @@ export const CATALOG: CardDef[] = [
     art: '/art/iron_golem.png',
     tier: 3,
     summonTurns: 3,
-    text: 'Sacrifice a Tier 2 piece. Summons in 3 turns. Moves 1 square orthogonally. 2 ATK / 2 DEF / 3 HP.',
+    text: 'Sacrifice a Tier 2 piece. Summons in 3 turns. Moves 1 square orthogonally. Starts in Defense.',
     piece: {
       kind: 'iron_golem',
       name: 'Iron Golem',
       glyph: '🤖',
       tier: 3,
       movement: { leaps: DIRS.ORTHOGONAL },
-      atk: 2,
-      def: 2,
-      hp: 3,
+      defense: 1,
     },
   },
   {
@@ -243,16 +192,13 @@ export const CATALOG: CardDef[] = [
     art: '/art/shadow_panther.png',
     tier: 3,
     summonTurns: 2,
-    text: 'Sacrifice a Tier 2 piece. Summons in 2 turns. Slides up to 3 squares diagonally or 1 square orthogonally. 3 ATK / 0 DEF / 1 HP.',
+    text: 'Sacrifice a Tier 2 piece. Summons in 2 turns. Slides up to 3 squares diagonally or 1 square orthogonally.',
     piece: {
       kind: 'shadow_panther',
       name: 'Shadow Panther',
       glyph: '🐆',
       tier: 3,
       movement: { slides: [{ dirs: DIRS.DIAGONAL, range: 3 }], leaps: DIRS.ORTHOGONAL },
-      atk: 3,
-      def: 0,
-      hp: 1,
     },
   },
   {
@@ -264,16 +210,14 @@ export const CATALOG: CardDef[] = [
     art: '/art/ancient_treant.png',
     tier: 3,
     summonTurns: 3,
-    text: 'Sacrifice a Tier 2 piece. Summons in 3 turns. Moves 1 square in any direction. 1 ATK / 3 DEF / 4 HP.',
+    text: 'Sacrifice a Tier 2 piece. Summons in 3 turns. Moves 1 square in any direction. Starts in Defense.',
     piece: {
       kind: 'ancient_treant',
       name: 'Ancient Treant',
       glyph: '🌳',
       tier: 3,
       movement: { leaps: DIRS.ALL },
-      atk: 1,
-      def: 3,
-      hp: 4,
+      defense: 1,
     },
   },
   {
@@ -285,41 +229,17 @@ export const CATALOG: CardDef[] = [
     art: '/art/storm_drake.png',
     tier: 4,
     summonTurns: 4,
-    text: 'Sacrifice a Tier 3 piece. Summons in 4 turns. Moves like a Knight or up to 2 squares orthogonally. 3 ATK / 0 DEF / 2 HP.',
+    text: 'Sacrifice a Tier 3 piece. Summons in 4 turns. Moves like a Knight or up to 2 squares orthogonally.',
     piece: {
       kind: 'storm_drake',
       name: 'Storm Drake',
       glyph: '🐲',
       tier: 4,
       movement: { leaps: DIRS.KNIGHT, slides: [{ dirs: DIRS.ORTHOGONAL, range: 2 }] },
-      atk: 3,
-      def: 0,
-      hp: 2,
     },
   },
 
   // ========================================================== REWARD SPELLS
-  {
-    id: 'battle_cry',
-    type: 'spell',
-    cost: 300,
-    name: 'Battle Cry',
-    glyph: '📣',
-    art: '/art/battle_cry.png',
-    target: 'none',
-    text: 'All your Pawns gain +1 ATK.',
-    effects: [{ kind: 'modifyStatsAll', pieceKind: 'pawn', atk: 1 }],
-  },
-  {
-    id: 'second_wind',
-    type: 'spell',
-    cost: 175,
-    name: 'Second Wind',
-    glyph: '💨',
-    target: 'ownPiece',
-    text: 'Target friendly piece fully restores its HP and DEF shield.',
-    effects: [{ kind: 'restore' }],
-  },
   {
     id: 'battle_trance',
     type: 'spell',
@@ -331,31 +251,31 @@ export const CATALOG: CardDef[] = [
     text: 'Target friendly piece in Defense mode switches to Attack mode and may still act this turn.',
     effects: [{ kind: 'freeStance' }],
   },
-  {
-    id: 'smite',
-    type: 'spell',
-    cost: 250,
-    name: 'Smite',
-    glyph: '⚡',
-    target: 'enemyPiece',
-    text: 'Deal 2 damage to target enemy piece (not the King).',
-    effects: [{ kind: 'damage', amount: 2 }],
-  },
 ];
 
 registerCards(CATALOG);
 
+/** Stat-only cards removed from the game. Purged from collections on deploy. */
+export const RETIRED_CARDS: readonly string[] = [
+  'iron_hide',
+  'whetstone',
+  'shield_wall',
+  'battle_cry',
+  'second_wind',
+  'smite',
+];
+
 export const STARTER_CARDS: string[] = [
   'the_ox', 'stone_sentinel', 'war_chariot', 'elder_wyrm',
-  'iron_hide', 'whetstone', 'shield_wall', 'foresight', 'hex', 'dark_ritual',
+  'foresight', 'hex', 'dark_ritual',
 ];
 
 export const REWARD_CARDS: string[] = [
   'thornback_boar', 'frost_owl', 'iron_golem', 'shadow_panther', 'ancient_treant', 'storm_drake',
-  'battle_cry', 'second_wind', 'battle_trance', 'smite',
+  'battle_trance',
 ];
 
-/** The 30-card deck every new player starts with: 3 copies of each starter card. */
+/** The deck every new player starts with: 3 copies of each starter card. */
 export function starterDeck(): string[] {
   const deck: string[] = [];
   for (const id of STARTER_CARDS) for (let i = 0; i < 3; i++) deck.push(id);

@@ -129,29 +129,19 @@ export class PieceSprite extends Container {
       }
     }
 
-    // Stat badges: only shown when a stat is non-default so the board stays readable.
+    // Defense count when stacked above 1 (a single charge is the shield frame).
     this.badges.removeChildren();
-    const isKing = piece.kind === 'king';
-    const showAtk = piece.atk !== 1 || !standard;
-    const showHp = !isKing && (piece.maxHp !== 1 || !standard);
-    const showDef = piece.maxDef > 0;
-    const items: { color: number; text: string }[] = [];
-    if (showAtk) items.push({ color: COLORS.atk, text: `${piece.atk}` });
-    if (showDef) items.push({ color: COLORS.def, text: piece.def === piece.maxDef ? `${piece.def}` : `${piece.def}/${piece.maxDef}` });
-    if (showHp) items.push({ color: COLORS.hp, text: piece.hp === piece.maxHp ? `${piece.hp}` : `${piece.hp}/${piece.maxHp}` });
-    const bh = Math.max(12, 16 * k);
-    const gap = bh + 6;
-    const startX = -((items.length - 1) * gap) / 2;
-    items.forEach((it, i) => {
+    if (piece.defense > 1) {
+      const bh = Math.max(12, 16 * k);
+      const w = 26 * Math.max(0.75, k);
       const b = new Container();
-      const w = (it.text.length > 1 ? 26 : 20) * Math.max(0.75, k);
-      b.addChild(new Graphics().roundRect(-w / 2, -bh / 2, w, bh, bh / 2.6).fill(it.color).stroke({ width: 1.5, color: 0x111111, alpha: 0.7 }));
-      const t = new Text({ text: it.text, style: { fontFamily: UI_FONT, fontSize: Math.max(9, Math.round(11 * k)), fontWeight: '800', fill: 0xffffff } });
+      b.addChild(new Graphics().roundRect(-w / 2, -bh / 2, w, bh, bh / 2.6).fill(COLORS.def).stroke({ width: 1.5, color: 0x111111, alpha: 0.7 }));
+      const t = new Text({ text: `${piece.defense}`, style: { fontFamily: UI_FONT, fontSize: Math.max(9, Math.round(11 * k)), fontWeight: '800', fill: 0xffffff } });
       t.anchor.set(0.5);
       b.addChild(t);
-      b.position.set(startX + i * gap, SQ / 2 - bh / 2 - 4 * k);
+      b.position.set(0, SQ / 2 - bh / 2 - 4 * k);
       this.badges.addChild(b);
-    });
+    }
 
     // Summon timer.
     if (piece.summon) {

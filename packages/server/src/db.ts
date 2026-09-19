@@ -412,6 +412,10 @@ export class Db {
     return this.db.prepare('SELECT * FROM decks WHERE user_id = ? ORDER BY slot').all(userId) as unknown as DeckRow[];
   }
 
+  allDecks(): DeckRow[] {
+    return this.db.prepare('SELECT * FROM decks').all() as unknown as DeckRow[];
+  }
+
   /** An admin-created card was deleted: take it out of every collection and deck. */
   removeCardEverywhere(cardId: string): void {
     this.db.prepare('DELETE FROM collection WHERE card_id = ?').run(cardId);

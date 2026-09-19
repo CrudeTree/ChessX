@@ -77,7 +77,7 @@ export function legalActions(state: GameState, color: Color = state.turn): Actio
 
   for (const piece of piecesOf(state, color)) {
     if (canChangeStance(piece) && !frozen.has(piece.id)) {
-      out.push({ type: 'setStance', square: piece.square, stance: piece.stance === 'attack' ? 'defense' : 'attack' });
+      out.push({ type: 'setStance', square: piece.square, stance: 'attack' });
     }
   }
 
@@ -192,9 +192,9 @@ function isFrozenThisTurn(state: GameState, square: Square): boolean {
   return !!id && state.turnInfo.stanceChanged.includes(id);
 }
 
-/** Kings have no HP so Defense mode is meaningless for them; sacrifices are frozen. */
+/** Only a piece that currently has Defense charges can leave Defense. */
 export function canChangeStance(piece: Piece): boolean {
-  return piece.kind !== 'king' && !piece.summon;
+  return piece.kind !== 'king' && !piece.summon && piece.defense > 0;
 }
 
 /** Squares a card may target (or [undefined] for untargeted cards). Empty if unplayable. */
@@ -227,7 +227,7 @@ function matchesTarget(p: Piece, rule: TargetRule, color: Color, allowKing: bool
     case 'ownSummoning':
       return p.owner === color && !!p.summon;
     case 'ownDefending':
-      return p.owner === color && p.stance === 'defense' && !p.summon;
+      return p.owner === color && p.defense > 0 && !p.summon;
   }
 }
 
@@ -274,20 +274,16 @@ function performAction(state: GameState, action: Action, color: Color): void {
 }
 
 /**
- * Switching stance is free (any number per turn), but the piece is frozen for
- * the rest of the turn. A piece in Defense mode cannot move or attack until it
- * is switched back to Attack mode.
+ * Leave Defense: drop all charges. The piece skips the rest of this turn
+ * (and cannot re-enter Defense except by a grant).
  */
 function performStance(state: GameState, action: Extract<Action, { type: 'setStance' }>, color: Color): void {
   const piece = pieceAt(state, action.square);
   if (!piece) throw new IllegalActionError(`No piece on ${squareName(action.square)}.`);
   if (piece.owner !== color) throw new IllegalActionError('That is not your piece.');
-  if (!canChangeStance(piece)) throw new IllegalActionError(`${getPieceDef(piece.kind).name} cannot change stance.`);
-  if (piece.stance === action.stance) throw new IllegalActionError(`Already in ${action.stance} mode.`);
-
-  piece.stance = action.stance;
-  state.turnInfo.stanceChanged.push(piece.id);
-  state.events.push({ type: 'stanceChanged', pieceId: piece.id, square: piece.square, stance: piece.stance });
+  if (!canChangeStance(piece)) throw new IllegalActionError(`${getPieceDef(piece.kind).name} cannot leave Defense.`);
+  if (action.stance !== 'attack') throw new IllegalActionError('Pieces cannot enter Defense on their own.');
+  leaveDefense(state, piece, true);
 }
 
 function performMove(state: GameState, action: Extract<Action, { type: 'move' }>, color: Color): void {
@@ -328,10 +324,8 @@ function performMove(state: GameState, action: Extract<Action, { type: 'move' }>
 }
 
 /**
- * Combat. The attacker deals its ATK. If the defender is in Defense mode its
- * DEF shield absorbs damage first, then HP takes the rest. If HP drops to 0
- * the defender is destroyed and the attacker takes its square; otherwise the
- * attacker stays where it was. The King is the exception: any hit captures it.
+ * Combat is one hit. The King always captures. Otherwise a Defense charge
+ * absorbs the capture and the attacker bounces; no charges means the target dies.
  */
 function attack(state: GameState, attacker: Piece, target: Piece, cand: MoveCandidate): void {
   if (target.kind === 'king') {
@@ -342,58 +336,65 @@ function attack(state: GameState, attacker: Piece, target: Piece, cand: MoveCand
     return;
   }
 
-  // Royal privilege: the King's blow is always lethal, whatever the target's shield or HP.
   const execution = attacker.kind === 'king';
-  const damage = execution ? target.def + target.hp : attacker.atk;
   state.events.push({
     type: 'attacked',
     attackerId: attacker.id,
     targetId: target.id,
     from: attacker.square,
     to: target.square,
-    damage,
     execution: execution || undefined,
   });
-  const destroyed = execution ? slay(state, target) : dealDamage(state, target, attacker.atk);
 
-  if (destroyed) {
-    movePiece(state, attacker, cand.to);
-    if (cand.promotion) promote(state, attacker, 'queen');
-  } else {
+  if (!execution && target.defense > 0) {
+    absorbDefense(state, target);
     state.events.push({ type: 'repelled', pieceId: attacker.id, square: attacker.square });
+    return;
   }
-}
 
-/** Destroy a piece outright (the King's attack). Always returns true. */
-function slay(state: GameState, target: Piece): true {
-  const shield = target.stance === 'defense' ? target.def : 0;
-  const amount = shield + target.hp;
-  target.def -= shield;
-  target.hp = 0;
-  state.events.push({ type: 'damaged', pieceId: target.id, square: target.square, amount, shield, hp: 0, def: target.def });
   destroyPiece(state, target);
-  return true;
+  movePiece(state, attacker, cand.to);
+  if (cand.promotion) promote(state, attacker, 'queen');
 }
 
-/** Apply `amount` damage (shield first if in Defense mode). Returns true if the piece was destroyed. */
-function dealDamage(state: GameState, target: Piece, amount: number): boolean {
-  const shield = target.stance === 'defense' ? Math.min(target.def, amount) : 0;
-  target.def -= shield;
-  target.hp -= amount - shield;
-  state.events.push({
-    type: 'damaged',
-    pieceId: target.id,
-    square: target.square,
-    amount,
-    shield,
-    hp: Math.max(0, target.hp),
-    def: target.def,
-  });
-  if (target.hp <= 0) {
-    destroyPiece(state, target);
-    return true;
+function syncStance(piece: Piece): void {
+  piece.stance = piece.defense > 0 ? 'defense' : 'attack';
+}
+
+function markSkip(state: GameState, piece: Piece): void {
+  if (piece.owner === state.turn) {
+    if (!state.turnInfo.stanceChanged.includes(piece.id)) state.turnInfo.stanceChanged.push(piece.id);
+    return;
   }
-  return false;
+  if (!state.skipTurn.includes(piece.id)) state.skipTurn.push(piece.id);
+}
+
+function leaveDefense(state: GameState, piece: Piece, skip: boolean): void {
+  piece.defense = 0;
+  piece.stance = 'attack';
+  state.events.push({ type: 'stanceChanged', pieceId: piece.id, square: piece.square, stance: 'attack' });
+  if (skip) markSkip(state, piece);
+}
+
+function absorbDefense(state: GameState, target: Piece): void {
+  target.defense = Math.max(0, target.defense - 1);
+  syncStance(target);
+  state.events.push({ type: 'defenseAbsorbed', pieceId: target.id, square: target.square, remaining: target.defense });
+  if (target.defense === 0) {
+    state.events.push({ type: 'stanceChanged', pieceId: target.id, square: target.square, stance: 'attack' });
+    markSkip(state, target);
+  }
+}
+
+function grantDefense(state: GameState, target: Piece, amount: number): void {
+  if (target.kind === 'king' || amount === 0) return;
+  target.defense = Math.max(0, target.defense + amount);
+  const wasAttack = target.stance === 'attack';
+  syncStance(target);
+  state.events.push({ type: 'defenseGranted', pieceId: target.id, square: target.square, amount, remaining: target.defense });
+  if (wasAttack && target.defense > 0) {
+    state.events.push({ type: 'stanceChanged', pieceId: target.id, square: target.square, stance: 'defense' });
+  }
 }
 
 function movePiece(state: GameState, piece: Piece, to: Square, castle = false): void {
@@ -471,19 +472,15 @@ export function resolveSummon(state: GameState, sacrifice: Piece): void {
   removePiece(state, sacrifice);
 
   const def = card.piece;
+  const defense = Math.max(0, def.defense ?? 0);
   const summoned: Piece = {
     id: `p${state.nextId++}`,
     kind: def.kind,
     owner,
     square,
-    atk: def.atk,
-    def: def.def,
-    maxDef: def.def,
-    hp: def.hp,
-    maxHp: def.hp,
+    defense,
     hasMoved: true,
-    stance: 'attack',
-    base: { atk: def.atk, def: def.def, hp: def.hp },
+    stance: defense > 0 ? 'defense' : 'attack',
   };
   state.pieces[summoned.id] = summoned;
   state.board[square] = summoned.id;
@@ -492,57 +489,20 @@ export function resolveSummon(state: GameState, sacrifice: Piece): void {
   offerOnSummonGrant(state, summoned);
 }
 
-function modifyStats(state: GameState, target: Piece, delta: { atk?: number; def?: number; hp?: number }): void {
-  target.atk = Math.max(0, target.atk + (delta.atk ?? 0));
-  if (delta.def) {
-    target.maxDef = Math.max(0, target.maxDef + delta.def);
-    target.def = Math.min(target.maxDef, Math.max(0, target.def + delta.def));
-  }
-  if (target.kind !== 'king' && delta.hp) {
-    target.maxHp = Math.max(1, target.maxHp + delta.hp);
-    target.hp = Math.min(target.maxHp, Math.max(1, target.hp + delta.hp));
-  }
-  emitStats(state, target);
-}
-
 export function applyEffect(state: GameState, effect: Effect, color: Color, target: Piece | undefined): void {
   switch (effect.kind) {
-    case 'modifyStats': {
-      if (target) modifyStats(state, target, effect);
-      return;
-    }
-    case 'modifyStatsAll': {
-      for (const p of piecesOf(state, color)) {
-        if (p.kind === 'king') continue;
-        if (effect.pieceKind && p.kind !== effect.pieceKind) continue;
-        modifyStats(state, p, effect);
-      }
-      return;
-    }
-    case 'restore': {
-      if (!target || target.kind === 'king') return;
-      target.hp = target.maxHp;
-      target.def = target.maxDef;
-      emitStats(state, target);
-      return;
-    }
     case 'freeStance': {
       if (!target || target.kind === 'king' || target.summon) return;
+      target.defense = 0;
       target.stance = 'attack';
-      // The piece may still act this turn: not frozen, even if it switched earlier this turn.
       state.turnInfo.stanceChanged = state.turnInfo.stanceChanged.filter((id) => id !== target.id);
+      state.skipTurn = state.skipTurn.filter((id) => id !== target.id);
       state.events.push({ type: 'stanceChanged', pieceId: target.id, square: target.square, stance: 'attack' });
       return;
     }
-    case 'damage': {
+    case 'destroy': {
       if (!target || target.kind === 'king') return;
-      dealDamage(state, target, effect.amount);
-      return;
-    }
-    case 'heal': {
-      if (!target || target.kind === 'king') return;
-      target.hp = Math.min(target.maxHp, target.hp + effect.amount);
-      emitStats(state, target);
+      destroyPiece(state, target);
       return;
     }
     case 'draw': {
@@ -557,10 +517,6 @@ export function applyEffect(state: GameState, effect: Effect, color: Color, targ
       return;
     }
   }
-}
-
-function emitStats(state: GameState, p: Piece): void {
-  state.events.push({ type: 'statsChanged', pieceId: p.id, square: p.square, atk: p.atk, def: p.def, hp: p.hp, maxHp: p.maxHp });
 }
 
 // ---------------------------------------------------------------------------
@@ -675,7 +631,8 @@ function performAbility(state: GameState, action: Extract<Action, { type: 'useAb
     throw new IllegalActionError(`${def.name} cannot use that ability on ${squareName(action.to)}.`);
   }
 
-  if (ability.kind === 'grantAdjacent') modifyStats(state, target, ability);
+  const granted = ability.defense ?? 1;
+  if (ability.kind === 'grantAdjacent') grantDefense(state, target, granted);
   if (ability.oncePerTurn !== false) state.turnInfo.abilitiesUsed.push(piece.id);
   state.pendingGrant = undefined;
   state.events.push({
@@ -684,9 +641,7 @@ function performAbility(state: GameState, action: Extract<Action, { type: 'useAb
     from: action.from,
     to: action.to,
     targetId: target.id,
-    atk: ability.atk,
-    def: ability.def,
-    hp: ability.hp,
+    defense: granted,
   });
 }
 
@@ -714,6 +669,18 @@ function endTurn(state: GameState): void {
   const color = state.turn;
   const player = state.players[color];
   player.turnsTaken++;
+
+  const stillSkip: string[] = [];
+  for (const id of state.skipTurn) {
+    const piece = state.pieces[id];
+    if (!piece) continue;
+    if (piece.owner === color) {
+      if (!state.turnInfo.stanceChanged.includes(id)) state.turnInfo.stanceChanged.push(id);
+    } else {
+      stillSkip.push(id);
+    }
+  }
+  state.skipTurn = stillSkip;
 
   for (const piece of piecesOf(state, color)) {
     if (!piece.summon) continue;

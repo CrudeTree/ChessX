@@ -18,7 +18,7 @@ export interface RuleConstants {
 
 /** Rules as shipped in code. */
 export const BASE_RULES: Readonly<RuleConstants> = Object.freeze({
-  deckMin: 25,
+  deckMin: 18,
   deckMax: 40,
   openingHand: 7,
   drawEvery: 5,
@@ -85,6 +85,8 @@ export interface GameState {
   events: GameEvent[];
   /** Set when a summoned creature must pick which neighbour gets its grant. */
   pendingGrant?: PendingGrant;
+  /** Pieces that must sit out their next owner turn (left Defense off-turn). */
+  skipTurn: string[];
 }
 
 export interface GameConfig {
@@ -135,6 +137,7 @@ export function createGame(config: GameConfig): GameState {
     nextId: 1,
     rngState: (config.seed ?? Date.now()) | 0,
     events: [],
+    skipTurn: [],
   };
 
   setupStandardBoard(state);
@@ -154,19 +157,15 @@ export function createGame(config: GameConfig): GameState {
 
 export function addPiece(state: GameState, kind: string, owner: Color, square: Square, hasMoved = false): Piece {
   const def = getPieceDef(kind);
+  const defense = Math.max(0, def.defense ?? 0);
   const piece: Piece = {
     id: `p${state.nextId++}`,
     kind,
     owner,
     square,
-    atk: def.atk,
-    def: def.def,
-    maxDef: def.def,
-    hp: def.hp,
-    maxHp: def.hp,
+    defense,
     hasMoved,
-    stance: 'attack',
-    base: { atk: def.atk, def: def.def, hp: def.hp },
+    stance: defense > 0 ? 'defense' : 'attack',
   };
   state.pieces[piece.id] = piece;
   state.board[square] = piece.id;
@@ -174,34 +173,28 @@ export function addPiece(state: GameState, kind: string, owner: Color, square: S
 }
 
 /**
- * Bring every piece in line with the current (possibly admin-patched) piece
- * definitions: the change in base stats is applied on top of whatever the
- * piece has now, so a Whetstone'd pawn stays one ATK ahead of its friends.
- * Returns true if anything changed.
+ * Drop leftover ATK/HP/DEF fields from older saves and keep stance in sync
+ * with Defense charges.
  */
 export function rebasePieces(state: GameState): boolean {
   let changed = false;
   for (const p of Object.values(state.pieces)) {
-    const def = getPieceDef(p.kind);
-    const next = { atk: def.atk, def: def.def, hp: def.hp };
-    if (!p.base) {
-      // Older save: assume it was created under the current definition.
-      p.base = next;
-      continue;
+    const leftover = p as Piece & { atk?: number; def?: number; hp?: number; maxHp?: number; maxDef?: number; base?: unknown };
+    for (const k of ['atk', 'def', 'hp', 'maxHp', 'maxDef', 'base'] as const) {
+      if (k in leftover) {
+        delete leftover[k];
+        changed = true;
+      }
     }
-    const dAtk = next.atk - p.base.atk;
-    const dDef = next.def - p.base.def;
-    const dHp = next.hp - p.base.hp;
-    if (!dAtk && !dDef && !dHp) continue;
-    p.atk = Math.max(0, p.atk + dAtk);
-    p.maxDef = Math.max(0, p.maxDef + dDef);
-    p.def = Math.min(p.maxDef, Math.max(0, p.def + dDef));
-    if (p.kind !== 'king') {
-      p.maxHp = Math.max(1, p.maxHp + dHp);
-      p.hp = Math.min(p.maxHp, Math.max(1, p.hp + dHp));
+    if (typeof p.defense !== 'number' || !Number.isFinite(p.defense)) {
+      p.defense = getPieceDef(p.kind).defense ?? 0;
+      changed = true;
     }
-    p.base = next;
-    changed = true;
+    const stance = p.defense > 0 ? 'defense' : 'attack';
+    if (p.stance !== stance) {
+      p.stance = stance;
+      changed = true;
+    }
   }
   return changed;
 }
@@ -266,6 +259,7 @@ export function upgradeState(state: GameState): GameState {
     abilitiesUsed: ti.abilitiesUsed ?? [],
     enPassant: ti.enPassant ?? null,
   };
+  if (!state.skipTurn) state.skipTurn = [];
   // Card/piece numbers may have been edited since this game was saved.
   rebasePieces(state);
   return state;
@@ -312,5 +306,6 @@ export function cloneState(state: GameState): GameState {
     pendingGrant: state.pendingGrant
       ? { ...state.pendingGrant, targets: state.pendingGrant.targets.slice() }
       : undefined,
+    skipTurn: (state.skipTurn ?? []).slice(),
   };
 }

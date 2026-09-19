@@ -1,6 +1,6 @@
 # ChessX
 
-Chess meets a trading-card game. Every piece has Attack, Defense and HP; each player brings a 30-card deck that can buff pieces or summon new creatures onto the board. Two players, online, in the browser.
+Chess meets a trading-card game. Captures are one hit, like chess; Defense is a stack of absorb charges that only summons and grants can give. Each player brings a deck that can summon creatures or play spells. Two players, online, in the browser.
 
 ## Running it
 
@@ -86,37 +86,39 @@ The server is authoritative: the client only ever offers the player actions from
 
 ## Rules as implemented
 
-**Board and pieces.** Standard chess setup. Every piece starts with **1 ATK / 0 DEF / 1 HP**. Castling, en passant and promotion (to queen by default) all work.
+**Board and pieces.** Standard chess setup. Castling, en passant and promotion (to queen by default) all work. Standard pieces never start with Defense.
 
-**A turn** is a sequence of actions that you close with **End Turn**:
+**A turn** is cards and stance changes, then one move that ends the turn:
 
-- **One major action**: move/attack a piece **or** play a summon card. Never both.
-- **Spells**: as many as you like.
-- **Stance switches**: as many pieces as you like, in either direction. A piece that switched this turn is frozen (can't move or switch again) until the turn ends.
-- **End Turn** only becomes available once you have moved or summoned (if neither is possible at all, you may pass). You may **not** end it while in check.
+- **Cards**: as many as you can afford (summons or spells).
+- **Leave Defense**: any piece that currently has Defense charges. That piece is frozen for the rest of the turn.
+- **Move**: move or attack with one piece. The move ends the turn.
+- **Pass** (`End Turn`) is only allowed when you have no legal move at all. You may **not** pass while in check.
 
-**Combat.** Moving onto an enemy piece attacks it for the attacker's full ATK. If the defender is in **Defense mode**, its DEF acts as a shield that absorbs damage first; whatever is left comes off HP. In Attack mode DEF does nothing. If HP hits 0 the defender is destroyed and the attacker takes its square. If the defender survives, it stays and the attacker returns to its original square (the turn is still used). **Kings ignore HP**: any piece reaching the king's square captures it. **Royal strike**: the King's own attack destroys any piece outright, no matter its HP or DEF shield.
+**Combat.** Capturing is chess: land on an undefended enemy and it dies; the attacker takes the square. There is no HP or ATK.
 
-Example: DEF 3 / HP 1 in Defense mode, hit by ATK 4 → shield wiped out, 1 damage reaches HP, piece destroyed. Depleted DEF does not regenerate on its own.
+**Defense** is a charge count on a piece, not a shield bar. A piece with `defense > 0` is in Defense mode: it cannot move or attack, and it does not give check. A capture against it spends 1 charge and **repels** the attacker (the piece stays). At 0 charges it leaves Defense and skips its next owner turn. Charges stack. Only summons and grants put a piece into Defense — you cannot toggle a standard piece into it. **Battle Trance** drops Defense to 0 and lets that piece act this turn (no skip).
 
-**Stance.** Every piece starts in Attack mode. Switching stance (via the button under the zoomed card) is free and unlimited, but the piece is frozen for the rest of that turn. A piece in Defense mode cannot move or attack at all (so it never gives check) until you switch it back to Attack mode; after switching back it can act from your next turn. Kings and pieces being sacrificed cannot change stance.
+**Kings.** Any piece reaching the king's square captures it. **Royal strike**: the King's own capture destroys any piece, including one in Defense.
 
-**Inspecting.** Click any piece (yours or the opponent's) to see its full card on the left: stats, stance, movement, lock/summon status.
+**Hex** is a spell that destroys a target enemy Tier 1 piece. It ignores Defense.
 
-**Check and checkmate.** A move may never leave your own king in check. Because pieces can survive attacks, "capturing" the checking piece does not resolve check unless the capture actually destroys it. While in check you may still play spells and switch stances (a Hex that kills the attacker is a fine answer), but you cannot summon and you cannot end the turn. Checkmate = in check with no single action that gets the king out. A player with no possible move or summon simply passes, so there is no stalemate.
+**Inspecting.** Click any piece (yours or the opponent's) to see its card on the left: Defense charges if any, movement, lock/summon status. The button is **Leave Defense** when the piece has charges.
 
-**Deck and hand.** 25–40 cards, max 3 copies of any card. Draw 7 at the start. A green timer ring around your deck fills one segment per turn you take; on your 5th, 10th, 15th… turn it closes and pulses, and you **must click your deck to draw** before doing anything else that turn. Drawing does not use the turn. Cards can also grant extra draws directly. Your deck sits at the bottom-right of the board, the opponent's at the top-left (their right), and you can watch their ring fill too.
+**Check and checkmate.** A move may never leave your own king in check. A piece in Defense does not give check. Capturing the checking piece (or Hexing it) resolves the check. While in check you may still play spells and leave Defense, but you cannot end the turn. Checkmate = in check with no single action that gets the king out. A player with no possible move simply passes, so there is no stalemate.
+
+**Deck and hand.** 18–40 cards, max 3 copies of any card. Draw 7 at the start. A green timer ring around your deck fills one segment per turn you take; on your 5th, 10th, 15th… turn it closes and pulses, and you **must click your deck to draw** before doing anything else that turn. Drawing does not use the turn. Cards can also grant extra draws directly. Your deck sits at the bottom-right of the board, the opponent's at the top-left (their right), and you can watch their ring fill too.
 
 **Summon cards.** Pieces have tiers: Pawn = 1, Knight/Bishop = 2, Rook = 3, Queen = 4, King = 6 (never sacrificable). A tier-N summon card is played by dropping it on one of your pieces of tier N−1, which becomes the sacrifice. A void opens beneath it with a timer. While the timer runs the sacrificed piece cannot move or attack. The timer ticks down at the start of each of your turns; when it reaches 0 the piece is replaced by the summoned creature. If the sacrifice is destroyed first, the summon fails and the card is lost.
 
-**Spell cards** resolve immediately: stat buffs, damage, heals, draws, and hastening a summon. Kings can't be targeted unless a card says so.
+**Spell cards** resolve immediately: destroy, draw, hasten a summon, or drop Defense (Battle Trance). Kings can't be targeted unless a card says so.
 
 ### Progression, collection and decks
 
-- Every account starts with **3 copies of each of the 10 starter cards** and **Deck 1** built from them.
+- Every account starts with **3 copies of each of the 7 starter cards** and **Deck 1** built from them.
 - Finishing a two-player match gives **20 XP**; winning gives **30 more**. Levels need 100, 200, 300… XP each. Practice games don't count.
 - Your **first finished match** (win or lose) unlocks a brand-new reward card. After that, every win by **checkmate** rolls a reward: a 50/50 between a reward card you don't own yet and a spare copy of a card you do.
-- The **Binder** shows your whole collection (new cards are flagged) and holds up to **3 named decks**. Click a card to add it, use −/+ in the deck list, rename, Save. A deck needs 25–40 cards, max 3 copies of anything, and only cards you own. Pick which deck to play with on the home page before creating, joining or practising.
+- The **Binder** shows your whole collection (new cards are flagged) and holds up to **3 named decks**. Click a card to add it, use −/+ in the deck list, rename, Save. A deck needs 18–40 cards, max 3 copies of anything, and only cards you own. Pick which deck to play with on the home page before creating, joining or practising.
 
 ### Phones
 
@@ -137,31 +139,25 @@ Cards live in `packages/engine/src/cards/catalog.ts` and are pure data. Starter 
 
 | card           | type   | effect                                                                  |
 | -------------- | ------ | ----------------------------------------------------------------------- |
-| The Ox         | Summon | Tier 2, 3 turns. Moves ≤2 orthogonally. 2 ATK / 0 DEF / 2 HP           |
-| Stone Sentinel | Summon | Tier 2, 2 turns. Moves 1 any direction. 1 ATK / 1 DEF / 3 HP           |
-| War Chariot    | Summon | Tier 3, 3 turns. Moves like Rook or Knight. 2 ATK / 0 DEF / 2 HP       |
-| Elder Wyrm     | Summon | Tier 4, 4 turns, **costs a Tier 4** (a beefed-up Queen). Moves ≤3 any direction. 3 ATK / 1 DEF / 3 HP |
-| Iron Hide      | Spell  | Friendly piece +2 HP                                                    |
-| Whetstone      | Spell  | Friendly piece +1 ATK (kings allowed)                                   |
-| Shield Wall    | Spell  | Friendly piece +1 DEF                                                   |
+| The Ox         | Summon | Tier 2, 3 turns. Moves ≤2 orthogonally.                                 |
+| Stone Sentinel | Summon | Tier 2, 2 turns. Moves 1 any direction. Starts with 1 Defense.          |
+| War Chariot    | Summon | Tier 3, 3 turns. Moves like Rook or Knight.                             |
+| Elder Wyrm     | Summon | Tier 4, 4 turns, **costs a Tier 4** (a beefed-up Queen). Moves ≤3 any direction. |
 | Foresight      | Spell  | Draw 2                                                                  |
-| Hex            | Spell  | 1 damage to an enemy Tier 1 piece                                       |
+| Hex            | Spell  | Destroy target enemy Tier 1 piece                                       |
 | Dark Ritual    | Spell  | A friendly summon timer drops by 2                                      |
 
 Reward cards (unlocked through play):
 
 | card            | type   | effect                                                                           |
 | --------------- | ------ | -------------------------------------------------------------------------------- |
-| Thornback Boar  | Summon | Tier 2, 2 turns. Charges ≤2 forward or 1 sideways. 2 ATK / 0 DEF / 1 HP           |
-| Frost Owl       | Summon | Tier 2, 2 turns. Knight jumps or 1 diagonal. 1 ATK / 0 DEF / 2 HP                 |
-| Iron Golem      | Summon | Tier 3, 3 turns. 1 orthogonal. 2 ATK / 2 DEF / 3 HP                               |
-| Shadow Panther  | Summon | Tier 3, 2 turns. ≤3 diagonal or 1 orthogonal. 3 ATK / 0 DEF / 1 HP                |
-| Ancient Treant  | Summon | Tier 3, 3 turns. 1 any direction. 1 ATK / 3 DEF / 4 HP                            |
-| Storm Drake     | Summon | Tier 4, 4 turns. Knight jumps or ≤2 orthogonal. 3 ATK / 0 DEF / 2 HP              |
-| Battle Cry      | Spell  | All your Pawns +1 ATK                                                             |
-| Second Wind     | Spell  | Friendly piece: refill HP and DEF shield                                          |
+| Thornback Boar  | Summon | Tier 2, 2 turns. Charges ≤2 forward or 1 sideways.                                |
+| Frost Owl       | Summon | Tier 2, 2 turns. Knight jumps or 1 diagonal.                                      |
+| Iron Golem      | Summon | Tier 3, 3 turns. 1 orthogonal. Starts with 1 Defense.                             |
+| Shadow Panther  | Summon | Tier 3, 2 turns. ≤3 diagonal or 1 orthogonal.                                     |
+| Ancient Treant  | Summon | Tier 3, 3 turns. 1 any direction. Starts with 1 Defense.                           |
+| Storm Drake     | Summon | Tier 4, 4 turns. Knight jumps or ≤2 orthogonal.                                   |
 | Battle Trance   | Spell  | Friendly piece in Defense mode → Attack mode, and it may still act this turn      |
-| Smite           | Spell  | 2 damage to an enemy piece                                                        |
 
 ### Adding a card
 

@@ -22,8 +22,10 @@ import {
   pieceAt,
   previewAbilities,
   previewMoves,
+  hasCard,
   pruneUnknownCards,
   rebasePieces,
+  RETIRED_CARDS,
   REWARD_CARDS,
   STARTER_CARDS,
   starterDeck,
@@ -34,6 +36,12 @@ import {
   type GameState,
   type SummonCardDef,
 } from '../src/index.js';
+
+function putDefense(state: GameState, square: string, n: number): void {
+  const p = pieceAt(state, s(square))!;
+  p.defense = n;
+  p.stance = n > 0 ? 'defense' : 'attack';
+}
 
 /** A game with a deep mana pool so card tests can play cards straight away. */
 function newGame(seed = 1): GameState {
@@ -75,10 +83,11 @@ function giveCard(state: GameState, color: 'white' | 'black', cardId: string): s
 const has = (actions: Action[], type: Action['type']) => actions.some((a) => a.type === type);
 
 describe('setup', () => {
-  it('deals 7 cards from a 30 card deck and sets up a standard board', () => {
+  it('deals 7 cards from a 21 card starter deck and sets up a standard board', () => {
     const g = newGame();
+    expect(starterDeck()).toHaveLength(21);
     expect(g.players.white.hand).toHaveLength(7);
-    expect(g.players.white.deck).toHaveLength(23);
+    expect(g.players.white.deck).toHaveLength(14);
     expect(Object.keys(g.pieces)).toHaveLength(32);
     expect(pieceAt(g, s('e1'))?.kind).toBe('king');
     expect(pieceAt(g, s('d8'))?.kind).toBe('queen');
@@ -90,13 +99,15 @@ describe('setup', () => {
     expect(a.players.white.hand.map((c) => c.cardId)).toEqual(b.players.white.hand.map((c) => c.cardId));
   });
 
-  it('validates deck size (25-40) and copy limits', () => {
+  it('validates deck size (18-40) and copy limits', () => {
     expect(validateDeck(starterDeck())).toEqual([]);
-    expect(validateDeck(starterDeck().slice(0, 25))).toEqual([]);
-    expect(validateDeck(starterDeck().slice(0, 24)).length).toBeGreaterThan(0);
-    expect(validateDeck([...starterDeck(), ...starterDeck().slice(0, 11)]).length).toBeGreaterThan(0); // 41
+    expect(validateDeck(starterDeck().slice(0, 18))).toEqual([]);
+    expect(validateDeck(starterDeck().slice(0, 17)).length).toBeGreaterThan(0);
+    expect(validateDeck([...starterDeck(), ...starterDeck()]).length).toBeGreaterThan(0); // 42
     expect(validateDeck(new Array(30).fill('the_ox')).length).toBeGreaterThan(0);
-    expect(validateDeck([...starterDeck().slice(0, 24), 'not_a_card']).length).toBeGreaterThan(0);
+    expect(validateDeck([...starterDeck().slice(0, 18), 'not_a_card']).length).toBeGreaterThan(0);
+    for (const id of RETIRED_CARDS) expect(hasCard(id)).toBe(false);
+    expect(() => getCardDef('iron_hide')).toThrow();
   });
 });
 
@@ -146,8 +157,8 @@ describe('chess movement', () => {
 
   it('en passant is offered on the very next turn only, whatever else happened that turn', () => {
     let g = newGame();
-    const ws = giveCard(g, 'white', 'whetstone');
-    g = act(g, { type: 'playCard', cardInstanceId: ws, target: s('e2') }); // a spell before the push
+    const fs = giveCard(g, 'white', 'foresight');
+    g = act(g, { type: 'playCard', cardInstanceId: fs }); // a spell before the push
     g = move(g, 'e2', 'e4');
     g = move(g, 'a7', 'a6');
     g = move(g, 'e4', 'e5');
@@ -177,29 +188,28 @@ describe('turn structure', () => {
   it('phases: any number of cards, then one move which ends the turn', () => {
     let g = newGame();
     expect(viewFor(g, 'white').phase).toBe('main');
-    const ws = giveCard(g, 'white', 'whetstone');
-    const sw = giveCard(g, 'white', 'shield_wall');
-    g = act(g, { type: 'playCard', cardInstanceId: ws, target: s('e2') });
-    g = act(g, { type: 'playCard', cardInstanceId: sw, target: s('e2') });
+    const fs = giveCard(g, 'white', 'foresight');
+    const hex = giveCard(g, 'white', 'hex');
+    g = act(g, { type: 'playCard', cardInstanceId: fs });
+    g = act(g, { type: 'playCard', cardInstanceId: hex, target: s('e7') });
     expect(g.turn).toBe('white');
     expect(g.turnInfo.cardsPlayed).toBe(2);
-    expect(pieceAt(g, s('e2'))!.atk).toBe(2);
-    expect(pieceAt(g, s('e2'))!.maxDef).toBe(1);
+    expect(pieceAt(g, s('e7'))).toBeUndefined();
     // The move closes the turn: black to play, mana collected, turn info reset.
     g = move(g, 'e2', 'e4');
     expect(g.turn).toBe('black');
     expect(g.turnInfo.cardsPlayed).toBe(0);
     expect(g.events.map((e) => e.type)).toEqual(expect.arrayContaining(['moved', 'manaGained', 'turnEnded']));
     // Nothing more can be done for white now.
-    expect(() => act(g, { type: 'playCard', cardInstanceId: giveCard(g, 'white', 'whetstone'), target: s('e4') })).toThrow(IllegalActionError);
+    expect(() => act(g, { type: 'playCard', cardInstanceId: giveCard(g, 'white', 'foresight') })).toThrow(IllegalActionError);
   });
 
   it('you cannot end your turn without moving; cards (even summons) do not count', () => {
     const g = newGame();
     expect(has(legalActions(g), 'endTurn')).toBe(false);
     expect(() => end(g)).toThrow(/Move a piece/);
-    const ws = giveCard(g, 'white', 'whetstone');
-    const afterSpell = act(g, { type: 'playCard', cardInstanceId: ws, target: s('e2') });
+    const fs = giveCard(g, 'white', 'foresight');
+    const afterSpell = act(g, { type: 'playCard', cardInstanceId: fs });
     expect(has(legalActions(afterSpell), 'endTurn')).toBe(false);
     const ox = giveCard(g, 'white', 'the_ox');
     const afterSummon = act(g, { type: 'playCard', cardInstanceId: ox, target: s('e2') });
@@ -298,7 +308,7 @@ describe('turn structure', () => {
     expect(v.players.black.hand).toHaveLength(7);
     expect(v.players.white.hand).toBeNull();
     expect(v.players.white.handCount).toBe(7);
-    expect(v.players.white.deckCount).toBe(23);
+    expect(v.players.white.deckCount).toBe(14);
     expect(v.legalActions).toHaveLength(0); // white to move
     expect(viewFor(g, 'white').legalActions.length).toBeGreaterThan(20);
 
@@ -315,57 +325,53 @@ describe('turn structure', () => {
   });
 });
 
-describe('combat with HP', () => {
-  it('a 1 ATK attack on a 3 HP piece damages it and the attacker stays put', () => {
+describe('one-hit combat', () => {
+  it('capturing an undefended piece kills it in one hit and takes the square', () => {
     let g = newGame();
     g = move(g, 'e2', 'e4');
     g = move(g, 'd7', 'd5');
-    pieceAt(g, s('d5'))!.hp = 3;
-    pieceAt(g, s('d5'))!.maxHp = 3;
     g = move(g, 'e4', 'd5');
-    const target = pieceAt(g, s('d5'))!;
-    expect(target.owner).toBe('black');
-    expect(target.hp).toBe(2);
-    expect(pieceAt(g, s('e4'))?.owner).toBe('white');
+    expect(pieceAt(g, s('d5'))!.owner).toBe('white');
+    expect(pieceAt(g, s('e4'))).toBeUndefined();
+    expect(g.events.some((e) => e.type === 'destroyed')).toBe(true);
     expect(g.turn).toBe('black');
   });
 
-  it('DEF only shields in Defense mode, and is depleted before HP', () => {
+  it('Defense absorbs one capture, then the next capture kills', () => {
     let g = newGame();
     g = move(g, 'e2', 'e4');
     g = move(g, 'd7', 'd5');
-    const pawn = pieceAt(g, s('d5'))!;
-    pawn.hp = 2;
-    pawn.maxHp = 2;
-    pawn.def = 1;
-    pawn.maxDef = 1;
-    const attackMode = move(g, 'e4', 'd5');
-    expect(pieceAt(attackMode, s('d5'))!.hp).toBe(1);
-    expect(pieceAt(attackMode, s('d5'))!.def).toBe(1);
-    pawn.stance = 'defense';
-    const defenseMode = move(g, 'e4', 'd5');
-    expect(pieceAt(defenseMode, s('d5'))!.hp).toBe(2);
-    expect(pieceAt(defenseMode, s('d5'))!.def).toBe(0);
-  });
-
-  it('a big hit wipes the shield and the HP behind it (DEF 3 / HP 1 vs ATK 4)', () => {
-    let g = newGame();
-    g = move(g, 'e2', 'e4');
-    g = move(g, 'd7', 'd5');
-    const pawn = pieceAt(g, s('d5'))!;
-    pawn.def = 3;
-    pawn.maxDef = 3;
-    pawn.stance = 'defense';
-    pieceAt(g, s('e4'))!.atk = 4;
+    putDefense(g, 'd5', 1);
+    g = move(g, 'e4', 'd5');
+    expect(pieceAt(g, s('d5'))!.owner).toBe('black');
+    expect(pieceAt(g, s('d5'))!.defense).toBe(0);
+    expect(pieceAt(g, s('d5'))!.stance).toBe('attack');
+    expect(pieceAt(g, s('e4'))!.kind).toBe('pawn');
+    expect(g.events.some((e) => e.type === 'defenseAbsorbed' && e.remaining === 0)).toBe(true);
+    expect(g.events.some((e) => e.type === 'repelled')).toBe(true);
+    g = move(g, 'a7', 'a6');
     g = move(g, 'e4', 'd5');
     expect(pieceAt(g, s('d5'))!.owner).toBe('white');
-    const dmg = g.events.find((e) => e.type === 'damaged');
-    expect(dmg && dmg.type === 'damaged' && dmg.shield).toBe(3);
   });
 
-  it("the King's attack destroys any piece regardless of HP and DEF", () => {
+  it('stacked Defense spends one charge at a time', () => {
     let g = newGame();
-    // Put a beefy black piece next to the white king: knight to d2 with 5 HP, 3 DEF, in Defense mode.
+    g = move(g, 'e2', 'e4');
+    g = move(g, 'd7', 'd5');
+    putDefense(g, 'd5', 2);
+    g = move(g, 'e4', 'd5');
+    expect(pieceAt(g, s('d5'))!.defense).toBe(1);
+    expect(pieceAt(g, s('d5'))!.stance).toBe('defense');
+    expect(pieceAt(g, s('e4'))!.kind).toBe('pawn');
+    g = move(g, 'a7', 'a6');
+    g = move(g, 'e4', 'd5');
+    expect(pieceAt(g, s('d5'))!.defense).toBe(0);
+    expect(pieceAt(g, s('d5'))!.stance).toBe('attack');
+    expect(pieceAt(g, s('e4'))!.kind).toBe('pawn');
+  });
+
+  it("the King takes a defending piece outright", () => {
+    let g = newGame();
     const knight = pieceAt(g, s('b8'))!;
     const d2 = pieceAt(g, s('d2'))!;
     delete g.pieces[d2.id];
@@ -373,44 +379,56 @@ describe('combat with HP', () => {
     g.board[knight.square] = null;
     knight.square = s('d2');
     g.board[s('d2')] = knight.id;
-    knight.hp = 5;
-    knight.maxHp = 5;
-    knight.def = 3;
-    knight.maxDef = 3;
-    knight.stance = 'defense';
-    expect(pieceAt(g, s('e1'))!.atk).toBe(1);
+    putDefense(g, 'd2', 3);
     g = move(g, 'e1', 'd2');
-    expect(pieceAt(g, s('d2'))!.kind).toBe('king'); // king took the square
+    expect(pieceAt(g, s('d2'))!.kind).toBe('king');
     expect(Object.values(g.pieces).some((p) => p.id === knight.id)).toBe(false);
     expect(g.events.some((e) => e.type === 'attacked' && e.execution === true)).toBe(true);
     expect(g.events.some((e) => e.type === 'destroyed' && e.pieceId === knight.id)).toBe(true);
   });
 
-  it('a piece that survives a capture still gives check; you cannot end the turn in check', () => {
+  it('Hex destroys a defending Tier 1 piece and ignores Defense', () => {
+    let g = newGame();
+    putDefense(g, 'e7', 2);
+    const hex = giveCard(g, 'white', 'hex');
+    g = act(g, { type: 'playCard', cardInstanceId: hex, target: s('e7') });
+    expect(pieceAt(g, s('e7'))).toBeUndefined();
+    expect(g.events.some((e) => e.type === 'destroyed')).toBe(true);
+  });
+
+  it('a last-charge absorb skips that piece on its next owner turn', () => {
+    let g = newGame();
+    g = move(g, 'e2', 'e4');
+    g = move(g, 'd7', 'd5');
+    putDefense(g, 'd5', 1);
+    g = move(g, 'e4', 'd5'); // absorb happens on white's turn; black is now to move
+    expect(pieceAt(g, s('d5'))!.defense).toBe(0);
+    expect(g.turn).toBe('black');
+    expect(g.turnInfo.stanceChanged).toContain(pieceAt(g, s('d5'))!.id);
+    expect(legalMoves(g).some((m) => m.from === s('d5'))).toBe(false);
+    g = move(g, 'a7', 'a6');
+    g = move(g, 'a2', 'a3');
+    expect(legalMoves(g).some((m) => m.from === s('d5'))).toBe(true);
+  });
+
+  it('a capture that does not destroy the checker still leaves you in check', () => {
     let g = newGame();
     g = move(g, 'e2', 'e4');
     g = move(g, 'd7', 'd5');
     g = move(g, 'e4', 'd5');
     g = move(g, 'e7', 'e6');
     g = move(g, 'd5', 'e6');
-    g = move(g, 'g8', 'h6'); // knight to h6, where it could capture on f7
-    const pawn = pieceAt(g, s('e6'))!;
-    pawn.hp = 5;
-    pawn.maxHp = 5;
+    g = move(g, 'g8', 'h6');
     g = move(g, 'e6', 'f7');
     expect(isInCheck(g, 'black')).toBe(true);
-    // Nxf7 would only deal 1 damage and leave the king in check, so it is not legal...
-    expect(legalMoves(g).some((m) => m.from === s('h6') && m.to === s('f7'))).toBe(false);
-    // ...but the King's royal strike destroys the pawn outright, so Kxf7 is.
+    expect(legalMoves(g).some((m) => m.from === s('h6') && m.to === s('f7'))).toBe(true);
     expect(legalMoves(g).some((m) => m.from === s('e8') && m.to === s('f7'))).toBe(true);
-    // Every legal move resolves the check; ending the turn is not offered.
     for (const m of legalMoves(g)) expect(isInCheck(applyAction(g, m), 'black')).toBe(false);
     expect(has(legalActions(g), 'endTurn')).toBe(false);
     expect(() => end(g)).toThrow(/in check/);
-    // Cards may still be played while in check (the move that follows must resolve it).
-    const ws = giveCard(g, 'black', 'whetstone');
+    const fs = giveCard(g, 'black', 'foresight');
     const ox = giveCard(g, 'black', 'the_ox');
-    expect(legalActions(g).some((a) => a.type === 'playCard' && a.cardInstanceId === ws)).toBe(true);
+    expect(legalActions(g).some((a) => a.type === 'playCard' && a.cardInstanceId === fs)).toBe(true);
     expect(legalActions(g).some((a) => a.type === 'playCard' && a.cardInstanceId === ox)).toBe(true);
     g = act(g, { type: 'playCard', cardInstanceId: ox, target: s('a7') });
     expect(isInCheck(g, 'black')).toBe(true);
@@ -440,8 +458,8 @@ describe('cards', () => {
     g = move(g, 'a5', 'a4');
     const summoned = pieceAt(g, s('e2'))!;
     expect(summoned.kind).toBe('the_ox');
-    expect(summoned.atk).toBe(2);
-    expect(summoned.hp).toBe(2);
+    expect(summoned.defense).toBe(0);
+    expect(summoned.stance).toBe('attack');
     expect(g.players.white.graveyard.some((c) => c.instanceId === ox)).toBe(true);
     const oxMoves = legalMoves(g).filter((m) => m.from === s('e2')).map((m) => m.to);
     expect(oxMoves).toContain(s('e3'));
@@ -478,21 +496,31 @@ describe('cards', () => {
     expect(() => act(g, { type: 'playCard', cardInstanceId: wyrm, target: s('a1') })).toThrow(IllegalActionError);
   });
 
-  it('spells modify stats, deal damage and draw', () => {
+  it('Foresight draws and Hex destroys', () => {
     let g = newGame();
-    const hide = giveCard(g, 'white', 'iron_hide');
-    g = move(act(g, { type: 'playCard', cardInstanceId: hide, target: s('e2') }), 'a2', 'a3');
-    expect(pieceAt(g, s('e2'))!.hp).toBe(3);
-    expect(pieceAt(g, s('e2'))!.maxHp).toBe(3);
-
-    const hex = giveCard(g, 'black', 'hex');
-    g = move(act(g, { type: 'playCard', cardInstanceId: hex, target: s('e2') }), 'a7', 'a6');
-    expect(pieceAt(g, s('e2'))!.hp).toBe(2);
+    const hex = giveCard(g, 'white', 'hex');
+    g = act(g, { type: 'playCard', cardInstanceId: hex, target: s('e7') });
+    expect(pieceAt(g, s('e7'))).toBeUndefined();
 
     const before = g.players.white.hand.length;
     const fs = giveCard(g, 'white', 'foresight');
     g = act(g, { type: 'playCard', cardInstanceId: fs });
     expect(g.players.white.hand.length).toBe(before + 2); // +1 given, -1 played, +2 drawn
+  });
+
+  it('Stone Sentinel starts in Defense', () => {
+    let g = newGame();
+    const card = giveCard(g, 'white', 'stone_sentinel');
+    g = act(g, { type: 'playCard', cardInstanceId: card, target: s('e2') });
+    g = move(g, 'a2', 'a3');
+    g = move(g, 'a7', 'a6');
+    g = move(g, 'b2', 'b3');
+    g = move(g, 'a6', 'a5');
+    const sentinel = pieceAt(g, s('e2'))!;
+    expect(sentinel.kind).toBe('stone_sentinel');
+    expect(sentinel.defense).toBe(1);
+    expect(sentinel.stance).toBe('defense');
+    expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(false);
   });
 
   describe('mana', () => {
@@ -505,9 +533,9 @@ describe('cards', () => {
 
     it('cards cannot be played without mana, with a clear error', () => {
       const g = realGame();
-      const ws = giveCard(g, 'white', 'whetstone');
+      const hex = giveCard(g, 'white', 'hex');
       expect(legalActions(g).some((a) => a.type === 'playCard')).toBe(false);
-      expect(() => act(g, { type: 'playCard', cardInstanceId: ws, target: s('e2') })).toThrow(/Not enough mana.*costs 150.*have 0/);
+      expect(() => act(g, { type: 'playCard', cardInstanceId: hex, target: s('e7') })).toThrow(/Not enough mana.*costs 150.*have 0/);
     });
 
     it('a full army earns 32 mana at the end of its turn, one per tier per piece', () => {
@@ -539,9 +567,9 @@ describe('cards', () => {
       // After five ended turns white has 160 and can afford a 150 spell; it is deducted immediately.
       for (const [f, t] of [['a2', 'a3'], ['a6', 'a5'], ['b2', 'b3'], ['a5', 'a4'], ['c2', 'c3'], ['h7', 'h6']] as const) g = move(g, f, t);
       expect(g.players.white.mana).toBe(160);
-      const ws = giveCard(g, 'white', 'whetstone');
-      expect(legalActions(g).some((a) => a.type === 'playCard' && a.cardInstanceId === ws)).toBe(true);
-      g = act(g, { type: 'playCard', cardInstanceId: ws, target: s('e1') });
+      const hex = giveCard(g, 'white', 'hex');
+      expect(legalActions(g).some((a) => a.type === 'playCard' && a.cardInstanceId === hex)).toBe(true);
+      g = act(g, { type: 'playCard', cardInstanceId: hex, target: s('e7') });
       expect(g.players.white.mana).toBe(10);
       expect(viewFor(g, 'white').players.white.mana).toBe(10);
     });
@@ -575,33 +603,19 @@ describe('cards', () => {
     expect(summonTargets).toHaveLength(0);
   });
 
-  it('reward spells: Battle Cry buffs all pawns, Second Wind restores, Battle Trance frees a defender, Smite hits for 2', () => {
+  it('Battle Trance drops Defense and lets that piece act this turn', () => {
     let g = newGame();
-    const cry = giveCard(g, 'white', 'battle_cry');
-    g = act(g, { type: 'playCard', cardInstanceId: cry });
-    for (const f of 'abcdefgh') expect(pieceAt(g, s(`${f}2`))!.atk).toBe(2);
-    expect(pieceAt(g, s('b1'))!.atk).toBe(1); // knights untouched
-
-    // Put e2 in Defense, then Battle Trance frees it and it may still move this turn.
-    g = act(g, { type: 'setStance', square: s('e2'), stance: 'defense' });
+    putDefense(g, 'e2', 2);
     expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(false);
     const trance = giveCard(g, 'white', 'battle_trance');
     expect(legalActions(g).some((a) => a.type === 'playCard' && a.cardInstanceId === trance && a.target === s('e2'))).toBe(true);
     g = act(g, { type: 'playCard', cardInstanceId: trance, target: s('e2') });
+    expect(pieceAt(g, s('e2'))!.defense).toBe(0);
     expect(pieceAt(g, s('e2'))!.stance).toBe('attack');
     expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(true);
-
-    // Smite: 2 damage. Give the target 3 HP so it survives with 1, then Second Wind restores it.
-    const smite = giveCard(g, 'white', 'smite');
-    const e7 = pieceAt(g, s('e7'))!;
-    e7.hp = 3;
-    e7.maxHp = 3;
-    g = act(g, { type: 'playCard', cardInstanceId: smite, target: s('e7') });
-    expect(pieceAt(g, s('e7'))!.hp).toBe(1);
-    g = move(g, 'a2', 'a3');
-    const wind = giveCard(g, 'black', 'second_wind');
-    g = act(g, { type: 'playCard', cardInstanceId: wind, target: s('e7') });
-    expect(pieceAt(g, s('e7'))!.hp).toBe(3);
+    expect(g.turnInfo.stanceChanged).not.toContain(pieceAt(g, s('e2'))!.id);
+    g = move(g, 'e2', 'e4');
+    expect(g.turn).toBe('black');
   });
 
   it('reward creatures have sensible movement patterns', () => {
@@ -633,51 +647,55 @@ describe('cards', () => {
 
 describe('balance patches', () => {
   it('apply on top of the shipped catalog and can be removed again', () => {
-    applyBalance({ cards: { stone_sentinel: { cost: 250, piece: { hp: 2 } }, hex: { effects: [{ kind: 'damage', amount: 2 }] } }, pieces: { pawn: { manaYield: 2, atk: 2 } } });
+    applyBalance({ cards: { stone_sentinel: { cost: 250, piece: { defense: 2 } }, hex: { effects: [{ kind: 'destroy' }] } }, pieces: { pawn: { manaYield: 2 } } });
     expect(getCardDef('stone_sentinel').cost).toBe(250);
-    expect((getCardDef('stone_sentinel') as SummonCardDef).piece.hp).toBe(2);
-    expect((getCardDef('stone_sentinel') as SummonCardDef).piece.def).toBe(1); // untouched field follows the code
-    expect(getCardDef('stone_sentinel').text).toMatch(/1 ATK \/ 1 DEF \/ 2 HP/);
-    expect(getPieceDef('stone_sentinel').hp).toBe(2); // the creature registry follows the card
-    expect(getCardDef('hex').text).toBe('Deal 2 damage to target enemy Tier 1 piece.');
-    expect(getPieceDef('pawn').atk).toBe(2);
-    expect(getPieceDef('knight').atk).toBe(1);
+    expect((getCardDef('stone_sentinel') as SummonCardDef).piece.defense).toBe(2);
+    expect(getCardDef('stone_sentinel').text).toMatch(/Starts with 2 Defense/);
+    expect(getPieceDef('stone_sentinel').defense).toBe(2);
+    expect(getCardDef('hex').text).toBe('Destroy target enemy Tier 1 piece.');
+    expect(getPieceDef('pawn').manaYield).toBe(2);
 
-    // The patched numbers drive the game: pawns now make 2 mana each (8 more per turn), and hit for 2.
     let g = realGame();
     expect(viewFor(g, 'white').players.white.manaIncome).toBe(40);
     g = move(g, 'e2', 'e4');
     expect(g.players.white.mana).toBe(40);
-    expect(pieceAt(g, s('e4'))!.atk).toBe(2); // new pieces read the live definition
 
     applyBalance(EMPTY_BALANCE);
     expect(getCardDef('stone_sentinel').cost).toBe(200);
-    expect((getCardDef('stone_sentinel') as SummonCardDef).piece.hp).toBe(3);
+    expect((getCardDef('stone_sentinel') as SummonCardDef).piece.defense).toBe(1);
     expect(getCardDef('stone_sentinel').text).toBe(baseCardDef('stone_sentinel').text);
-    expect(getPieceDef('pawn').atk).toBe(1);
+    expect(getPieceDef('pawn').manaYield).toBeUndefined();
     expect(viewFor(realGame(), 'white').players.white.manaIncome).toBe(32);
   });
 
-  it('rebasePieces carries a stat change onto pieces already on the board, keeping buffs', () => {
-    let g = newGame();
-    const ws = giveCard(g, 'white', 'whetstone');
-    g = act(g, { type: 'playCard', cardInstanceId: ws, target: s('e2') }); // e2 pawn: 2 ATK
-    expect(pieceAt(g, s('e2'))!.base).toEqual({ atk: 1, def: 0, hp: 1 });
-
-    applyBalance({ cards: {}, pieces: { pawn: { atk: 3, hp: 2 } } });
-    expect(rebasePieces(g)).toBe(true);
-    expect(pieceAt(g, s('d2'))!.atk).toBe(3); // plain pawn follows the new base
-    expect(pieceAt(g, s('e2'))!.atk).toBe(4); // buffed pawn keeps its +1
-    expect(pieceAt(g, s('d2'))!.hp).toBe(2);
-    expect(pieceAt(g, s('d2'))!.maxHp).toBe(2);
-    expect(pieceAt(g, s('b1'))!.atk).toBe(1); // knights untouched
-    expect(rebasePieces(g)).toBe(false); // idempotent
-
+  it('sanitizes leftover ATK/HP/DEF fields and maps old damage to destroy', () => {
+    applyBalance({
+      cards: {
+        stone_sentinel: { piece: { atk: 3, def: 2, hp: 5 } as never },
+        hex: { effects: [{ kind: 'damage', amount: 2 } as never] },
+      },
+      pieces: { pawn: { atk: 4, hp: 2 } as never },
+    });
+    expect((getCardDef('stone_sentinel') as SummonCardDef).piece.defense).toBe(1);
+    expect((getCardDef('stone_sentinel') as SummonCardDef).piece).not.toHaveProperty('atk');
+    expect((getCardDef('hex') as { effects: { kind: string }[] }).effects).toEqual([{ kind: 'destroy' }]);
+    expect(getPieceDef('pawn')).not.toHaveProperty('atk');
     applyBalance(EMPTY_BALANCE);
+  });
+
+  it('rebasePieces drops leftover stat fields and keeps stance in sync with Defense', () => {
+    const g = newGame();
+    const pawn = pieceAt(g, s('e2'))! as GameState['pieces'][string] & { atk?: number; hp?: number };
+    pawn.atk = 2;
+    pawn.hp = 3;
+    pawn.defense = 2;
+    pawn.stance = 'attack';
     expect(rebasePieces(g)).toBe(true);
-    expect(pieceAt(g, s('d2'))!.atk).toBe(1);
-    expect(pieceAt(g, s('e2'))!.atk).toBe(2);
-    expect(pieceAt(g, s('d2'))!.hp).toBe(1);
+    expect(pieceAt(g, s('e2'))).not.toHaveProperty('atk');
+    expect(pieceAt(g, s('e2'))).not.toHaveProperty('hp');
+    expect(pieceAt(g, s('e2'))!.defense).toBe(2);
+    expect(pieceAt(g, s('e2'))!.stance).toBe('defense');
+    expect(rebasePieces(g)).toBe(false);
   });
 
   it('admin-created cards register, play like any other, and can be removed again', () => {
@@ -692,7 +710,7 @@ describe('balance patches', () => {
       tier: 2,
       summonTurns: 1,
       text: 'A wolf.',
-      piece: { kind: 'custom_wolf', name: 'Dire Wolf', glyph: '🐺', tier: 2, movement: { leaps: DIRS.KNIGHT }, atk: 2, def: 0, hp: 2 },
+      piece: { kind: 'custom_wolf', name: 'Dire Wolf', glyph: '🐺', tier: 2, movement: { leaps: DIRS.KNIGHT } },
       give: 'everyone' as const,
     };
     const zap = {
@@ -703,7 +721,7 @@ describe('balance patches', () => {
       cost: 150,
       target: 'enemyPiece' as const,
       text: 'Zap.',
-      effects: [{ kind: 'damage' as const, amount: 1 }],
+      effects: [{ kind: 'destroy' as const }],
       give: 'reward' as const,
     };
     expect(validateBalance({ cards: {}, pieces: {}, customCards: [wolf, zap] })).toEqual([]);
@@ -722,7 +740,7 @@ describe('balance patches', () => {
 
     applyBalance({ cards: {}, pieces: {}, customCards: [wolf, zap] });
     expect(getCardDef('custom_wolf').name).toBe('Dire Wolf');
-    expect(getPieceDef('custom_wolf').atk).toBe(2);
+    expect(getPieceDef('custom_wolf').kind).toBe('custom_wolf');
     expect(customCardsGiven('everyone')).toEqual(['custom_wolf']);
     expect(customCardsGiven('reward')).toEqual(['custom_zap']);
 
@@ -735,7 +753,7 @@ describe('balance patches', () => {
     const z = giveCard(g, 'black', 'custom_zap');
     g = move(g, 'b2', 'b3');
     g = act(g, { type: 'playCard', cardInstanceId: z, target: s('e2') });
-    expect(pieceAt(g, s('e2'))!.hp).toBe(1);
+    expect(pieceAt(g, s('e2'))).toBeUndefined();
 
     // Deleting the cards: the creature and any copies in hands/decks are pruned from saved games.
     applyBalance(EMPTY_BALANCE);
@@ -763,7 +781,7 @@ describe('balance patches', () => {
   it('rejects nonsense', () => {
     expect(validateBalance({ cards: { nope: { cost: 1 } }, pieces: {} })).toEqual([expect.stringMatching(/Unknown card/)]);
     expect(validateBalance({ cards: { hex: { cost: -5 } }, pieces: {} })).toEqual([expect.stringMatching(/cost/)]);
-    expect(validateBalance({ cards: { the_ox: { piece: { hp: 0 } } }, pieces: {} })).toEqual([expect.stringMatching(/HP/)]);
+    expect(validateBalance({ cards: { the_ox: { piece: { defense: -1 } } }, pieces: {} })).toEqual([expect.stringMatching(/Defense/)]);
     expect(validateBalance({ cards: {}, pieces: { king: { movement: { pawn: true } } } })).toEqual([expect.stringMatching(/King/)]);
     expect(validateBalance({ cards: {}, pieces: { rook: { movement: { leaps: [] } } } })).toEqual([expect.stringMatching(/not be able to move/)]);
     expect(validateBalance({ cards: { the_ox: { cost: 300, piece: { movement: { leaps: [[1, 2]], slides: [{ dirs: [[0, 1]], range: 2 }], relative: true } } } }, pieces: { queen: { manaYield: 10 } } })).toEqual([]);
@@ -793,10 +811,7 @@ describe('creature abilities', () => {
       glyph: '🛡️',
       tier: 2,
       movement: { leaps: DIRS.ALL },
-      atk: 1,
-      def: 1,
-      hp: 2,
-      abilities: [{ kind: 'grantAdjacent' as const, def: 1 }],
+      abilities: [{ kind: 'grantAdjacent' as const, defense: 1 }],
     },
     give: 'everyone' as const,
   };
@@ -809,9 +824,9 @@ describe('creature abilities', () => {
     g = applyArenaOp(g, { type: 'spawnPiece', kind: 'pawn', color: 'white', square: s('e5') });
     g = applyArenaOp(g, { type: 'spawnPiece', kind: 'custom_ngk', color: 'white', square: s('e4') });
     expect(g.pendingGrant).toBeUndefined();
-    expect(pieceAt(g, s('e5'))!.def).toBe(1);
-    expect(pieceAt(g, s('e5'))!.maxDef).toBe(1);
-    expect(g.events.some((e) => e.type === 'abilityUsed' && e.def === 1)).toBe(true);
+    expect(pieceAt(g, s('e5'))!.defense).toBe(1);
+    expect(pieceAt(g, s('e5'))!.stance).toBe('defense');
+    expect(g.events.some((e) => e.type === 'abilityUsed' && e.defense === 1)).toBe(true);
   });
 
   it('on summon, requires a choice when several neighbours are eligible', () => {
@@ -834,14 +849,14 @@ describe('creature abilities', () => {
     g = act(g, { type: 'useAbility', from: s('e2'), to: s('d2') });
     expect(g.pendingGrant).toBeUndefined();
     expect(g.turn).toBe('white');
-    expect(pieceAt(g, s('d2'))!.def).toBe(1);
-    expect(pieceAt(g, s('d2'))!.maxDef).toBe(1);
-    expect(g.events.some((e) => e.type === 'abilityUsed' && e.def === 1)).toBe(true);
+    expect(pieceAt(g, s('d2'))!.defense).toBe(1);
+    expect(pieceAt(g, s('d2'))!.stance).toBe('defense');
+    expect(g.events.some((e) => e.type === 'abilityUsed' && e.defense === 1)).toBe(true);
     expect(() => act(g, { type: 'useAbility', from: s('e2'), to: s('f2') })).toThrow(/already used/);
     expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(true);
   });
 
-  it('works in Defense mode after the on-summon grant is resolved', () => {
+  it('a granted piece enters Defense; stacked grants add charges', () => {
     applyBalance({ cards: {}, pieces: {}, customCards: [knight] });
     let g = newGame();
     const card = giveCard(g, 'white', 'custom_ngk');
@@ -850,15 +865,15 @@ describe('creature abilities', () => {
     g = move(g, 'a2', 'a3');
     g = move(g, 'a7', 'a6');
     g = act(g, { type: 'useAbility', from: s('e2'), to: s('d2') });
-    expect(pieceAt(g, s('d2'))!.def).toBe(1);
-    g = act(g, { type: 'setStance', square: s('e2'), stance: 'defense' });
-    expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(false);
-    expect(legalActions(g).some((a) => a.type === 'useAbility' && a.from === s('e2'))).toBe(false);
+    expect(pieceAt(g, s('d2'))!.defense).toBe(1);
+    expect(pieceAt(g, s('d2'))!.stance).toBe('defense');
+    expect(legalMoves(g).some((m) => m.from === s('d2'))).toBe(false);
+    expect(() => act(g, { type: 'setStance', square: s('e2'), stance: 'defense' })).toThrow(/cannot leave Defense|cannot enter Defense/);
     g = move(g, 'b2', 'b3');
     g = move(g, 'b7', 'b6');
-    expect(legalActions(g).some((a) => a.type === 'useAbility' && a.from === s('e2') && a.to === s('f2'))).toBe(true);
-    g = act(g, { type: 'useAbility', from: s('e2'), to: s('f2') });
-    expect(pieceAt(g, s('f2'))!.def).toBe(1);
+    expect(legalActions(g).some((a) => a.type === 'useAbility' && a.from === s('e2') && a.to === s('d2'))).toBe(true);
+    g = act(g, { type: 'useAbility', from: s('e2'), to: s('d2') });
+    expect(pieceAt(g, s('d2'))!.defense).toBe(2);
   });
 
   it('arena: several neighbours flash until one is chosen', () => {
@@ -869,12 +884,12 @@ describe('creature abilities', () => {
     g = applyArenaOp(g, { type: 'spawnPiece', kind: 'custom_ngk', color: 'white', square: s('e4') });
     expect(g.pendingGrant?.targets).toEqual(expect.arrayContaining([s('d4'), s('e5')]));
     expect(g.pendingGrant?.targets).toHaveLength(2);
-    expect(pieceAt(g, s('e5'))!.def).toBe(0);
+    expect(pieceAt(g, s('e5'))!.defense).toBe(0);
     expect(() => applyArenaOp(g, { type: 'relocate', from: s('e4'), to: s('f4') })).toThrow(/Choose which adjacent/);
     g = applyArenaOp(g, { type: 'useAbility', from: s('e4'), to: s('e5') });
     expect(g.pendingGrant).toBeUndefined();
-    expect(pieceAt(g, s('e5'))!.def).toBe(1);
-    expect(pieceAt(g, s('d4'))!.def).toBe(0);
+    expect(pieceAt(g, s('e5'))!.defense).toBe(1);
+    expect(pieceAt(g, s('d4'))!.defense).toBe(0);
   });
 
   it('arena: dropping the card onto an empty square also grants on arrival', () => {
@@ -884,93 +899,95 @@ describe('creature abilities', () => {
     g = applyArenaOp(g, { type: 'giveCard', color: 'white', cardId: 'custom_ngk' });
     const inst = g.players.white.hand[0]!;
     g = applyArenaOp(g, { type: 'dropCard', cardId: 'custom_ngk', color: 'white', square: s('e4'), fromHand: inst.instanceId });
-    expect(pieceAt(g, s('e5'))!.def).toBe(1);
+    expect(pieceAt(g, s('e5'))!.defense).toBe(1);
     expect(g.pendingGrant).toBeUndefined();
   });
 
-  it('grants +1 DEF from the arena without spending a turn', () => {
+  it('grants +1 Defense from the arena without spending a turn', () => {
     applyBalance({ cards: {}, pieces: {}, customCards: [knight] });
     let g = createArenaGame(1);
     g = applyArenaOp(g, { type: 'spawnPiece', kind: 'custom_ngk', color: 'white', square: s('e4') });
     g = applyArenaOp(g, { type: 'spawnPiece', kind: 'pawn', color: 'white', square: s('e5') });
-    expect(pieceAt(g, s('e5'))!.def).toBe(0);
+    expect(pieceAt(g, s('e5'))!.defense).toBe(0);
     expect(previewAbilities(g, pieceAt(g, s('e4'))!).some((a) => a.to === s('e5'))).toBe(true);
     g = applyArenaOp(g, { type: 'useAbility', from: s('e4'), to: s('e5') });
-    expect(pieceAt(g, s('e5'))!.def).toBe(1);
-    expect(pieceAt(g, s('e5'))!.maxDef).toBe(1);
+    expect(pieceAt(g, s('e5'))!.defense).toBe(1);
+    expect(pieceAt(g, s('e5'))!.stance).toBe('defense');
   });
 
   it('awakens Nullglass even when abilities was an empty list', () => {
     const { abilities: _drop, ...piece } = knight.piece;
     applyBalance({ cards: {}, pieces: {}, customCards: [{ ...knight, piece: { ...piece, abilities: [] } }] });
-    expect(getPieceDef('custom_ngk').abilities).toEqual([{ kind: 'grantAdjacent', def: 1 }]);
+    expect(getPieceDef('custom_ngk').abilities).toEqual([{ kind: 'grantAdjacent', defense: 1 }]);
   });
 
   it('awakens a Nullglass Knight whose ability was only written in the card text', () => {
     const { abilities: _drop, ...piece } = knight.piece;
     const legacy = { ...knight, piece: { ...piece } };
     applyBalance({ cards: {}, pieces: {}, customCards: [legacy] });
-    expect(getPieceDef('custom_ngk').abilities).toEqual([{ kind: 'grantAdjacent', def: 1 }]);
-    expect(describeAbility({ kind: 'grantAdjacent', def: 1 })).toBe(
-      'On summon, grant an adjacent friendly piece +1 DEF. If several are adjacent, choose one.',
+    expect(getPieceDef('custom_ngk').abilities).toEqual([{ kind: 'grantAdjacent', defense: 1 }]);
+    expect(describeAbility({ kind: 'grantAdjacent', defense: 1 })).toBe(
+      'On summon, grant an adjacent friendly piece +1 Defense. If several are adjacent, choose one.',
     );
     expect(describeCard(getCardDef('custom_ngk') as SummonCardDef)).toMatch(
-      /On summon, grant an adjacent friendly piece \+1 DEF/,
+      /On summon, grant an adjacent friendly piece \+1 Defense/,
     );
   });
 
-  it('rejects a grant ability with no stat change', () => {
+  it('rejects a grant of 0 Defense', () => {
+    expect(
+      validateBalance({
+        cards: {},
+        pieces: {},
+        customCards: [{ ...knight, piece: { ...knight.piece, abilities: [{ kind: 'grantAdjacent', defense: 0 }] } }],
+      }),
+    ).toEqual(expect.arrayContaining([expect.stringMatching(/Defense/)]));
     expect(
       validateBalance({
         cards: {},
         pieces: {},
         customCards: [{ ...knight, piece: { ...knight.piece, abilities: [{ kind: 'grantAdjacent' }] } }],
       }),
-    ).toEqual(expect.arrayContaining([expect.stringMatching(/ATK\/DEF\/HP/)]));
+    ).toEqual([]);
   });
 });
 
 describe('stance', () => {
-  it('any number of pieces may switch stance in a turn, and each is frozen until the turn ends', () => {
-    let g = newGame();
-    for (const sqn of ['a2', 'b2', 'c2', 'd2', 'e2']) g = act(g, { type: 'setStance', square: s(sqn), stance: 'defense' });
-    expect(g.turn).toBe('white');
-    expect(g.turnInfo.stanceChanged).toHaveLength(5);
-    // Switching one straight back the same turn is refused; a different pawn may still be pushed.
-    expect(() => act(g, { type: 'setStance', square: s('a2'), stance: 'attack' })).toThrow(/changed stance this turn/);
-    expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(false);
-    expect(legalMoves(g).some((m) => m.from === s('f2'))).toBe(true);
-    g = move(g, 'f2', 'f3');
-    expect(g.turn).toBe('black');
-    for (const sqn of ['a2', 'b2', 'c2', 'd2', 'e2']) expect(pieceAt(g, s(sqn))!.stance).toBe('defense');
+  it('standard pieces cannot enter Defense; only a piece with charges can leave', () => {
+    const g = newGame();
+    expect(() => act(g, { type: 'setStance', square: s('e2'), stance: 'defense' })).toThrow(/cannot leave Defense|cannot enter Defense/);
+    expect(legalActions(g).some((a) => a.type === 'setStance' && a.square === s('e2'))).toBe(false);
+    putDefense(g, 'e2', 1);
+    expect(legalActions(g).some((a) => a.type === 'setStance' && a.square === s('e2') && a.stance === 'attack')).toBe(true);
   });
 
-  it('pieces in Defense mode stay frozen until switched back; switching back freezes them for that turn only', () => {
+  it('Leave Defense drops all charges and freezes the piece for the rest of that turn', () => {
     let g = newGame();
-    g = move(act(g, { type: 'setStance', square: s('e2'), stance: 'defense' }), 'a2', 'a3');
-    g = move(g, 'a7', 'a6');
-    expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(false);
-    g = move(g, 'b2', 'b3');
-    g = move(g, 'a6', 'a5');
-    expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(false); // still frozen many turns later
+    putDefense(g, 'e2', 2);
     g = act(g, { type: 'setStance', square: s('e2'), stance: 'attack' });
-    expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(false); // frozen for the rest of this turn
-    g = move(g, 'c2', 'c3'); // but another piece may move
-    g = move(g, 'a5', 'a4');
-    expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(true); // free next turn
+    expect(pieceAt(g, s('e2'))!.defense).toBe(0);
+    expect(pieceAt(g, s('e2'))!.stance).toBe('attack');
+    expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(false);
+    expect(() => act(g, { type: 'setStance', square: s('e2'), stance: 'attack' })).toThrow(/changed stance this turn|cannot leave Defense/);
+    g = move(g, 'a2', 'a3');
+    g = move(g, 'a7', 'a6');
+    expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(true);
   });
 
-  it('a piece in Defense mode does not give check; switching back to Attack restores the threat', () => {
+  it('a piece in Defense mode does not give check; leaving Defense restores the threat next turn', () => {
     let g = newGame();
     g = move(g, 'e2', 'e4');
     g = move(g, 'f7', 'f6');
-    g = move(g, 'd1', 'h5'); // queen gives check on the h5-e8 diagonal
+    g = move(g, 'd1', 'h5');
     expect(isInCheck(g, 'black')).toBe(true);
-    g = move(g, 'g7', 'g6'); // block
-    g = move(act(g, { type: 'setStance', square: s('h5'), stance: 'defense' }), 'a2', 'a3');
-    g = move(g, 'g6', 'g5'); // legal: a Defense-mode queen cannot attack
+    g = move(g, 'g7', 'g6');
+    putDefense(g, 'h5', 1);
+    g = move(g, 'a2', 'a3');
+    g = move(g, 'g6', 'g5');
     expect(isInCheck(g, 'black')).toBe(false);
-    g = move(act(g, { type: 'setStance', square: s('h5'), stance: 'attack' }), 'a3', 'a4');
+    g = act(g, { type: 'setStance', square: s('h5'), stance: 'attack' });
+    expect(legalMoves(g).some((m) => m.from === s('h5'))).toBe(false);
+    g = move(g, 'a3', 'a4');
     expect(isInCheck(g, 'black')).toBe(true);
     expect(() => move(g, 'a7', 'a6')).toThrow(IllegalActionError);
   });
@@ -979,6 +996,10 @@ describe('stance', () => {
     const g = newGame();
     expect(() => act(g, { type: 'setStance', square: s('e1'), stance: 'defense' })).toThrow(IllegalActionError);
     expect(legalActions(g).some((a) => a.type === 'setStance' && a.square === s('e1'))).toBe(false);
+    const ox = giveCard(g, 'white', 'the_ox');
+    const after = act(g, { type: 'playCard', cardInstanceId: ox, target: s('e2') });
+    putDefense(after, 'e2', 1);
+    expect(() => act(after, { type: 'setStance', square: s('e2'), stance: 'attack' })).toThrow(IllegalActionError);
   });
 });
 

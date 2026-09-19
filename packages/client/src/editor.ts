@@ -71,19 +71,11 @@ type Selection =
 
 function defaultEffect(kind: Effect['kind']): Effect {
   switch (kind) {
-    case 'modifyStats':
-      return { kind, atk: 1 };
-    case 'modifyStatsAll':
-      return { kind, atk: 1 };
-    case 'damage':
-      return { kind, amount: 1 };
-    case 'heal':
-      return { kind, amount: 1 };
     case 'draw':
       return { kind, count: 1 };
     case 'hastenSummon':
       return { kind, turns: 1 };
-    case 'restore':
+    case 'destroy':
     case 'freeStance':
       return { kind };
   }
@@ -261,10 +253,10 @@ export class BalanceEditor {
             tier: 2,
             summonTurns: 2,
             text: '',
-            piece: { kind: id, name, glyph: '✨', tier: 2, movement: { leaps: DIRS.ALL.map(([f, r]) => [f, r] as const) }, atk: 1, def: 0, hp: 2 },
+            piece: { kind: id, name, glyph: '✨', tier: 2, movement: { leaps: DIRS.ALL.map(([f, r]) => [f, r] as const) } },
             give: 'everyone',
           }
-        : { id, type, name, glyph: '✨', cost: 150, target: 'ownPiece', text: '', effects: [{ kind: 'modifyStats', atk: 1 }], give: 'everyone' };
+        : { id, type, name, glyph: '✨', cost: 150, target: 'none', text: '', effects: [{ kind: 'draw', count: 1 }], give: 'everyone' };
     card.text = describeCard(card);
     (this.draft.customCards ??= []).push(card);
     this.selected = { kind: 'custom', id };
@@ -739,17 +731,14 @@ export class BalanceEditor {
     };
     this.header(form, base.name, `Standard piece · Tier ${base.tier}`, `<span class="glyph">${base.glyph}</span>`, !!this.draft.pieces[kind], () => delete this.draft.pieces[kind]);
 
-    const stats = this.group(form, 'Stats (new pieces of this kind)');
+    const stats = this.group(form, 'Piece');
     stats.append(
-      this.numField('ATK', patch.atk, base.atk, setP('atk')),
-      this.numField('DEF', patch.def, base.def, setP('def'), 'shield while in Defense mode'),
-      this.numField('HP', patch.hp, base.hp, setP('hp')),
       this.numField('Mana per turn', patch.manaYield, base.manaYield ?? base.tier, setP('manaYield'), 'default = tier'),
     );
     if (kind === 'king') {
       const n = document.createElement('p');
       n.className = 'hint';
-      n.textContent = 'The King ignores HP and DEF (any hit captures it) and its attack always destroys the target.';
+      n.textContent = 'The King captures any piece, even one in Defense. Any hit on the King wins the game.';
       stats.appendChild(n);
     }
     this.movementEditor(form, base.movement, patch.movement, (m) => {
@@ -828,11 +817,9 @@ export class BalanceEditor {
         this.numField('Sacrifice tier', patch.sacrificeTier, base.sacrificeTier ?? base.tier - 1, setC('sacrificeTier'), 'which of your pieces can be sacrificed'),
         this.numField('Turns to summon', patch.summonTurns, base.summonTurns, setC('summonTurns')),
       );
-      const stats = this.group(form, 'Creature stats');
+      const stats = this.group(form, 'Creature');
       stats.append(
-        this.numField('ATK', sub.atk, base.piece.atk, setPP('atk')),
-        this.numField('DEF', sub.def, base.piece.def, setPP('def')),
-        this.numField('HP', sub.hp, base.piece.hp, setPP('hp')),
+        this.numField('Starting Defense', sub.defense, base.piece.defense ?? 0, setPP('defense'), '0 = none; each charge absorbs one capture'),
         this.numField('Mana per turn', sub.manaYield, base.piece.manaYield ?? (patch.tier ?? base.tier), setPP('manaYield'), 'default = tier'),
       );
       this.movementEditor(form, base.piece.movement, sub.movement, (m) => setPP('movement')(m), base.piece.glyph, false);
@@ -1026,11 +1013,12 @@ export class BalanceEditor {
         this.plainNum('Sacrifice tier', card.sacrificeTier ?? card.tier - 1, (v) => (card.sacrificeTier = v), 'which of your pieces can be sacrificed'),
         this.plainNum('Turns to summon', card.summonTurns, (v) => (card.summonTurns = v)),
       );
-      const stats = this.group(form, 'Creature stats');
+      const stats = this.group(form, 'Creature');
       stats.append(
-        this.plainNum('ATK', card.piece.atk, (v) => (card.piece.atk = v)),
-        this.plainNum('DEF', card.piece.def, (v) => (card.piece.def = v)),
-        this.plainNum('HP', card.piece.hp, (v) => (card.piece.hp = v)),
+        this.plainNum('Starting Defense', card.piece.defense ?? 0, (v) => {
+          if (v > 0) card.piece.defense = v;
+          else delete card.piece.defense;
+        }, '0 = none; each charge absorbs one capture'),
         this.plainNum('Mana per turn', card.piece.manaYield ?? card.piece.tier, (v) => (card.piece.manaYield = v), 'default = tier'),
       );
       this.movementEditor(form, card.piece.movement, card.piece.movement, (m) => {
@@ -1111,23 +1099,17 @@ export class BalanceEditor {
         this.selectField(
           'Ability',
           a.kind,
-          [['grantAdjacent', 'Grant stats to an adjacent piece']],
+          [['grantAdjacent', 'Grant Defense to an adjacent piece']],
           () => undefined,
         ),
       );
-      const num = (label: string, key: 'atk' | 'def' | 'hp') => {
+      if (a.kind === 'grantAdjacent') {
         row.appendChild(
-          this.plainNum(label, a[key] ?? 0, (v) => {
-            if (v) a[key] = v;
-            else delete a[key];
+          this.plainNum('Defense granted', a.defense ?? 1, (v) => {
+            a.defense = Math.max(1, v);
             this.refreshQuiet();
           }),
         );
-      };
-      if (a.kind === 'grantAdjacent') {
-        num('ATK', 'atk');
-        num('DEF', 'def');
-        num('HP', 'hp');
         row.appendChild(
           this.selectField(
             'Target',
@@ -1173,9 +1155,9 @@ export class BalanceEditor {
     if (!abilities.length) {
       const add = document.createElement('button');
       add.type = 'button';
-      add.textContent = '+ Grant adjacent stats';
+      add.textContent = '+ Grant adjacent Defense';
       add.onclick = () => {
-        const next: PieceAbility = { kind: 'grantAdjacent', def: 1 };
+        const next: PieceAbility = { kind: 'grantAdjacent', defense: 1 };
         card.piece.abilities = [...abilities, next];
         this.refresh();
       };
@@ -1186,14 +1168,10 @@ export class BalanceEditor {
   private customEffectsEditor(form: HTMLElement, card: Extract<CustomCard, { type: 'spell' }>): void {
     const g = this.group(form, 'Effects');
     const KINDS: [Effect['kind'], string][] = [
-      ['modifyStats', 'Change target stats (permanent)'],
-      ['modifyStatsAll', 'Change stats of all your pieces'],
-      ['damage', 'Deal damage'],
-      ['heal', 'Heal HP'],
-      ['restore', 'Fully restore HP and shield'],
+      ['destroy', 'Destroy the target'],
       ['draw', 'Draw cards'],
       ['hastenSummon', 'Speed up a summon'],
-      ['freeStance', 'Switch to Attack and still act'],
+      ['freeStance', 'Leave Defense and still act'],
     ];
     card.effects.forEach((e, i) => {
       const row = document.createElement('div');
@@ -1208,24 +1186,6 @@ export class BalanceEditor {
         row.appendChild(this.plainNum(label, obj[key] ?? 0, (v) => (obj[key] = v), hint));
       };
       switch (e.kind) {
-        case 'modifyStats':
-        case 'modifyStatsAll':
-          num('ATK change', 'atk');
-          num('DEF change', 'def');
-          num('HP change', 'hp');
-          if (e.kind === 'modifyStatsAll') {
-            row.appendChild(
-              this.selectField('Which pieces', e.pieceKind ?? '', [['', 'All pieces'], ...STANDARD_KINDS.filter((k) => k !== 'king').map((k) => [k, basePieceDef(k).name + 's'] as [string, string])], (v) => {
-                if (v) e.pieceKind = v;
-                else delete e.pieceKind;
-              }),
-            );
-          }
-          break;
-        case 'damage':
-        case 'heal':
-          num('Amount', 'amount');
-          break;
         case 'draw':
           num('Cards drawn', 'count');
           break;
@@ -1251,7 +1211,7 @@ export class BalanceEditor {
     add.type = 'button';
     add.textContent = '+ Add effect';
     add.onclick = () => {
-      card.effects.push(defaultEffect('damage'));
+      card.effects.push(defaultEffect('draw'));
       this.refresh();
     };
     g.appendChild(add);
@@ -1273,27 +1233,12 @@ export class BalanceEditor {
       const num = <K extends string>(label: string, obj: Record<string, unknown>, key: K, def: number, hint = '') => {
         row.appendChild(
           this.numField(label, (obj[key] as number | undefined) === def ? undefined : (obj[key] as number | undefined), def, (v) => {
-            if (v === undefined) {
-              if (def === 0 && (key === 'atk' || key === 'def' || key === 'hp')) delete obj[key];
-              else obj[key] = def;
-            } else obj[key] = v;
+            obj[key] = v ?? def;
             commit();
           }, hint),
         );
       };
       switch (e.kind) {
-        case 'modifyStats':
-        case 'modifyStatsAll': {
-          const b = (be?.kind === e.kind ? be : e) as typeof e;
-          num('ATK change', e as never, 'atk', b.atk ?? 0);
-          num('DEF change', e as never, 'def', b.def ?? 0);
-          num('HP change', e as never, 'hp', b.hp ?? 0);
-          break;
-        }
-        case 'damage':
-        case 'heal':
-          num('Amount', e as never, 'amount', (be?.kind === e.kind ? be.amount : e.amount));
-          break;
         case 'draw':
           num('Cards drawn', e as never, 'count', (be?.kind === 'draw' ? be.count : e.count));
           break;

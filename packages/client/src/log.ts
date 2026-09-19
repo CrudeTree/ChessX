@@ -42,10 +42,10 @@ export function describeEvents(view: PlayerView, names: Record<'white' | 'black'
           lines.push({ text: `${names[owner ?? 'white']}: King ${squareName(e.from)} strikes down ${target} on ${squareName(e.to)} — royal strike, destroyed!`, color: owner, important: true });
           break;
         }
-        const hit = view.events.find((x) => x.type === 'damaged' && x.pieceId === e.targetId);
-        const shield = hit && hit.type === 'damaged' && hit.shield > 0 ? ` (shield absorbs ${hit.shield})` : '';
+        const absorbed = view.events.find((x) => x.type === 'defenseAbsorbed' && x.pieceId === e.targetId);
+        const remain = absorbed && absorbed.type === 'defenseAbsorbed' ? absorbed.remaining : 0;
         lines.push({
-          text: `${names[owner ?? 'white']}: ${pieceName(e.attackerId)} ${squareName(e.from)} attacks ${target} on ${squareName(e.to)} for ${e.damage}${shield} — ${killed ? 'destroyed!' : 'it survives'}`,
+          text: `${names[owner ?? 'white']}: ${pieceName(e.attackerId)} ${squareName(e.from)} attacks ${target} on ${squareName(e.to)} — ${killed ? 'destroyed!' : `Defense absorbs it (${remain} left)`}`,
           color: owner,
         });
         break;
@@ -60,12 +60,7 @@ export function describeEvents(view: PlayerView, names: Record<'white' | 'black'
       }
       case 'abilityUsed': {
         const owner = ownerOf(e.pieceId);
-        const bits = [
-          e.atk ? `${e.atk > 0 ? '+' : ''}${e.atk} ATK` : '',
-          e.def ? `${e.def > 0 ? '+' : ''}${e.def} DEF` : '',
-          e.hp ? `${e.hp > 0 ? '+' : ''}${e.hp} HP` : '',
-        ].filter(Boolean);
-        const grant = bits.length ? bits.join(', ') : 'its ability';
+        const grant = e.defense ? `+${e.defense} Defense` : 'its ability';
         lines.push({
           text: `${names[owner ?? 'white']}: ${pieceName(e.pieceId)} ${squareName(e.from)} grants ${pieceName(e.targetId)} on ${squareName(e.to)} ${grant}`,
           color: owner,

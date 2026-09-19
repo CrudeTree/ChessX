@@ -34,7 +34,7 @@ const wolf = {
   tier: 2,
   summonTurns: 1,
   text: 'A wolf.',
-  piece: { kind: 'custom_wolf', name: 'Dire Wolf', glyph: '🐺', tier: 2, movement: { leaps: DIRS.KNIGHT }, atk: 2, def: 0, hp: 2 },
+  piece: { kind: 'custom_wolf', name: 'Dire Wolf', glyph: '🐺', tier: 2, movement: { leaps: DIRS.KNIGHT } },
   give: 'everyone' as const,
 };
 

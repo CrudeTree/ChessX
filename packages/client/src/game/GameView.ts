@@ -340,19 +340,15 @@ export class GameView {
   /** Arena catalog: show a piece def as if it were sitting on the board. */
   inspectCatalogPiece(kind: string, owner: Color): void {
     const def = getPieceDef(kind);
+    const defense = def.defense ?? 0;
     const piece: Piece = {
       id: 'catalog-preview',
       kind,
       owner,
       square: 0,
-      atk: def.atk,
-      def: def.def,
-      maxDef: def.def,
-      hp: def.hp,
-      maxHp: def.hp,
+      defense,
       hasMoved: true,
-      stance: 'attack',
-      base: { atk: def.atk, def: def.def, hp: def.hp },
+      stance: defense > 0 ? 'defense' : 'attack',
     };
     this.inspected = null;
     this.inspectedCard = null;
@@ -537,17 +533,16 @@ export class GameView {
           }
           break;
         }
-        case 'damaged': {
+        case 'defenseAbsorbed': {
           const { x, y } = squareToXY(ev.square, this.flipped);
-          const hpHit = ev.amount - ev.shield;
-          if (ev.shield > 0) {
-            this.flash(x, y, COLORS.def, 200);
-            this.floatText(x - 14, y, `-${ev.shield}`, COLORS.def, 220);
-          }
-          if (hpHit > 0 || ev.shield === 0) {
-            this.flash(x, y, COLORS.attack, 180);
-            this.floatText(x + (ev.shield > 0 ? 14 : 0), y, `-${hpHit}`, COLORS.attack, 220);
-          }
+          this.flash(x, y, COLORS.def, 220);
+          this.floatText(x, y, ev.remaining ? `Defense ${ev.remaining}` : 'Defense broken', COLORS.def, 240);
+          break;
+        }
+        case 'defenseGranted': {
+          const { x, y } = squareToXY(ev.square, this.flipped);
+          this.flash(x, y, COLORS.def, 220);
+          this.floatText(x, y, `+${ev.amount} Defense`, COLORS.def, 240);
           break;
         }
         case 'stanceChanged': {
@@ -567,20 +562,10 @@ export class GameView {
           this.burst(x, y, COLORS.summon, 1.6);
           break;
         }
-        case 'statsChanged': {
-          const { x, y } = squareToXY(ev.square, this.flipped);
-          this.flash(x, y, COLORS.select);
-          break;
-        }
         case 'abilityUsed': {
           const dest = squareToXY(ev.to, this.flipped);
           this.burst(dest.x, dest.y, COLORS.ability, 0.9);
-          const bits = [
-            ev.atk ? `${ev.atk > 0 ? '+' : ''}${ev.atk} ATK` : '',
-            ev.def ? `${ev.def > 0 ? '+' : ''}${ev.def} DEF` : '',
-            ev.hp ? `${ev.hp > 0 ? '+' : ''}${ev.hp} HP` : '',
-          ].filter(Boolean);
-          if (bits.length) this.floatText(dest.x, dest.y, bits.join(' '), COLORS.ability);
+          if (ev.defense) this.floatText(dest.x, dest.y, `+${ev.defense} Defense`, COLORS.ability);
           break;
         }
         case 'summonStarted': {

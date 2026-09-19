@@ -29,6 +29,7 @@ admin.loadBalance(); // before any game is loaded or created
 const auth = new Auth(db, configFromEnv(process.env));
 const games = new GameManager(db, (id) => db.userById(id)?.name ?? 'Player');
 const progression = new Progression(db);
+progression.purgeRetiredCards();
 setInterval(() => db.purgeExpiredSessions(), 60 * 60_000).unref();
 
 /** Open sockets per user, so home pages can be refreshed when one of their games changes. */

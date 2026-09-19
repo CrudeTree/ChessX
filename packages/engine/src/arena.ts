@@ -46,6 +46,7 @@ export function createArenaGame(seed?: number): GameState {
     nextId: 1,
     rngState: (seed ?? Date.now()) | 0,
     events: [],
+    skipTurn: [],
   };
 }
 

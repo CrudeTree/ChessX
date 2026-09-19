@@ -26,9 +26,6 @@ const KNIGHT_LEAPS = [
 
 export const DIRS = { ORTHOGONAL, DIAGONAL, ALL: ALL_DIRS, KNIGHT: KNIGHT_LEAPS };
 
-/** Every piece starts with 1 ATK, 0 DEF, 1 HP. Cards modify from there. */
-export const BASE_STATS = { atk: 1, def: 0, hp: 1 } as const;
-
 export const STANDARD_PIECES: Record<string, PieceDef> = {
   pawn: {
     kind: 'pawn',
@@ -36,7 +33,6 @@ export const STANDARD_PIECES: Record<string, PieceDef> = {
     glyph: '♟',
     tier: 1,
     movement: { pawn: true },
-    ...BASE_STATS,
     description:
       'Moves one square forward (two from its starting square). Attacks diagonally forward. En passant: if an enemy pawn just double-stepped past you, you may capture it on the very next turn as if it had moved one square. Promotes when it reaches the last rank.',
   },
@@ -46,7 +42,6 @@ export const STANDARD_PIECES: Record<string, PieceDef> = {
     glyph: '♞',
     tier: 2,
     movement: { leaps: KNIGHT_LEAPS },
-    ...BASE_STATS,
     description: 'Jumps in an L-shape: two squares one way, one square sideways. Ignores pieces in between.',
   },
   bishop: {
@@ -55,7 +50,6 @@ export const STANDARD_PIECES: Record<string, PieceDef> = {
     glyph: '♝',
     tier: 2,
     movement: { slides: [{ dirs: DIAGONAL }] },
-    ...BASE_STATS,
     description: 'Slides any distance diagonally.',
   },
   rook: {
@@ -64,7 +58,6 @@ export const STANDARD_PIECES: Record<string, PieceDef> = {
     glyph: '♜',
     tier: 3,
     movement: { slides: [{ dirs: ORTHOGONAL }] },
-    ...BASE_STATS,
     description: 'Slides any distance horizontally or vertically. Can castle with the King.',
   },
   queen: {
@@ -73,7 +66,6 @@ export const STANDARD_PIECES: Record<string, PieceDef> = {
     glyph: '♛',
     tier: 4,
     movement: { slides: [{ dirs: ALL_DIRS }] },
-    ...BASE_STATS,
     description: 'Slides any distance in any direction.',
   },
   king: {
@@ -82,9 +74,8 @@ export const STANDARD_PIECES: Record<string, PieceDef> = {
     glyph: '♚',
     tier: 6,
     movement: { leaps: ALL_DIRS },
-    ...BASE_STATS,
     description:
-      "Moves one square in any direction. Castling: if neither the King nor that Rook has moved, the squares between are empty and none are attacked, the King may move two squares toward the Rook and the Rook hops over it. Royal strike: the King's attack destroys any piece outright, no matter its HP or DEF. Has no HP itself: any enemy piece reaching its square captures it. Cannot enter Defense mode.",
+      "Moves one square in any direction. Castling: if neither the King nor that Rook has moved, the squares between are empty and none are attacked, the King may move two squares toward the Rook and the Rook hops over it. Royal strike: the King's capture destroys any piece, even one in Defense. Any enemy piece reaching its square captures it. Cannot have Defense.",
   },
 };
 

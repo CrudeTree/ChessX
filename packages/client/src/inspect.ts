@@ -69,12 +69,8 @@ export class InspectPanel {
     const typeLine = isSummon
       ? `Summon · Tier ${card.tier} · arrives in ${card.summonTurns} turn${card.summonTurns === 1 ? '' : 's'}`
       : `Spell · ${describeTarget(card.target)}`;
-    const stats = isSummon
-      ? `<div class="zoom-stats">
-          <div class="stat atk">ATK<b>${card.piece.atk}</b></div>
-          <div class="stat def">DEF<b>${card.piece.def === 0 ? '—' : card.piece.def}</b></div>
-          <div class="stat hp">HP<b>${card.piece.hp}</b></div>
-        </div>`
+    const stats = isSummon && card.piece.defense
+      ? `<div class="zoom-stats"><div class="stat def">Defense<b>${card.piece.defense}</b></div></div>`
       : '';
     const needs = isSummon ? `Sacrifice one of your Tier ${card.sacrificeTier ?? card.tier - 1} pieces to summon.` : '';
 
@@ -124,9 +120,8 @@ export class InspectPanel {
     if (piece.summon) {
       const c = summonCardFor(piece.summon.cardId) ?? allCards().find((x) => x.id === piece.summon!.cardId);
       status.push(`Being sacrificed: ${c?.name ?? 'summon'} arrives in ${piece.summon.turnsRemaining} turn${piece.summon.turnsRemaining === 1 ? '' : 's'}.`);
-    } else if (piece.stance === 'defense') {
-      status.push('Cannot move or attack while in Defense mode. Switch it back to Attack mode to free it (it can act from the following turn).');
-      if (piece.maxDef === 0) status.push('No DEF to shield with — raise DEF (e.g. Shield Wall) to make Defense mode count.');
+    } else if (piece.defense > 0) {
+      status.push(`Defense ${piece.defense}: absorbs the next capture${piece.defense > 1 ? 's' : ''}, then leaves Defense and skips a turn. Cannot move or attack.`);
     }
     if (currentView?.turnInfo.stanceChanged.includes(piece.id)) {
       status.push('Changed stance this turn: cannot act or switch again until the turn ends.');
@@ -136,7 +131,7 @@ export class InspectPanel {
       const text = describeAbility(ability);
       if (!text) continue;
       if (currentView?.pendingGrant?.pieceId === piece.id) {
-        status.push('Choose a highlighted neighbour to grant +1 DEF.');
+        status.push('Choose a highlighted neighbour to grant +1 Defense.');
       } else if (used) status.push(`Already used its ability this turn (${text.replace(/\.$/, '')}).`);
       else if (piece.summon) status.push('Cannot use its ability while being sacrificed.');
       else status.push(`${text.charAt(0).toUpperCase()}${text.slice(1)}`);
@@ -151,12 +146,8 @@ export class InspectPanel {
       <div class="zoom-type">${esc(typeLine)}</div>
       ${artBanner(card?.art, card?.cardArtZoom)}
       ${movementMap(def.movement, `<span class="glyph ${isBasic ? 'chess' : 'emoji'} ${piece.owner}">${def.glyph}</span>`)}
-      <div class="zoom-stats">
-        <div class="stat atk">ATK<b>${piece.atk}</b></div>
-        <div class="stat def">DEF<b>${piece.maxDef === 0 ? '—' : `${piece.def}/${piece.maxDef}`}</b></div>
-        <div class="stat hp">HP<b>${isKing ? '—' : `${piece.hp}/${piece.maxHp}`}</b></div>
-      </div>
-      ${isKing ? '' : `<div class="zoom-stance ${piece.stance}">${piece.stance === 'defense' ? '🛡 Defense mode — DEF shields HP' : '⚔ Attack mode'}</div>`}
+      ${piece.defense > 0 ? `<div class="zoom-stats"><div class="stat def">Defense<b>${piece.defense}</b></div></div>` : ''}
+      ${isKing ? '' : `<div class="zoom-stance ${piece.stance}">${piece.defense > 0 ? `🛡 Defense mode — ${piece.defense} charge${piece.defense === 1 ? '' : 's'}` : '⚔ Attack mode'}</div>`}
       <div class="zoom-text">${esc(card?.text ?? def.description ?? '')}</div>
       <div class="zoom-status">${status.map(esc).join('<br>')}</div>
     `;
@@ -168,20 +159,19 @@ export class InspectPanel {
     }
 
     const action = gameView.stanceActionFor(piece.id);
-    const toDefense = piece.stance === 'attack';
-    this.stanceBtn.textContent = toDefense ? 'Switch to Defense mode' : 'Switch to Attack mode';
-    this.stanceBtn.className = toDefense ? 'to-defense' : 'to-attack';
+    this.stanceBtn.textContent = 'Leave Defense';
+    this.stanceBtn.className = 'to-attack';
     this.stanceBtn.disabled = !action;
     if (action) {
-      this.stanceHint.textContent = toDefense
-        ? 'Free action. The piece is frozen until you switch it back (from a later turn).'
-        : 'Free action. The piece sits out the rest of this turn, then may act as normal.';
+      this.stanceHint.textContent = 'Drops all Defense charges. This piece skips the rest of the turn.';
     } else if (isKing) {
-      this.stanceHint.textContent = 'The King cannot change stance.';
+      this.stanceHint.textContent = 'The King cannot have Defense.';
+    } else if (piece.defense <= 0) {
+      this.stanceHint.textContent = 'Only pieces with Defense can leave it. Standard pieces never start with Defense.';
     } else if (piece.summon) {
-      this.stanceHint.textContent = 'A piece being sacrificed cannot change stance.';
+      this.stanceHint.textContent = 'A piece being sacrificed cannot leave Defense.';
     } else if (currentView?.turnInfo.stanceChanged.includes(piece.id)) {
-      this.stanceHint.textContent = 'Already switched this turn.';
+      this.stanceHint.textContent = 'This piece is sitting out the turn.';
     } else if (currentView && currentView.turn !== piece.owner) {
       this.stanceHint.textContent = solo ? `It is not ${ownerName}'s turn.` : 'Not your piece or not your turn.';
     } else if (currentView && currentView.status.kind !== 'playing') {

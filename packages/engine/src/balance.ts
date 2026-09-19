@@ -4,16 +4,16 @@
 // a patch only carries the fields the admin actually changed, everything else
 // keeps following the code.
 
+import { RETIRED_CARDS } from './cards/catalog.js';
 import { allCards, baseCardDef, hasCard, setCardDef, setCustomCards } from './cards/registry.js';
 import { BOARD_ART_ZOOM_MAX, BOARD_ART_ZOOM_MIN, type CardDef, type Effect, type TargetRule } from './cards/types.js';
-import { basePieceDef, getPieceDef, hasPieceDef, setPieceDef, STANDARD_KINDS } from './pieces.js';
+import { basePieceDef, hasPieceDef, setPieceDef, STANDARD_KINDS } from './pieces.js';
 import { BASE_RULES, DEFAULT_RULES, type GameState } from './state.js';
 import type { AbilityTarget, Color, MovementSpec, PieceAbility, PieceDef } from './types.js';
 
 export interface PiecePatch {
-  atk?: number;
-  def?: number;
-  hp?: number;
+  /** Starting Defense charges. */
+  defense?: number;
   /** Mana produced per turn (default: the tier). */
   manaYield?: number;
   movement?: MovementSpec;
@@ -70,6 +70,68 @@ export const ART_URL = /^\/(uploads|art)\/[a-z0-9_.-]+\.(png|webp|jpg|jpeg)$/i;
 
 export const EMPTY_BALANCE: Balance = { cards: {}, pieces: {} };
 
+const RETIRED = new Set(RETIRED_CARDS);
+
+const LIVE_EFFECTS = new Set<Effect['kind']>(['destroy', 'draw', 'hastenSummon', 'freeStance']);
+
+function sanitizeAbility(a: PieceAbility): PieceAbility {
+  const old = a as PieceAbility & { atk?: number; def?: number; hp?: number };
+  const defense = old.defense ?? (old.def || old.atk || old.hp ? 1 : 1);
+  return {
+    kind: 'grantAdjacent',
+    defense,
+    ...(old.target ? { target: old.target } : {}),
+    ...(old.oncePerTurn !== undefined ? { oncePerTurn: old.oncePerTurn } : {}),
+  };
+}
+
+function sanitizePieceDef(p: PieceDef): PieceDef {
+  const leftover = p as PieceDef & { atk?: number; def?: number; hp?: number };
+  const { atk: _a, def: _d, hp: _h, ...rest } = leftover;
+  const abilities = (p.abilities ?? []).map(sanitizeAbility);
+  const defense = typeof leftover.defense === 'number' ? leftover.defense : 0;
+  return {
+    ...rest,
+    ...(defense ? { defense } : {}),
+    ...(abilities.length ? { abilities } : {}),
+  };
+}
+
+function sanitizeEffects(effects: Effect[] | undefined): Effect[] {
+  const out: Effect[] = [];
+  for (const e of effects ?? []) {
+    if (!e || typeof e !== 'object') continue;
+    if ((e as { kind?: string }).kind === 'damage') out.push({ kind: 'destroy' });
+    else if (LIVE_EFFECTS.has(e.kind)) out.push(e);
+  }
+  return out.length ? out : [{ kind: 'draw', count: 1 }];
+}
+
+function sanitizePiecePatch(p: PiecePatch): PiecePatch {
+  const old = p as PiecePatch & { atk?: number; def?: number; hp?: number };
+  const out: PiecePatch = {};
+  if (old.defense !== undefined) out.defense = old.defense;
+  else if (typeof old.def === 'number' && old.def > 0) out.defense = 1;
+  if (old.manaYield !== undefined) out.manaYield = old.manaYield;
+  if (old.movement) out.movement = old.movement;
+  if (old.abilities) out.abilities = old.abilities.map(sanitizeAbility);
+  return out;
+}
+
+function sanitizeCardPatch(p: CardPatch): CardPatch {
+  const out: CardPatch = { ...p };
+  if (p.piece) out.piece = sanitizePiecePatch(p.piece);
+  if (p.effects) out.effects = sanitizeEffects(p.effects);
+  return out;
+}
+
+function sanitizeCustomCard(c: CustomCard): CustomCard {
+  if (c.type === 'summon') {
+    return { ...c, piece: sanitizePieceDef(c.piece) };
+  }
+  return { ...c, effects: sanitizeEffects(c.effects) };
+}
+
 let current: Balance = EMPTY_BALANCE;
 
 export function currentBalance(): Balance {
@@ -90,12 +152,10 @@ function patchPiece(base: PieceDef, p: PiecePatch | undefined, tier?: number): P
   const out: PieceDef = { ...base, movement: cloneMovement(base.movement) };
   if (tier !== undefined) out.tier = tier;
   if (!p) return out;
-  if (p.atk !== undefined) out.atk = p.atk;
-  if (p.def !== undefined) out.def = p.def;
-  if (p.hp !== undefined) out.hp = p.hp;
+  if (p.defense !== undefined) out.defense = p.defense || undefined;
   if (p.manaYield !== undefined) out.manaYield = p.manaYield;
   if (p.movement) out.movement = cloneMovement(p.movement);
-  if (p.abilities !== undefined) out.abilities = p.abilities.map((a) => ({ ...a }));
+  if (p.abilities !== undefined) out.abilities = p.abilities.map(sanitizeAbility);
   return out;
 }
 
@@ -136,11 +196,21 @@ function numbersChanged(patch: CardPatch | undefined): boolean {
  * pieces with no patch return to their shipped definitions.
  */
 export function applyBalance(balance: Balance): void {
+  const cards: Record<string, CardPatch> = {};
+  for (const [id, patch] of Object.entries(balance.cards ?? {})) {
+    if (RETIRED.has(id) || !patch) continue;
+    cards[id] = sanitizeCardPatch(patch);
+  }
+  const pieces: Record<string, PiecePatch> = {};
+  for (const [kind, patch] of Object.entries(balance.pieces ?? {})) {
+    if (!patch) continue;
+    pieces[kind] = sanitizePiecePatch(patch);
+  }
   current = {
-    cards: { ...balance.cards },
-    pieces: { ...balance.pieces },
+    cards,
+    pieces,
     ...(balance.rules && Object.keys(balance.rules).length ? { rules: { ...balance.rules } } : {}),
-    ...(balance.customCards?.length ? { customCards: balance.customCards.map((c) => ({ ...c })) } : {}),
+    ...(balance.customCards?.length ? { customCards: balance.customCards.map(sanitizeCustomCard) } : {}),
   };
   // Admin-created cards become part of the base catalog first (patches may then apply to them too).
   if (current.customCards) awakenNamedCreatureAbilities(current.customCards);
@@ -211,14 +281,13 @@ function validateMovement(m: unknown, where: string, problems: string[]): void {
 }
 
 function validatePiece(p: PiecePatch, where: string, problems: string[], isKing: boolean): void {
-  if (p.atk !== undefined && !isInt(p.atk, 0, 99)) problems.push(`${where}: ATK must be 0–99.`);
-  if (p.def !== undefined && !isInt(p.def, 0, 99)) problems.push(`${where}: DEF must be 0–99.`);
-  if (p.hp !== undefined && !isInt(p.hp, 1, 99)) problems.push(`${where}: HP must be 1–99.`);
+  if (p.defense !== undefined && !isInt(p.defense, 0, 9)) problems.push(`${where}: Defense must be 0–9.`);
   if (p.manaYield !== undefined && !isInt(p.manaYield, 0, 999)) problems.push(`${where}: mana per turn must be 0–999.`);
   if (p.movement !== undefined) validateMovement(p.movement, where, problems);
   if (p.abilities !== undefined) validateAbilities(p.abilities, where, problems);
   if (isKing && p.movement && (p.movement as MovementSpec).pawn) problems.push(`${where}: the King cannot use pawn movement.`);
   if (isKing && p.abilities?.length) problems.push(`${where}: the King cannot have board abilities.`);
+  if (isKing && p.defense) problems.push(`${where}: the King cannot have Defense.`);
 }
 
 const ABILITY_TARGETS: AbilityTarget[] = ['ownAdjacent', 'enemyAdjacent', 'anyAdjacent'];
@@ -230,12 +299,7 @@ function validateAbilities(list: unknown, where: string, problems: string[]): vo
       problems.push(`${where}: unknown ability.`);
       continue;
     }
-    for (const k of ['atk', 'def', 'hp'] as const) {
-      if (a[k] !== undefined && !isInt(a[k], -99, 99)) problems.push(`${where}: ability ${k} must be -99–99.`);
-    }
-    if (a.atk === undefined && a.def === undefined && a.hp === undefined) {
-      problems.push(`${where}: a grant ability needs at least one of ATK/DEF/HP.`);
-    }
+    if (a.defense !== undefined && !isInt(a.defense, 1, 9)) problems.push(`${where}: grant Defense must be 1–9.`);
     if (a.target !== undefined && !ABILITY_TARGETS.includes(a.target)) problems.push(`${where}: bad ability target.`);
     if (a.oncePerTurn !== undefined && typeof a.oncePerTurn !== 'boolean') problems.push(`${where}: oncePerTurn must be true or false.`);
   }
@@ -245,23 +309,14 @@ function validateEffects(effects: unknown, where: string, problems: string[]): v
   if (!Array.isArray(effects) || effects.length === 0) return void problems.push(`${where}: a spell needs at least one effect.`);
   for (const e of effects as Effect[]) {
     switch (e?.kind) {
-      case 'modifyStats':
-      case 'modifyStatsAll':
-        for (const k of ['atk', 'def', 'hp'] as const) if (e[k] !== undefined && !isInt(e[k], -99, 99)) problems.push(`${where}: ${k} change must be -99–99.`);
-        if (e.atk === undefined && e.def === undefined && e.hp === undefined) problems.push(`${where}: a stat effect needs at least one of ATK/DEF/HP.`);
-        break;
-      case 'damage':
-      case 'heal':
-        if (!isInt(e.amount, 1, 99)) problems.push(`${where}: amount must be 1–99.`);
+      case 'destroy':
+      case 'freeStance':
         break;
       case 'draw':
         if (!isInt(e.count, 1, 10)) problems.push(`${where}: draw count must be 1–10.`);
         break;
       case 'hastenSummon':
         if (!isInt(e.turns, 1, 10)) problems.push(`${where}: turns must be 1–10.`);
-        break;
-      case 'restore':
-      case 'freeStance':
         break;
       default:
         problems.push(`${where}: unknown effect.`);
@@ -298,8 +353,8 @@ function validateCustomCard(c: unknown, problems: string[]): void {
     else {
       if (p.kind !== card.id) problems.push(`${where}: creature kind must match the card id.`);
       if (!isInt(p.tier, 1, 6)) problems.push(`${where}: creature tier must be 1–6.`);
-      validatePiece({ atk: p.atk, def: p.def, hp: p.hp, manaYield: p.manaYield, movement: p.movement, abilities: p.abilities }, where, problems, false);
-      if (p.atk === undefined || p.def === undefined || p.hp === undefined || !p.movement) problems.push(`${where}: creature needs ATK, DEF, HP and movement.`);
+      validatePiece({ defense: p.defense, manaYield: p.manaYield, movement: p.movement, abilities: p.abilities }, where, problems, false);
+      if (!p.movement) problems.push(`${where}: creature needs movement.`);
     }
   } else if (card.type === 'spell') {
     if (!TARGET_RULES.includes(card.target)) problems.push(`${where}: bad target rule.`);
@@ -334,7 +389,7 @@ export function validateBalance(b: unknown): string[] {
     try {
       base = baseCardDef(id);
     } catch {
-      if (customIds.has(id)) continue; // patches on a brand-new custom card are applied after it registers
+      if (customIds.has(id) || RETIRED.has(id)) continue;
       problems.push(`Unknown card: ${id}`);
       continue;
     }
@@ -412,23 +467,10 @@ export function describeMovement(m: MovementSpec): string {
 }
 
 function describeEffect(e: Effect, target: string): string {
-  const stat = (x: { atk?: number; def?: number; hp?: number }) =>
-    (['atk', 'def', 'hp'] as const)
-      .filter((k) => x[k])
-      .map((k) => `${x[k]! > 0 ? '+' : ''}${x[k]} ${k.toUpperCase()}`)
-      .join(', ');
   const mid = target.charAt(0).toLowerCase() + target.slice(1); // mid-sentence form
   switch (e.kind) {
-    case 'modifyStats':
-      return `${target} gains ${stat(e)}.`;
-    case 'modifyStatsAll':
-      return `All your ${e.pieceKind ? getPieceDef(e.pieceKind).name + 's' : 'pieces'} gain ${stat(e)}.`;
-    case 'damage':
-      return `Deal ${e.amount} damage to ${mid}.`;
-    case 'heal':
-      return `${target} heals ${e.amount} HP.`;
-    case 'restore':
-      return `${target} fully restores its HP and DEF shield.`;
+    case 'destroy':
+      return `Destroy ${mid}.`;
     case 'draw':
       return `Draw ${e.count} card${e.count === 1 ? '' : 's'}.`;
     case 'hastenSummon':
@@ -438,12 +480,6 @@ function describeEffect(e: Effect, target: string): string {
   }
 }
 
-const statDelta = (x: { atk?: number; def?: number; hp?: number }): string =>
-  (['atk', 'def', 'hp'] as const)
-    .filter((k) => x[k])
-    .map((k) => `${x[k]! > 0 ? '+' : ''}${x[k]} ${k.toUpperCase()}`)
-    .join(', ');
-
 /** Rules text for a creature's activated board ability. */
 export function describeAbility(a: PieceAbility): string {
   if (a.kind !== 'grantAdjacent') return '';
@@ -451,7 +487,8 @@ export function describeAbility(a: PieceAbility): string {
     a.target === 'enemyAdjacent' ? 'an adjacent enemy piece'
     : a.target === 'anyAdjacent' ? 'an adjacent piece'
     : 'an adjacent friendly piece';
-  return `On summon, grant ${who} ${statDelta(a)}. If several are adjacent, choose one.`;
+  const n = a.defense ?? 1;
+  return `On summon, grant ${who} +${n} Defense. If several are adjacent, choose one.`;
 }
 
 /**
@@ -464,7 +501,7 @@ function awakenNamedCreatureAbilities(cards: CustomCard[]): void {
     if (card.type !== 'summon') continue;
     if (card.piece.abilities?.length) continue;
     if (!/null\s*glass\s*knight/i.test(card.name)) continue; // "Nullglass Knight" and close spellings
-    card.piece.abilities = [{ kind: 'grantAdjacent', def: 1 }];
+    card.piece.abilities = [{ kind: 'grantAdjacent', defense: 1 }];
   }
 }
 
@@ -474,8 +511,8 @@ export function describeCard(card: CardDef): string {
     const p = card.piece;
     const mv = describeMovement(p.movement).replace(/\.$/, '');
     const ability = (p.abilities ?? []).map(describeAbility).filter(Boolean).join(' ');
-    const stats = `${p.atk} ATK / ${p.def} DEF / ${p.hp} HP.`;
-    return `Sacrifice a ${tierWord(card.sacrificeTier ?? card.tier - 1)} piece. Summons in ${card.summonTurns} turn${card.summonTurns === 1 ? '' : 's'}. ${mv}. ${stats}${ability ? ` ${ability.charAt(0).toUpperCase()}${ability.slice(1)}` : ''}`;
+    const defense = p.defense ? ` Starts with ${p.defense} Defense.` : '';
+    return `Sacrifice a ${tierWord(card.sacrificeTier ?? card.tier - 1)} piece. Summons in ${card.summonTurns} turn${card.summonTurns === 1 ? '' : 's'}. ${mv}.${defense}${ability ? ` ${ability.charAt(0).toUpperCase()}${ability.slice(1)}` : ''}`;
   }
   const targetWord =
     card.target === 'ownPiece' ? 'Target friendly piece'

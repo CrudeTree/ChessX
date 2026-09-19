@@ -38,7 +38,7 @@ export interface MovementSpec {
 
 /**
  * An activated ability a creature uses from the board (not by playing a card).
- * `grantAdjacent`: pick one neighbouring piece and permanently change its stats.
+ * `grantAdjacent`: pick one neighbouring piece and give it Defense charges.
  */
 export type AbilityTarget = 'ownAdjacent' | 'enemyAdjacent' | 'anyAdjacent';
 
@@ -52,9 +52,8 @@ export interface PendingGrant {
 
 export interface PieceAbility {
   kind: 'grantAdjacent';
-  atk?: number;
-  def?: number;
-  hp?: number;
+  /** Defense charges granted (default 1). */
+  defense?: number;
   /** Who may be targeted. Defaults to a friendly neighbour. */
   target?: AbilityTarget;
   /** Defaults to true. */
@@ -70,9 +69,8 @@ export interface PieceDef {
   /** Tier. Pawn=1, Knight/Bishop=2, Rook=3, Queen=4, King=6 (never sacrificable). */
   tier: number;
   movement: MovementSpec;
-  atk: number;
-  def: number;
-  hp: number;
+  /** Starting Defense charges. 0 / omitted = not in Defense. */
+  defense?: number;
   /** Mana produced at the end of the owner's turn. Defaults to the tier. */
   manaYield?: number;
   description?: string;
@@ -88,9 +86,9 @@ export interface PendingSummon {
 }
 
 /**
- * Attack mode is the default. In Defense mode a piece's DEF acts as a shield
- * that absorbs damage before HP, but the piece cannot move or attack at all.
- * Switching stance in either direction costs the owner's turn.
+ * Attack is the default. Defense mode means the piece has at least one Defense
+ * charge: it cannot move or attack, and a capture spends one charge instead of
+ * destroying it.
  */
 export type Stance = 'attack' | 'defense';
 
@@ -99,22 +97,11 @@ export interface Piece {
   kind: string;
   owner: Color;
   square: Square;
-  atk: number;
-  /** Current shield. Only absorbs damage while in Defense mode. */
-  def: number;
-  maxDef: number;
-  /** Kings ignore HP: any piece landing on the king captures it. */
-  hp: number;
-  maxHp: number;
+  /** Stacked absorb charges. The piece is in Defense mode while this is > 0. */
+  defense: number;
   hasMoved: boolean;
   stance: Stance;
   summon?: PendingSummon;
-  /**
-   * The definition stats this piece was created from. When the admin changes a
-   * card or piece, the difference is applied on top of the piece's current
-   * stats (so spell buffs survive) and this is updated.
-   */
-  base?: { atk: number; def: number; hp: number };
 }
 
 export type PromotionKind = 'queen' | 'rook' | 'bishop' | 'knight';
@@ -144,9 +131,9 @@ export type GameStatus =
 export type GameEvent =
   | { type: 'moved'; pieceId: string; from: Square; to: Square; castle?: boolean }
   /** `execution`: the King's attack, which always destroys the target. */
-  | { type: 'attacked'; attackerId: string; targetId: string; from: Square; to: Square; damage: number; execution?: boolean }
-  /** `shield` is how much of the hit the defender's DEF absorbed. */
-  | { type: 'damaged'; pieceId: string; square: Square; amount: number; shield: number; hp: number; def: number }
+  | { type: 'attacked'; attackerId: string; targetId: string; from: Square; to: Square; execution?: boolean }
+  | { type: 'defenseAbsorbed'; pieceId: string; square: Square; remaining: number }
+  | { type: 'defenseGranted'; pieceId: string; square: Square; amount: number; remaining: number }
   | { type: 'stanceChanged'; pieceId: string; square: Square; stance: Stance }
   | { type: 'repelled'; pieceId: string; square: Square }
   | { type: 'destroyed'; pieceId: string; kind: string; owner: Color; square: Square }
@@ -157,8 +144,7 @@ export type GameEvent =
   | { type: 'summonTick'; square: Square; turnsRemaining: number }
   | { type: 'summoned'; color: Color; cardId: string; pieceId: string; square: Square }
   | { type: 'summonFailed'; color: Color; cardId: string; square: Square }
-  | { type: 'statsChanged'; pieceId: string; square: Square; atk: number; def: number; hp: number; maxHp: number }
-  | { type: 'abilityUsed'; pieceId: string; from: Square; to: Square; targetId: string; atk?: number; def?: number; hp?: number }
+  | { type: 'abilityUsed'; pieceId: string; from: Square; to: Square; targetId: string; defense?: number }
   | { type: 'drew'; color: Color; count: number }
   /** The draw timer completed: this player must click their deck before acting. */
   | { type: 'drawReady'; color: Color }

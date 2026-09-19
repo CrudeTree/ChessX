@@ -18,18 +18,12 @@ export type TargetRule =
   | 'ownDefending';
 
 export type Effect =
-  /** Permanent stat change. `hp` raises both current and max HP. */
-  | { kind: 'modifyStats'; atk?: number; def?: number; hp?: number }
-  /** Same, applied to every friendly piece (optionally only one kind, e.g. 'pawn'). Kings are skipped. */
-  | { kind: 'modifyStatsAll'; pieceKind?: string; atk?: number; def?: number; hp?: number }
-  | { kind: 'damage'; amount: number }
-  | { kind: 'heal'; amount: number }
-  /** Refill HP and DEF shield to their maximums. */
-  | { kind: 'restore' }
+  /** Destroy the target outright (spells; Defense does not absorb this). */
+  | { kind: 'destroy' }
   | { kind: 'draw'; count: number }
   /** Reduce a pending summon's timer. Resolves immediately if it hits 0. */
   | { kind: 'hastenSummon'; turns: number }
-  /** Switch a piece to Attack mode without freezing it this turn. */
+  /** Drop Defense to 0 and let the piece act this turn. */
   | { kind: 'freeStance' };
 
 interface CardBase {
