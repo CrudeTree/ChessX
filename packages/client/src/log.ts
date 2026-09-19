@@ -42,10 +42,8 @@ export function describeEvents(view: PlayerView, names: Record<'white' | 'black'
           lines.push({ text: `${names[owner ?? 'white']}: King ${squareName(e.from)} strikes down ${target} on ${squareName(e.to)} — royal strike, destroyed!`, color: owner, important: true });
           break;
         }
-        const absorbed = view.events.find((x) => x.type === 'defenseAbsorbed' && x.pieceId === e.targetId);
-        const remain = absorbed && absorbed.type === 'defenseAbsorbed' ? absorbed.remaining : 0;
         lines.push({
-          text: `${names[owner ?? 'white']}: ${pieceName(e.attackerId)} ${squareName(e.from)} attacks ${target} on ${squareName(e.to)} — ${killed ? 'destroyed!' : `Defense absorbs it (${remain} left)`}`,
+          text: `${names[owner ?? 'white']}: ${pieceName(e.attackerId)} ${squareName(e.from)} attacks ${target} on ${squareName(e.to)} — ${killed ? 'destroyed!' : 'Defense broken, attacker bounces'}`,
           color: owner,
         });
         break;

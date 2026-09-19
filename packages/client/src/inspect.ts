@@ -121,7 +121,7 @@ export class InspectPanel {
       const c = summonCardFor(piece.summon.cardId) ?? allCards().find((x) => x.id === piece.summon!.cardId);
       status.push(`Being sacrificed: ${c?.name ?? 'summon'} arrives in ${piece.summon.turnsRemaining} turn${piece.summon.turnsRemaining === 1 ? '' : 's'}.`);
     } else if (piece.defense > 0) {
-      status.push(`Defense ${piece.defense}: absorbs the next capture${piece.defense > 1 ? 's' : ''}, then leaves Defense and skips a turn. Cannot move or attack.`);
+      status.push(`Defense ${piece.defense}: an attack destroys Defense and bounces the attacker. You may still move this piece on your next turn. Cannot move or attack while defending.`);
     }
     if (currentView?.turnInfo.stanceChanged.includes(piece.id)) {
       status.push('Changed stance this turn: cannot act or switch again until the turn ends.');

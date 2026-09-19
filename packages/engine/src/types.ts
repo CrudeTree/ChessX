@@ -97,7 +97,7 @@ export interface Piece {
   kind: string;
   owner: Color;
   square: Square;
-  /** Stacked absorb charges. The piece is in Defense mode while this is > 0. */
+  /** Absorb charges. The piece is in Defense mode while this is > 0. One hit destroys all of them. */
   defense: number;
   hasMoved: boolean;
   stance: Stance;

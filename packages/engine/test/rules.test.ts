@@ -354,20 +354,18 @@ describe('one-hit combat', () => {
     expect(pieceAt(g, s('d5'))!.owner).toBe('white');
   });
 
-  it('stacked Defense spends one charge at a time', () => {
+  it('one attack strips stacked Defense and the piece may act on its next turn', () => {
     let g = newGame();
     g = move(g, 'e2', 'e4');
     g = move(g, 'd7', 'd5');
     putDefense(g, 'd5', 2);
     g = move(g, 'e4', 'd5');
-    expect(pieceAt(g, s('d5'))!.defense).toBe(1);
-    expect(pieceAt(g, s('d5'))!.stance).toBe('defense');
-    expect(pieceAt(g, s('e4'))!.kind).toBe('pawn');
-    g = move(g, 'a7', 'a6');
-    g = move(g, 'e4', 'd5');
     expect(pieceAt(g, s('d5'))!.defense).toBe(0);
     expect(pieceAt(g, s('d5'))!.stance).toBe('attack');
     expect(pieceAt(g, s('e4'))!.kind).toBe('pawn');
+    expect(g.turn).toBe('black');
+    expect(g.turnInfo.stanceChanged).not.toContain(pieceAt(g, s('d5'))!.id);
+    expect(legalMoves(g).some((m) => m.from === s('d5'))).toBe(true);
   });
 
   it("the King takes a defending piece outright", () => {
@@ -396,19 +394,18 @@ describe('one-hit combat', () => {
     expect(g.events.some((e) => e.type === 'destroyed')).toBe(true);
   });
 
-  it('a last-charge absorb skips that piece on its next owner turn', () => {
+  it('an attack that breaks Defense does not skip that piece', () => {
     let g = newGame();
     g = move(g, 'e2', 'e4');
     g = move(g, 'd7', 'd5');
     putDefense(g, 'd5', 1);
-    g = move(g, 'e4', 'd5'); // absorb happens on white's turn; black is now to move
+    g = move(g, 'e4', 'd5');
     expect(pieceAt(g, s('d5'))!.defense).toBe(0);
     expect(g.turn).toBe('black');
-    expect(g.turnInfo.stanceChanged).toContain(pieceAt(g, s('d5'))!.id);
-    expect(legalMoves(g).some((m) => m.from === s('d5'))).toBe(false);
-    g = move(g, 'a7', 'a6');
-    g = move(g, 'a2', 'a3');
+    expect(g.turnInfo.stanceChanged).not.toContain(pieceAt(g, s('d5'))!.id);
     expect(legalMoves(g).some((m) => m.from === s('d5'))).toBe(true);
+    g = move(g, 'd5', 'd4');
+    expect(g.turn).toBe('white');
   });
 
   it('a capture that does not destroy the checker still leaves you in check', () => {

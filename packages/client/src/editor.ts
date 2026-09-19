@@ -819,7 +819,7 @@ export class BalanceEditor {
       );
       const stats = this.group(form, 'Creature');
       stats.append(
-        this.numField('Starting Defense', sub.defense, base.piece.defense ?? 0, setPP('defense'), '0 = none; each charge absorbs one capture'),
+        this.numField('Starting Defense', sub.defense, base.piece.defense ?? 0, setPP('defense'), '0 = none; an attack destroys Defense and the piece may act next turn'),
         this.numField('Mana per turn', sub.manaYield, base.piece.manaYield ?? (patch.tier ?? base.tier), setPP('manaYield'), 'default = tier'),
       );
       this.movementEditor(form, base.piece.movement, sub.movement, (m) => setPP('movement')(m), base.piece.glyph, false);
@@ -1018,7 +1018,7 @@ export class BalanceEditor {
         this.plainNum('Starting Defense', card.piece.defense ?? 0, (v) => {
           if (v > 0) card.piece.defense = v;
           else delete card.piece.defense;
-        }, '0 = none; each charge absorbs one capture'),
+        }, '0 = none; an attack destroys Defense and the piece may act next turn'),
         this.plainNum('Mana per turn', card.piece.manaYield ?? card.piece.tier, (v) => (card.piece.manaYield = v), 'default = tier'),
       );
       this.movementEditor(form, card.piece.movement, card.piece.movement, (m) => {

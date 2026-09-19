@@ -97,7 +97,7 @@ The server is authoritative: the client only ever offers the player actions from
 
 **Combat.** Capturing is chess: land on an undefended enemy and it dies; the attacker takes the square. There is no HP or ATK.
 
-**Defense** is a charge count on a piece, not a shield bar. A piece with `defense > 0` is in Defense mode: it cannot move or attack, and it does not give check. A capture against it spends 1 charge and **repels** the attacker (the piece stays). At 0 charges it leaves Defense and skips its next owner turn. Charges stack. Only summons and grants put a piece into Defense — you cannot toggle a standard piece into it. **Battle Trance** drops Defense to 0 and lets that piece act this turn (no skip).
+**Defense** is a charge count on a piece, not a shield bar. A piece with `defense > 0` is in Defense mode: it cannot move or attack, and it does not give check. A capture against it **destroys Defense** and **repels** the attacker (the piece stays and may act on its next turn). Only leaving Defense yourself skips that piece for the rest of the turn. Charges still stack from grants. Only summons and grants put a piece into Defense — you cannot toggle a standard piece into it. **Battle Trance** drops Defense to 0 and lets that piece act this turn (no skip).
 
 **Kings.** Any piece reaching the king's square captures it. **Royal strike**: the King's own capture destroys any piece, including one in Defense.
 

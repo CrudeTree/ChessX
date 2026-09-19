@@ -536,7 +536,7 @@ export class GameView {
         case 'defenseAbsorbed': {
           const { x, y } = squareToXY(ev.square, this.flipped);
           this.flash(x, y, COLORS.def, 220);
-          this.floatText(x, y, ev.remaining ? `Defense ${ev.remaining}` : 'Defense broken', COLORS.def, 240);
+          this.floatText(x, y, 'Defense broken', COLORS.def, 240);
           break;
         }
         case 'defenseGranted': {

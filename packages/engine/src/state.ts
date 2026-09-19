@@ -85,7 +85,7 @@ export interface GameState {
   events: GameEvent[];
   /** Set when a summoned creature must pick which neighbour gets its grant. */
   pendingGrant?: PendingGrant;
-  /** Pieces that must sit out their next owner turn (left Defense off-turn). */
+  /** Pieces that must sit out their next owner turn (only used if they left Defense off-turn). */
   skipTurn: string[];
 }
 

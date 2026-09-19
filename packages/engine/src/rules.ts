@@ -324,8 +324,10 @@ function performMove(state: GameState, action: Extract<Action, { type: 'move' }>
 }
 
 /**
- * Combat is one hit. The King always captures. Otherwise a Defense charge
- * absorbs the capture and the attacker bounces; no charges means the target dies.
+ * Combat is one hit. The King always captures. Otherwise Defense is destroyed
+ * and the attacker bounces; no Defense means the target dies. Being broken by
+ * an attack does not skip the defender's next turn — only leaving Defense
+ * yourself does that.
  */
 function attack(state: GameState, attacker: Piece, target: Piece, cand: MoveCandidate): void {
   if (target.kind === 'king') {
@@ -377,13 +379,10 @@ function leaveDefense(state: GameState, piece: Piece, skip: boolean): void {
 }
 
 function absorbDefense(state: GameState, target: Piece): void {
-  target.defense = Math.max(0, target.defense - 1);
+  target.defense = 0;
   syncStance(target);
-  state.events.push({ type: 'defenseAbsorbed', pieceId: target.id, square: target.square, remaining: target.defense });
-  if (target.defense === 0) {
-    state.events.push({ type: 'stanceChanged', pieceId: target.id, square: target.square, stance: 'attack' });
-    markSkip(state, target);
-  }
+  state.events.push({ type: 'defenseAbsorbed', pieceId: target.id, square: target.square, remaining: 0 });
+  state.events.push({ type: 'stanceChanged', pieceId: target.id, square: target.square, stance: 'attack' });
 }
 
 function grantDefense(state: GameState, target: Piece, amount: number): void {
