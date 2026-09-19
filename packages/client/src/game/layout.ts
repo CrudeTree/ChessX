@@ -42,6 +42,8 @@ export let OPP_DISCARD = { x: 0, y: 0 };
 /** Mana counters: yours in the upper right, theirs in the upper left. */
 export let MY_MANA = { x: 0, y: 0, size: 34 };
 export let OPP_MANA = { x: 0, y: 0, size: 24 };
+/** Sandbox trash bin (centre of the hit circle). */
+export let TRASH = { x: 0, y: 0, r: 36 };
 
 function desktop(): void {
   MOBILE = false;
@@ -72,6 +74,7 @@ function desktop(): void {
   // Counters sit in the side columns above the board, where nothing else lives.
   MY_MANA = { x: BOARD_X + BOARD_SIZE + SIDE_W / 2, y: 40, size: 34 };
   OPP_MANA = { x: SIDE_W / 2, y: 40, size: 24 };
+  TRASH = { x: BOARD_X + BOARD_SIZE + SIDE_W / 2, y: BOARD_Y + BOARD_SIZE / 2, r: 40 };
 }
 
 /**
@@ -111,9 +114,10 @@ function mobile(viewportW: number): void {
   const myDeckColumn = deckR * 2 + 16;
   MY_DISCARD = { x: W - myDeckColumn / 2 - 4, y: HAND_Y + (150 * DISCARD_SCALE) / 2 + 2 };
   MY_DECK = { x: W - myDeckColumn / 2 - 4, y: HAND_Y + CARD_H - deckR - 2 };
-  HAND_X0 = 8;
+  HAND_X0 = 56;
   HAND_X1 = W - myDeckColumn - 8;
   CANVAS_H = HAND_Y + CARD_H + 10;
+  TRASH = { x: 28, y: HAND_Y + CARD_H / 2, r: 24 };
 }
 
 /** Pick the arrangement for the current viewport. Call once before creating the Pixi app. */
@@ -171,6 +175,10 @@ export function xyToSquare(x: number, y: number, flipped: boolean): Square | nul
 
 export function isOverBoard(x: number, y: number): boolean {
   return x >= BOARD_X && x < BOARD_X + BOARD_SIZE && y >= BOARD_Y && y < BOARD_Y + BOARD_SIZE;
+}
+
+export function isOverTrash(x: number, y: number): boolean {
+  return Math.hypot(x - TRASH.x, y - TRASH.y) <= TRASH.r + 6;
 }
 
 export const CHESS_FONT = '"Segoe UI Symbol", "DejaVu Sans", "Arial Unicode MS", "Noto Sans Symbols2", sans-serif';

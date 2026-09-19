@@ -2359,13 +2359,38 @@ button.danger {
   min-height: 0;
 }
 
-#inspect > #arena {
-  flex: 0 1 260px;
-  min-height: 180px;
-  padding: 10px;
-  border-radius: 12px;
-  background: #16161f;
-  border: 1px solid #2e2e42;
+#side.arena-host {
+  overflow: hidden;
+}
+
+#side.arena-host .side-block:not(.actions) {
+  display: none;
+}
+
+#side.arena-host .side-block.actions {
+  padding-top: 8px;
+}
+
+#side.arena-host #resign {
+  display: none;
+}
+
+#side.arena-host #arena {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+}
+
+#game.arena-mode #stance,
+#game.arena-mode #stance-hint,
+#game.arena-mode #turn-track,
+#game.arena-mode #end-turn,
+#game.arena-mode .clock,
+#game.arena-mode .counts {
+  display: none;
 }
 
 .arena-head {

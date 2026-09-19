@@ -441,8 +441,7 @@ $('practice').onclick = () => {
   if (deckSlot !== null) net.send({ type: 'createSolo', deckSlot });
 };
 $('arena-start').onclick = () => {
-  const deckSlot = chosenDeckSlot();
-  if (deckSlot !== null) net.send({ type: 'createArena', deckSlot });
+  net.send({ type: 'createArena' });
 };
 $<HTMLFormElement>('join-form').onsubmit = (e) => {
   e.preventDefault();
@@ -671,7 +670,7 @@ function showGame(): Promise<void> {
       configureLayout(window.innerWidth);
       // Desktop: park the chat under the card panel so it never overlaps anything.
       if (!MOBILE) {
-        $('inspect').appendChild($('arena'));
+        $('side').appendChild($('arena'));
         $('inspect').appendChild(chatEl);
       }
       const mount = $('board-mount');
@@ -774,7 +773,7 @@ function renderMobileBar(view: PlayerView | null): void {
     const el = $(id);
     const name = el.querySelector('.pname')?.textContent ?? '';
     const clock = el.querySelector('.clock')?.textContent ?? '';
-    const turn = !!view && view.status.kind === 'playing' && view.turn === color;
+    const turn = !arena && !!view && view.status.kind === 'playing' && view.turn === color;
     return { html: `<b>${name}</b>${clock ? ` · ${clock}` : ''}`, turn };
   };
   const o = who('opp', opp);
@@ -803,7 +802,7 @@ function renderRoom(): void {
   if (!room || !you) return;
   roomCode.textContent = arena ? 'ARENA' : solo ? 'PRACTICE' : room.code;
   const hint = $('room-hint');
-  hint.textContent = arena ? 'Drag cards into a hand and pieces onto the board.' : solo ? '' : 'Send this to a friend. They enter it under "Join".';
+  hint.textContent = arena ? 'Sandbox — no turns. Drag cards and pieces freely.' : solo ? '' : 'Send this to a friend. They enter it under "Join".';
   hint.classList.toggle('hidden', solo && !arena);
   const { me, opp } = panelColors();
   for (const [id, color] of [
@@ -828,7 +827,7 @@ function renderRoom(): void {
 }
 
 function renderClocks(): void {
-  const c = currentClocks;
+  const c = arena ? null : currentClocks;
   const { me, opp } = panelColors();
   for (const [id, color] of [
     ['me', me],
@@ -854,6 +853,13 @@ setInterval(() => {
 }, 1000);
 
 function renderStatus(view: PlayerView): void {
+  if (arena) {
+    statusEl.className = 'status';
+    statusEl.textContent = 'Sandbox — drag pieces and cards. No turns.';
+    endTurnBtn.classList.add('hidden');
+    turnTrack.classList.add('hidden');
+    return;
+  }
   const mine = view.turn === view.you;
   statusEl.className = 'status';
   // The move ends the turn by itself; the button only appears as a Pass when no move exists.

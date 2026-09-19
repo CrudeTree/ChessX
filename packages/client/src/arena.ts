@@ -34,9 +34,6 @@ export class ArenaPalette {
       this.filter = (e.target as HTMLInputElement).value.trim().toLowerCase();
       this.renderList();
     };
-    $('arena-mana').onclick = () => {
-      this.onOp({ type: 'setMana', color: this.color, mana: this.gameView.manaOf(this.color) + 1000 });
-    };
   }
 
   /** `all` = developer catalog; otherwise only the given owned card ids. */
@@ -56,6 +53,9 @@ export class ArenaPalette {
   setActive(on: boolean): void {
     $('arena').classList.toggle('hidden', !on);
     $('arena-tab').classList.toggle('hidden', !on);
+    $('side').classList.toggle('arena-host', on);
+    $('game').classList.toggle('arena-mode', on);
+    document.querySelector<HTMLElement>('#mtabs [data-sheet="side"]')?.classList.toggle('hidden', on);
     if (!on) this.clearGhost();
   }
 
@@ -80,7 +80,7 @@ export class ArenaPalette {
         if (this.filter && !card.name.toLowerCase().includes(this.filter) && !card.id.includes(this.filter)) continue;
         const el = cardElement(card);
         el.classList.add('arena-item');
-        el.title = `Drag into a hand to add ${card.name}`;
+        el.title = `Drag ${card.name} onto the board or into a hand`;
         this.bindDrag(el, { kind: 'card', card });
         list.appendChild(el);
       }
@@ -134,6 +134,9 @@ export class ArenaPalette {
     const target = this.gameView.dropTarget(x, y);
     if (item.kind === 'card') {
       if (target.zone === 'hand') this.onOp({ type: 'giveCard', color: target.color, cardId: item.card.id });
+      else if (target.zone === 'square') {
+        this.onOp({ type: 'dropCard', cardId: item.card.id, color: this.color, square: target.square });
+      }
       return;
     }
     if (target.zone === 'square') {

@@ -41,7 +41,14 @@ export interface PlayerView {
   legalActions: Action[];
 }
 
-export function viewFor(state: GameState, you: Color): PlayerView {
+export interface ViewOptions {
+  /** Show both hands face-up (testing arena). */
+  openHands?: boolean;
+  /** Skip check detection and legal-move lists. */
+  sandbox?: boolean;
+}
+
+export function viewFor(state: GameState, you: Color, opts?: ViewOptions): PlayerView {
   const side = (c: Color): PlayerViewSide => {
     const p = state.players[c];
     return {
@@ -49,7 +56,7 @@ export function viewFor(state: GameState, you: Color): PlayerView {
       pendingDraws: p.pendingDraws,
       deckCount: p.deck.length,
       handCount: p.hand.length,
-      hand: c === you ? p.hand : null,
+      hand: c === you || opts?.openHands ? p.hand : null,
       graveyard: p.graveyard,
       mana: p.mana,
       manaIncome: manaIncome(state, c),
@@ -69,7 +76,7 @@ export function viewFor(state: GameState, you: Color): PlayerView {
     enPassant: state.enPassant,
     players: { white: side('white'), black: side('black') },
     events: state.events,
-    inCheck: state.status.kind === 'playing' && isInCheck(state, state.turn),
-    legalActions: state.turn === you ? legalActions(state, you) : [],
+    inCheck: !opts?.sandbox && state.status.kind === 'playing' && isInCheck(state, state.turn),
+    legalActions: opts?.sandbox || state.turn !== you ? [] : legalActions(state, you),
   };
 }

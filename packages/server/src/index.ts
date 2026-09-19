@@ -408,7 +408,7 @@ function open(t: SocketTransport, game: LiveGame): void {
 function assertArenaAllowed(userId: string, op: ArenaOp): void {
   const row = db.userById(userId);
   const isDev = !!row && admin.isAdmin(row);
-  if (op.type === 'giveCard') {
+  if (op.type === 'giveCard' || op.type === 'dropCard') {
     if (!hasCard(op.cardId)) throw new GameError('Unknown card.');
     if (!isDev && !progression.owns(userId, op.cardId)) throw new GameError('You have not unlocked that card.');
     return;
@@ -427,13 +427,17 @@ function handleMessage(t: SocketTransport, msg: ClientMessage): void {
       t.send({ type: 'games', games: games.summariesFor(t.userId) });
       return;
     case 'createGame':
-    case 'createSolo':
-    case 'createArena': {
+    case 'createSolo': {
       const deck = progression.deckForPlay(t.userId, msg.deckSlot);
-      const arena = msg.type === 'createArena';
-      const game = games.create(t.userId, msg.type !== 'createGame', deck, { arena });
+      const game = games.create(t.userId, msg.type !== 'createGame', deck);
       open(t, game);
-      console.log(`[game ${game.row.code}] ${arena ? 'arena' : msg.type === 'createSolo' ? 'practice' : 'created'} by ${t.userId}`);
+      console.log(`[game ${game.row.code}] ${msg.type === 'createSolo' ? 'practice' : 'created'} by ${t.userId}`);
+      return;
+    }
+    case 'createArena': {
+      const game = games.create(t.userId, true, [], { arena: true });
+      open(t, game);
+      console.log(`[game ${game.row.code}] arena by ${t.userId}`);
       return;
     }
     case 'joinGame': {

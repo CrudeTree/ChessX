@@ -205,8 +205,8 @@ export type ClientMessage =
   | { type: 'createGame'; deckSlot: number }
   /** Practice game: you control both sides (the chosen deck is used for both). */
   | { type: 'createSolo'; deckSlot: number }
-  /** Testing arena: practice rules plus a free-setup palette. Memory only, no rewards. */
-  | { type: 'createArena'; deckSlot: number }
+  /** Testing arena: empty sandbox board. Memory only, no rewards, no deck required. */
+  | { type: 'createArena' }
   /** Place or grant something in the testing arena. */
   | { type: 'arenaSetup'; op: ArenaOp }
   | { type: 'joinGame'; code: string; deckSlot: number }

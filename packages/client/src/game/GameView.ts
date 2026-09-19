@@ -34,8 +34,10 @@ import {
   OPP_HAND_X1,
   OPP_HAND_Y,
   SQ,
+  TRASH,
   UI_FONT,
   isOverBoard,
+  isOverTrash,
   squareToXY,
   xyToSquare,
 } from './layout.js';
@@ -54,7 +56,7 @@ interface Targets {
 
 type Drag =
   | { kind: 'piece'; sprite: PieceSprite; from: Square; targets: Targets; startX: number; startY: number; moved: boolean }
-  | { kind: 'card'; sprite: CardSprite; homeX: number; homeY: number; targets: Targets; startX: number; startY: number; moved: boolean };
+  | { kind: 'card'; sprite: CardSprite; homeX: number; homeY: number; homeLayer: Container; homeScale: number; targets: Targets; startX: number; startY: number; moved: boolean };
 
 interface Selection {
   square: Square;
@@ -64,7 +66,11 @@ interface Selection {
 /** What the side panel should show: a piece on the board or a card in hand. */
 export type InspectTarget = { kind: 'piece'; piece: Piece } | { kind: 'card'; cardId: string };
 
-export type ArenaDrop = { zone: 'square'; square: Square } | { zone: 'hand'; color: Color } | { zone: 'none' };
+export type ArenaDrop =
+  | { zone: 'square'; square: Square }
+  | { zone: 'hand'; color: Color }
+  | { zone: 'trash' }
+  | { zone: 'none' };
 
 /**
  * Renders the board + hand with PixiJS and turns pointer input into engine
@@ -106,6 +112,7 @@ export class GameView {
   private oppDiscard!: DiscardSprite;
   private myMana!: ManaCounter;
   private oppMana!: ManaCounter;
+  private trash = new Container();
   /** Fired when a discard pile is clicked, with the colour whose pile it is. */
   onOpenDiscard: (color: Color) => void = () => {};
 
@@ -121,7 +128,7 @@ export class GameView {
   private inspected: string | null = null;
   private inspectedCard: string | null = null;
   /** A finger/pointer went down on a hand card; we decide tap / swipe / drag once it moves. */
-  private pendingCard: { sprite: CardSprite; homeX: number; homeY: number; startX: number; startY: number; scrollStart: number } | null = null;
+  private pendingCard: { sprite: CardSprite; homeX: number; homeY: number; homeLayer: Container; homeScale: number; startX: number; startY: number; scrollStart: number } | null = null;
   private handScrolling = false;
   /** Instance ids in the hand at the last render, to spot freshly drawn cards. */
   private handIds = new Set<string>();
@@ -196,7 +203,8 @@ export class GameView {
     this.oppMana.tweens = this.tweens;
     this.myMana.position.set(MY_MANA.x, MY_MANA.y);
     this.oppMana.position.set(OPP_MANA.x, OPP_MANA.y);
-    this.deckLayer.addChild(this.myMana, this.oppMana);
+    this.drawTrash();
+    this.deckLayer.addChild(this.myMana, this.oppMana, this.trash);
 
     this.app.stage.eventMode = 'static';
     this.app.stage.hitArea = this.app.screen;
@@ -342,7 +350,7 @@ export class GameView {
       let sprite = this.sprites.get(piece.id);
       if (!sprite) {
         sprite = new PieceSprite(piece);
-        sprite.update(piece, this.isLocked(piece));
+        sprite.update(piece, !this.arena && this.isLocked(piece));
         sprite.position.set(x, y);
         sprite.on('pointerdown', (e) => this.onPiecePointerDown(e, sprite!));
         this.pieceLayer.addChild(sprite);
@@ -353,7 +361,7 @@ export class GameView {
           this.tweens.run(320, (t) => !s.destroyed && s.scale.set(t), { ease: easeOutBack });
         }
       } else {
-        sprite.update(piece, this.isLocked(piece));
+        sprite.update(piece, !this.arena && this.isLocked(piece));
         if (sprite.x !== x || sprite.y !== y) {
           const s = sprite;
           const sx = s.x;
@@ -383,6 +391,7 @@ export class GameView {
 
     this.playEvents(view.events);
     this.drawLastMove(view.events);
+    this.setSandboxChrome();
     this.renderDecks();
     this.renderHand();
     this.renderOpponentHand();
@@ -589,6 +598,40 @@ export class GameView {
     return this.hotseat ? 'white' : (this.view?.you ?? 'white');
   }
 
+  private drawTrash(): void {
+    this.trash.removeChildren();
+    const r = TRASH.r;
+    const g = new Graphics();
+    g.roundRect(-r + 6, -r + 10, r * 2 - 12, r * 2 - 16, 10).fill({ color: 0x1c1c28, alpha: 0.95 }).stroke({ width: 2, color: 0x6a6a82 });
+    g.roundRect(-r + 2, -r + 2, r * 2 - 4, 14, 4).fill(0x343446);
+    g.roundRect(-10, -r - 4, 20, 8, 3).stroke({ width: 2, color: 0x8a8aa0 });
+    g.moveTo(-r + 18, -r + 22).lineTo(-r + 22, r - 12).stroke({ width: 2, color: 0x5a5a70 });
+    g.moveTo(0, -r + 22).lineTo(0, r - 12).stroke({ width: 2, color: 0x5a5a70 });
+    g.moveTo(r - 18, -r + 22).lineTo(r - 22, r - 12).stroke({ width: 2, color: 0x5a5a70 });
+    const label = new Text({
+      text: 'TRASH',
+      style: { fontFamily: UI_FONT, fontSize: 11, fontWeight: '800', fill: 0xb8b8cc, letterSpacing: 1 },
+    });
+    label.anchor.set(0.5);
+    label.position.set(0, r + 12);
+    this.trash.addChild(g, label);
+    this.trash.position.set(TRASH.x, TRASH.y);
+    this.trash.eventMode = 'none';
+    this.trash.visible = false;
+  }
+
+  private setSandboxChrome(): void {
+    const on = this.arena;
+    this.myDeck.visible = !on;
+    this.oppDeck.visible = !on;
+    this.myDiscard.visible = !on;
+    this.oppDiscard.visible = !on;
+    this.myMana.visible = !on;
+    this.oppMana.visible = !on;
+    this.trash.visible = on;
+    this.trash.position.set(TRASH.x, TRASH.y);
+  }
+
   private renderDecks(): void {
     const view = this.view;
     if (!view) return;
@@ -721,11 +764,42 @@ export class GameView {
    * server never sends us what those cards are, only how many, so there is
    * nothing to inspect here and the sprites are not interactive.
    */
+  private handColorOf(instanceId: string): Color {
+    const view = this.view;
+    if (view?.players.black.hand?.some((c) => c.instanceId === instanceId)) return 'black';
+    return 'white';
+  }
+
   private renderOpponentHand(): void {
     for (const old of this.oppHandLayer.removeChildren()) old.destroy();
     const view = this.view;
     if (!view) return;
     const oppColor = opposite(this.bottomColor());
+    const revealed = this.arena ? view.players[oppColor].hand : null;
+    if (revealed) {
+      this.oppHandLayer.eventMode = 'passive';
+      const n = revealed.length;
+      const span = OPP_HAND_X1 - OPP_HAND_X0;
+      const scale = MOBILE ? 0.42 : 0.55;
+      const w = CARD_W * scale;
+      const spacing = n <= 1 ? 0 : Math.min(w + 8, (span - w) / Math.max(1, n - 1));
+      const startX = BOARD_X + BOARD_SIZE / 2 - ((n - 1) * spacing) / 2;
+      revealed.forEach((inst, i) => {
+        const sprite = new CardSprite(inst, true, true);
+        sprite.scale.set(scale);
+        const hx = n === 0 ? startX : startX + i * spacing;
+        const hy = OPP_HAND_Y;
+        sprite.position.set(hx, hy);
+        sprite.on('pointerover', () => {
+          if (this.drag) return;
+          this.inspectCard(inst.cardId);
+        });
+        sprite.on('pointerdown', (e) => this.onCardPointerDown(e, sprite, hx, hy, this.oppHandLayer, scale));
+        this.oppHandLayer.addChild(sprite);
+      });
+      return;
+    }
+    this.oppHandLayer.eventMode = 'none';
     const n = view.players[oppColor].handCount;
     const g = new Graphics();
     const span = OPP_HAND_X1 - OPP_HAND_X0;
@@ -755,8 +829,11 @@ export class GameView {
     for (const old of this.handLayer.removeChildren()) old.destroy();
     const view = this.view;
     if (!view) return;
-    const hand = view.players[view.you].hand ?? [];
-    const playable = new Set(view.legalActions.filter((a): a is CardAction => a.type === 'playCard').map((a) => a.cardInstanceId));
+    const handColor = this.arena ? this.bottomColor() : view.you;
+    const hand = view.players[handColor].hand ?? [];
+    const playable = this.arena
+      ? new Set(hand.map((c) => c.instanceId))
+      : new Set(view.legalActions.filter((a): a is CardAction => a.type === 'playCard').map((a) => a.cardInstanceId));
     const n = hand.length;
     if (n === 0) return;
     const span = HAND_X1 - HAND_X0;
@@ -801,7 +878,7 @@ export class GameView {
           sprite.scale.set(1 + 0.06 * (1 - t));
         });
       });
-      sprite.on('pointerdown', (e) => this.onCardPointerDown(e, sprite, hx, hy));
+      sprite.on('pointerdown', (e) => this.onCardPointerDown(e, sprite, hx, hy, this.handLayer, 1));
       this.handLayer.addChild(sprite);
     });
     this.handLayer.sortableChildren = true;
@@ -942,12 +1019,17 @@ export class GameView {
   dropTarget(clientX: number, clientY: number): ArenaDrop {
     const p = this.clientToLocal(clientX, clientY);
     if (!p) return { zone: 'none' };
-    const square = xyToSquare(p.x, p.y, this.flipped);
+    return this.dropTargetLocal(p.x, p.y);
+  }
+
+  private dropTargetLocal(x: number, y: number): ArenaDrop {
+    if (this.arena && isOverTrash(x, y)) return { zone: 'trash' };
+    const square = xyToSquare(x, y, this.flipped);
     if (square !== null) return { zone: 'square', square };
-    if (p.y >= HAND_Y - 16 && p.y <= HAND_Y + CARD_H + 16 && p.x >= HAND_X0 - 24 && p.x <= HAND_X1 + 24) {
+    if (y >= HAND_Y - 16 && y <= HAND_Y + CARD_H + 16 && x >= HAND_X0 - 24 && x <= HAND_X1 + 24) {
       return { zone: 'hand', color: this.hotseat ? 'white' : (this.view?.you ?? 'white') };
     }
-    if (p.y >= OPP_HAND_Y - OPP_CARD_H && p.y <= OPP_HAND_Y + OPP_CARD_H && p.x >= OPP_HAND_X0 - 24 && p.x <= OPP_HAND_X1 + 24) {
+    if (y >= OPP_HAND_Y - OPP_CARD_H && y <= OPP_HAND_Y + OPP_CARD_H && x >= OPP_HAND_X0 - 24 && x <= OPP_HAND_X1 + 24) {
       return { zone: 'hand', color: this.hotseat ? 'black' : opposite(this.view?.you ?? 'white') };
     }
     return { zone: 'none' };
@@ -959,6 +1041,12 @@ export class GameView {
     this.pulsingHighlights = null;
     if (target.zone === 'none') return;
     const g = new Graphics();
+    if (target.zone === 'trash') {
+      g.circle(TRASH.x, TRASH.y, TRASH.r + 4).fill({ color: 0xe0503c, alpha: 0.28 });
+      g.circle(TRASH.x, TRASH.y, TRASH.r + 4).stroke({ width: 3, color: 0xe0503c, alpha: 0.95 });
+      this.highlightLayer.addChild(g);
+      return;
+    }
     if (target.zone === 'square') {
       const { x, y } = squareToXY(target.square, this.flipped);
       g.roundRect(x - SQ / 2 + 3, y - SQ / 2 + 3, SQ - 6, SQ - 6, 6).fill({ color: COLORS.ability, alpha: 0.32 });
@@ -1040,24 +1128,36 @@ export class GameView {
    * tap (read the card), a horizontal swipe (scroll the hand) or a drag (play
    * it), so remember it and decide in onPointerMove / onPointerUp.
    */
-  private onCardPointerDown(e: FederatedPointerEvent, sprite: CardSprite, homeX: number, homeY: number): void {
+  private onCardPointerDown(e: FederatedPointerEvent, sprite: CardSprite, homeX: number, homeY: number, homeLayer: Container, homeScale = 1): void {
     if (!this.view || this.drag) return;
     e.stopPropagation();
     this.inspectCard(sprite.cardId);
-    this.pendingCard = { sprite, homeX, homeY, startX: e.global.x, startY: e.global.y, scrollStart: this.handScroll };
+    this.pendingCard = { sprite, homeX, homeY, homeLayer, homeScale, startX: e.global.x, startY: e.global.y, scrollStart: this.handScroll };
   }
 
   /** Lift a card out of the hand and start dragging it toward the board. */
   private beginCardDrag(p: NonNullable<typeof this.pendingCard>, e: FederatedPointerEvent): boolean {
-    const { sprite, homeX, homeY } = p;
+    const { sprite, homeX, homeY, homeLayer, homeScale } = p;
+    if (this.arena) {
+      this.selection = null;
+      this.drag = { kind: 'card', sprite, homeX, homeY, homeLayer, homeScale, targets: { bySquare: new Map(), anywhere: null }, startX: p.startX, startY: p.startY, moved: true };
+      sprite.zIndex = 50;
+      sprite.scale.set(1.08);
+      homeLayer.removeChild(sprite);
+      this.dragLayer.addChild(sprite);
+      sprite.position.set(e.global.x, e.global.y);
+      const g = new Graphics().rect(BOARD_X, BOARD_Y, BOARD_SIZE, BOARD_SIZE).stroke({ width: 3, color: COLORS.card, alpha: 0.7 });
+      this.highlightLayer.addChild(g);
+      return true;
+    }
     if (!sprite.playable || !this.myTurn) return false;
     const targets = this.cardTargets(sprite.instanceId);
     if (targets.bySquare.size === 0 && !targets.anywhere) return false;
     this.selection = null;
-    this.drag = { kind: 'card', sprite, homeX, homeY, targets, startX: p.startX, startY: p.startY, moved: true };
+    this.drag = { kind: 'card', sprite, homeX, homeY, homeLayer, homeScale, targets, startX: p.startX, startY: p.startY, moved: true };
     sprite.zIndex = 50;
     sprite.scale.set(1.08);
-    this.handLayer.removeChild(sprite);
+    homeLayer.removeChild(sprite);
     this.dragLayer.addChild(sprite);
     sprite.position.set(e.global.x, e.global.y);
     this.drawHighlights(targets);
@@ -1093,7 +1193,7 @@ export class GameView {
       }
       if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return; // still a tap
       // Mostly sideways on a scrollable hand = swipe; otherwise lift the card.
-      if (this.handMaxScroll > 0 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+      if (p.homeLayer === this.handLayer && this.handMaxScroll > 0 && Math.abs(dx) > Math.abs(dy) * 1.2) {
         this.handScrolling = true;
         this.setHandScroll(p.scrollStart - dx);
         return;
@@ -1109,6 +1209,7 @@ export class GameView {
     if (!d) return;
     if (Math.hypot(e.global.x - d.startX, e.global.y - d.startY) > 4) d.moved = true;
     d.sprite.position.set(e.global.x, e.global.y);
+    if (this.arena) this.previewDrop(this.dropTargetLocal(e.global.x, e.global.y));
   }
 
   private onPointerUp(e: FederatedPointerEvent): void {
@@ -1144,14 +1245,14 @@ export class GameView {
           d.sprite.position.set(dest.x, dest.y);
         }
         this.onAction(action);
+      } else if (this.arena && this.dropTargetLocal(e.global.x, e.global.y).zone === 'trash') {
+        this.highlightLayer.removeChildren();
+        this.onArena({ type: 'removePiece', square: d.from });
       } else if (this.arena && square !== null && square !== d.from) {
         const dest = squareToXY(square, this.flipped);
         d.sprite.position.set(dest.x, dest.y);
         this.highlightLayer.removeChildren();
         this.onArena({ type: 'relocate', from: d.from, to: square });
-      } else if (this.arena && d.moved && square === null) {
-        this.highlightLayer.removeChildren();
-        this.onArena({ type: 'removePiece', square: d.from });
       } else {
         d.sprite.position.set(home.x, home.y);
         if (!d.moved) {
@@ -1168,10 +1269,24 @@ export class GameView {
     }
 
     // Card
+    this.highlightLayer.removeChildren();
+    if (this.arena && square !== null) {
+      this.dragLayer.removeChild(d.sprite);
+      d.sprite.destroy();
+      const { x, y } = squareToXY(square, this.flipped);
+      this.burst(x, y, COLORS.card, 0.8);
+      this.onArena({
+        type: 'dropCard',
+        cardId: d.sprite.cardId,
+        color: this.handColorOf(d.sprite.instanceId),
+        square,
+        fromHand: d.sprite.instanceId,
+      });
+      return;
+    }
     let action: Action | undefined;
     if (square !== null) action = d.targets.bySquare.get(square);
     if (!action && d.targets.anywhere && isOverBoard(e.global.x, e.global.y)) action = d.targets.anywhere;
-    this.highlightLayer.removeChildren();
     if (action) {
       this.dragLayer.removeChild(d.sprite);
       d.sprite.destroy();
@@ -1182,15 +1297,16 @@ export class GameView {
       this.onAction(action);
     } else {
       this.dragLayer.removeChild(d.sprite);
-      this.handLayer.addChild(d.sprite);
+      d.homeLayer.addChild(d.sprite);
       d.sprite.zIndex = 0;
       // The hand layer may be scrolled: convert the drop point into its local space.
-      const sx = d.sprite.x + this.handScroll;
+      const scrolled = d.homeLayer === this.handLayer ? this.handScroll : 0;
+      const sx = d.sprite.x + scrolled;
       const sy = d.sprite.y;
       d.sprite.x = sx;
       this.tweens.run(180, (t) => {
         d.sprite.position.set(sx + (d.homeX - sx) * t, sy + (d.homeY - sy) * t);
-        d.sprite.scale.set(1.08 - 0.08 * t);
+        d.sprite.scale.set(1.08 + (d.homeScale - 1.08) * t);
       });
     }
   }
@@ -1198,6 +1314,13 @@ export class GameView {
   private tryActOnSquare(square: Square): boolean {
     const sel = this.selection;
     if (!sel) return false;
+    if (this.arena) {
+      if (square === sel.square) return false;
+      this.selection = null;
+      this.highlightLayer.removeChildren();
+      this.onArena({ type: 'relocate', from: sel.square, to: square });
+      return true;
+    }
     const action = sel.targets.bySquare.get(square);
     if (!action) return false;
     this.selection = null;

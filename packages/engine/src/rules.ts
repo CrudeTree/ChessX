@@ -454,12 +454,12 @@ function performCard(state: GameState, action: Extract<Action, { type: 'playCard
   }
 }
 
-function beginSummon(state: GameState, card: SummonCardDef, inst: CardInstance, sacrifice: Piece): void {
+export function beginSummon(state: GameState, card: SummonCardDef, inst: CardInstance, sacrifice: Piece): void {
   sacrifice.summon = { cardInstanceId: inst.instanceId, cardId: card.id, turnsRemaining: card.summonTurns };
   state.events.push({ type: 'summonStarted', color: sacrifice.owner, cardId: card.id, square: sacrifice.square, turns: card.summonTurns });
 }
 
-function resolveSummon(state: GameState, sacrifice: Piece): void {
+export function resolveSummon(state: GameState, sacrifice: Piece): void {
   const pending = sacrifice.summon!;
   const card = getCardDef(pending.cardId) as SummonCardDef;
   const owner = sacrifice.owner;
@@ -500,7 +500,7 @@ function modifyStats(state: GameState, target: Piece, delta: { atk?: number; def
   emitStats(state, target);
 }
 
-function applyEffect(state: GameState, effect: Effect, color: Color, target: Piece | undefined): void {
+export function applyEffect(state: GameState, effect: Effect, color: Color, target: Piece | undefined): void {
   switch (effect.kind) {
     case 'modifyStats': {
       if (target) modifyStats(state, target, effect);

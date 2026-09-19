@@ -6,6 +6,7 @@
 import {
   applyAction,
   applyArenaOp,
+  createArenaGame,
   createGame,
   IllegalActionError,
   opposite,
@@ -383,9 +384,13 @@ export class LiveGame {
 
   private sendState(t: Transport): void {
     if (!this.state) return;
-    // Practice games are viewed from the side to move; otherwise from your seat.
-    const color = this.solo ? this.state.turn : this.seatOf(t.userId)!;
-    t.send({ type: 'state', view: viewFor(this.state, color), clocks: this.clocks() });
+    // Practice follows the side to move; arena stays white-at-bottom; otherwise your seat.
+    const color = this.arena ? 'white' : this.solo ? this.state.turn : this.seatOf(t.userId)!;
+    t.send({
+      type: 'state',
+      view: viewFor(this.state, color, this.arena ? { openHands: true, sandbox: true } : undefined),
+      clocks: this.clocks(),
+    });
   }
 }
 
@@ -465,10 +470,9 @@ export class GameManager {
       // never saved, never listed, no rewards, gone when the player leaves.
       const game = this.track(new LiveGame(row, this.db, this.userName));
       game.arena = !!opts?.arena;
-      game.state = createGame({
-        decks: { white: deck, black: deck.slice() },
-        ...(game.arena ? { rules: { startingMana: 9999 } } : {}),
-      });
+      game.state = game.arena
+        ? createArenaGame()
+        : createGame({ decks: { white: deck, black: deck.slice() } });
       row.turn_started_at = now;
       row.status_kind = 'playing';
       return game;

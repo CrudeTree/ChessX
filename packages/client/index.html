@@ -259,24 +259,23 @@
         <button data-sheet="inspect"><span>Card</span><small id="m-card-name"></small></button>
         <button data-sheet="side"><span>Game</span><small>log · menu</small></button>
         <button data-sheet="chat"><span>Chat</span><small id="m-chat-badge"></small></button>
-        <button id="arena-tab" class="hidden" data-sheet="arena"><span>Arena</span><small>test setup</small></button>
+        <button id="arena-tab" class="hidden" data-sheet="arena"><span>Cards</span><small>sandbox</small></button>
       </div>
       <div id="sheet-backdrop" class="sheet-backdrop hidden"></div>
     </div>
 
     <div id="arena" class="arena hidden">
       <div class="arena-head">
-        <div class="label">Testing arena</div>
+        <div class="label">Cards</div>
         <div class="arena-toggles">
           <button id="arena-white" class="active" type="button">White</button>
           <button id="arena-black" type="button">Black</button>
         </div>
       </div>
-      <p class="hint arena-hint">Drag a card into a hand, or a piece onto the board. Drag a piece off the board to remove it. Developers see every card; everyone else sees what they have unlocked.</p>
+      <p class="hint arena-hint">Drag a card onto the board or into a hand. Drop a summon on a piece to start its timer. Toss pieces in the trash. Developers see every card; everyone else sees what they have unlocked.</p>
       <div class="arena-toggles">
         <button id="arena-tab-cards" class="active" type="button">Cards</button>
         <button id="arena-tab-pieces" type="button">Pieces</button>
-        <button id="arena-mana" type="button">+1000 mana</button>
       </div>
       <input id="arena-search" placeholder="Search…" />
       <div id="arena-list" class="arena-list"></div>

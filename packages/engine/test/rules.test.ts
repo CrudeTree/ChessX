@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   applyAction,
   applyArenaOp,
+  createArenaGame,
   applyBalance,
   baseCardDef,
   createGame,
@@ -906,12 +907,20 @@ describe('stance', () => {
 });
 
 describe('testing arena', () => {
+  it('starts on an empty board with empty hands', () => {
+    const g = createArenaGame(1);
+    expect(Object.keys(g.pieces)).toHaveLength(0);
+    expect(g.board.every((id) => id === null)).toBe(true);
+    expect(g.players.white.hand).toHaveLength(0);
+    expect(g.players.black.hand).toHaveLength(0);
+    expect(g.players.white.deck).toHaveLength(0);
+  });
+
   it('puts a card in hand, a piece on an empty square, and can relocate or remove it', () => {
-    let g = newGame();
-    const before = g.players.white.hand.length;
+    let g = createArenaGame(1);
     g = applyArenaOp(g, { type: 'giveCard', color: 'white', cardId: 'the_ox' });
-    expect(g.players.white.hand).toHaveLength(before + 1);
-    expect(g.players.white.hand.at(-1)!.cardId).toBe('the_ox');
+    expect(g.players.white.hand).toHaveLength(1);
+    expect(g.players.white.hand[0]!.cardId).toBe('the_ox');
 
     g = applyArenaOp(g, { type: 'spawnPiece', kind: 'the_ox', color: 'white', square: s('e4') });
     expect(pieceAt(g, s('e4'))!.kind).toBe('the_ox');
@@ -922,8 +931,46 @@ describe('testing arena', () => {
     expect(pieceAt(g, s('e5'))).toBeUndefined();
   });
 
+  it('spawns a summon on an empty square and starts a timer on a piece', () => {
+    let g = createArenaGame(1);
+    g = applyArenaOp(g, { type: 'dropCard', cardId: 'the_ox', color: 'white', square: s('e4') });
+    expect(pieceAt(g, s('e4'))!.kind).toBe('the_ox');
+    expect(pieceAt(g, s('e4'))!.owner).toBe('white');
+
+    g = applyArenaOp(g, { type: 'spawnPiece', kind: 'pawn', color: 'white', square: s('e2') });
+    g = applyArenaOp(g, { type: 'dropCard', cardId: 'the_ox', color: 'white', square: s('e2') });
+    expect(pieceAt(g, s('e2'))!.kind).toBe('pawn');
+    expect(pieceAt(g, s('e2'))!.summon?.cardId).toBe('the_ox');
+    expect(pieceAt(g, s('e2'))!.summon?.turnsRemaining).toBe(3);
+  });
+
+  it('ticks a pending summon when the opposite colour moves', () => {
+    let g = createArenaGame(1);
+    g = applyArenaOp(g, { type: 'spawnPiece', kind: 'pawn', color: 'white', square: s('e2') });
+    g = applyArenaOp(g, { type: 'dropCard', cardId: 'the_ox', color: 'white', square: s('e2') });
+    g = applyArenaOp(g, { type: 'spawnPiece', kind: 'knight', color: 'black', square: s('a4') });
+
+    g = applyArenaOp(g, { type: 'relocate', from: s('a4'), to: s('a5') });
+    expect(pieceAt(g, s('e2'))!.summon?.turnsRemaining).toBe(2);
+    g = applyArenaOp(g, { type: 'relocate', from: s('a5'), to: s('a6') });
+    expect(pieceAt(g, s('e2'))!.summon?.turnsRemaining).toBe(1);
+    g = applyArenaOp(g, { type: 'relocate', from: s('a6'), to: s('a7') });
+    expect(pieceAt(g, s('e2'))!.kind).toBe('the_ox');
+    expect(pieceAt(g, s('e2'))!.summon).toBeUndefined();
+    expect(pieceAt(g, s('e2'))!.owner).toBe('white');
+  });
+
+  it('does not tick a summon when the same colour moves', () => {
+    let g = createArenaGame(1);
+    g = applyArenaOp(g, { type: 'spawnPiece', kind: 'pawn', color: 'white', square: s('e2') });
+    g = applyArenaOp(g, { type: 'dropCard', cardId: 'the_ox', color: 'white', square: s('e2') });
+    g = applyArenaOp(g, { type: 'spawnPiece', kind: 'knight', color: 'white', square: s('a4') });
+    g = applyArenaOp(g, { type: 'relocate', from: s('a4'), to: s('a5') });
+    expect(pieceAt(g, s('e2'))!.summon?.turnsRemaining).toBe(3);
+  });
+
   it('replaces whatever is already on the square and can set mana', () => {
-    let g = newGame();
+    let g = createArenaGame(1);
     g = applyArenaOp(g, { type: 'spawnPiece', kind: 'knight', color: 'black', square: s('e2') });
     expect(pieceAt(g, s('e2'))!.kind).toBe('knight');
     expect(pieceAt(g, s('e2'))!.owner).toBe('black');

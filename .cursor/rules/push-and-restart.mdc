@@ -1,0 +1,16 @@
+---
+description: After every completed task, commit if needed, push to origin, and restart production
+alwaysApply: true
+---
+
+# Push and restart after completed work
+
+When a task is finished (feature, fix, or other code change the user asked for):
+
+1. Commit any uncommitted work if it is not already committed (only the files for that task).
+2. Push the current branch to `origin` (`git push -u origin HEAD` if it has no upstream).
+3. Restart production on the DigitalOcean droplet:
+   `ssh -i $HOME/.ssh/aibot_do_ed25519 root@159.223.115.153 "/opt/chessx/deploy/deploy.sh"`
+4. Report the commit, that the push landed, and that the container is up.
+
+Do this without being asked again. Skip only if there is nothing to ship (no code changes).
