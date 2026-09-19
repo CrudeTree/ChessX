@@ -42,6 +42,7 @@ import {
   xyToSquare,
 } from './layout.js';
 import { PieceSprite } from './PieceSprite.js';
+import { StormTile } from './StormTile.js';
 import { Tweens, easeInOutQuad, easeOutBack } from './tween.js';
 
 type MoveAction = Extract<Action, { type: 'move' }>;
@@ -125,6 +126,7 @@ export class GameView {
 
   private sprites = new Map<string, PieceSprite>();
   private voids = new Map<string, Graphics>();
+  private stormTiles = new Map<number, StormTile>();
   private view: PlayerView | null = null;
   private flipped = false;
   /** Set once init() has built the stage; a view arriving earlier is parked here. */
@@ -242,6 +244,7 @@ export class GameView {
       for (const sprite of this.grantPulseSprites) {
         if (!sprite.destroyed) sprite.alpha = 0.62 + 0.38 * Math.sin((this.pulse * 2 * Math.PI) / 2);
       }
+      for (const cloud of this.stormTiles.values()) cloud.tick(tk.deltaMS);
     });
 
     this.ready = true;
@@ -270,8 +273,10 @@ export class GameView {
     this.selection = null;
     for (const s of this.sprites.values()) s.destroy();
     for (const v of this.voids.values()) v.destroy();
+    for (const c of this.stormTiles.values()) c.destroy();
     this.sprites.clear();
     this.voids.clear();
+    this.stormTiles.clear();
     this.clearGrantPulse();
     for (const layer of [this.highlightLayer, this.lastMoveLayer, this.inspectLayer, this.fxLayer, this.banner]) layer.removeChildren();
     for (const old of this.handLayer.removeChildren()) old.destroy();
@@ -557,30 +562,23 @@ export class GameView {
   }
 
   private syncStorms(view: PlayerView): void {
-    this.stormLayer.removeChildren();
+    const seen = new Set<number>();
     for (const cloud of view.storms ?? []) {
+      seen.add(cloud.square);
       const { x, y } = squareToXY(cloud.square, this.flipped);
-      const tile = new Container();
+      let tile = this.stormTiles.get(cloud.square);
+      if (!tile) {
+        tile = new StormTile(cloud.square, cloud.turnsRemaining);
+        this.stormTiles.set(cloud.square, tile);
+        this.stormLayer.addChild(tile);
+      }
       tile.position.set(x, y);
-      const g = new Graphics();
-      g.roundRect(-SQ / 2 + 3, -SQ / 2 + 3, SQ - 6, SQ - 6, 8).fill({ color: COLORS.storm, alpha: 0.55 });
-      g.roundRect(-SQ / 2 + 3, -SQ / 2 + 3, SQ - 6, SQ - 6, 8).stroke({ width: 2, color: 0xc9b6ff, alpha: 0.85 });
-      g.moveTo(-14, -8).bezierCurveTo(-6, -18, 6, -18, 14, -8).stroke({ width: 2, color: 0xe8dcff, alpha: 0.7 });
-      const bolt = new Graphics();
-      bolt.moveTo(-2, -10).lineTo(4, 0).lineTo(-1, 0).lineTo(3, 12).stroke({ width: 2.5, color: 0xffe566, alpha: 0.95 });
-      const timer = new Text({
-        text: `${cloud.turnsRemaining}`,
-        style: {
-          fontFamily: UI_FONT,
-          fontSize: Math.round(SQ * 0.42),
-          fontWeight: '900',
-          fill: 0xffffff,
-          stroke: { color: 0x14081f, width: 5 },
-        },
-      });
-      timer.anchor.set(0.5);
-      tile.addChild(g, bolt, timer);
-      this.stormLayer.addChild(tile);
+      tile.setTurns(cloud.turnsRemaining);
+    }
+    for (const [square, tile] of this.stormTiles) {
+      if (seen.has(square)) continue;
+      this.stormTiles.delete(square);
+      if (!tile.destroyed) tile.destroy();
     }
   }
 

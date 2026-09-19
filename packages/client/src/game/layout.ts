@@ -153,7 +153,7 @@ export const COLORS = {
   ringFill: 0x3dd68c,
   mana: 0x5ab4ff,
   manaDim: 0x2c5f99,
-  storm: 0x3a2870,
+  storm: 0x07060c,
 } as const;
 
 /** Board orientation: your pieces are always at the bottom. */
