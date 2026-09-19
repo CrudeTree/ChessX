@@ -20,6 +20,18 @@ export interface PiecePatch {
   abilities?: PieceAbility[];
 }
 
+/** Who receives a card: the reward pool (default), three copies for everyone now, or nobody yet. */
+export type CardGive = 'everyone' | 'reward' | 'none';
+
+/** Cards join the reward pool unless Give is changed in the Card Editor. */
+export const DEFAULT_CARD_GIVE: CardGive = 'reward';
+
+export const CARD_GIVE_OPTIONS: [CardGive, string][] = [
+  ['reward', 'Reward pool (won after matches)'],
+  ['everyone', 'Everyone (3 copies, now)'],
+  ['none', 'Nobody yet'],
+];
+
 export interface CardPatch {
   cost?: number;
   /** Summons only. */
@@ -40,6 +52,8 @@ export interface CardPatch {
   boardArt?: string;
   /** How large the creature looks on the board (0.5–2, default 1). */
   boardArtZoom?: number;
+  /** Who receives the card. Omit to keep the default (Reward pool). */
+  give?: CardGive;
 }
 
 /** Game-wide numbers (apply to games created after the change). */
@@ -48,9 +62,6 @@ export interface RulesPatch {
   openingHand?: number;
   drawEvery?: number;
 }
-
-/** Who gets an admin-created card: three copies for everyone, the reward pool, or nobody yet. */
-export type CardGive = 'everyone' | 'reward' | 'none';
 
 /** An admin-created card: a complete definition plus how it is handed out. */
 export type CustomCard = CardDef & { give: CardGive };
@@ -134,10 +145,11 @@ function sanitizeCardPatch(p: CardPatch): CardPatch {
 }
 
 function sanitizeCustomCard(c: CustomCard): CustomCard {
+  const give = c.give ?? DEFAULT_CARD_GIVE;
   if (c.type === 'summon') {
-    return { ...c, piece: sanitizePieceDef(c.piece) };
+    return { ...c, give, piece: sanitizePieceDef(c.piece) };
   }
-  return { ...c, effects: sanitizeEffects(c.effects) };
+  return { ...c, give, effects: sanitizeEffects(c.effects) };
 }
 
 let current: Balance = EMPTY_BALANCE;
@@ -197,7 +209,7 @@ export function patchedCard(id: string, patch: CardPatch | undefined): CardDef {
 /** Did the patch touch anything the rules text describes? (Pictures and cost do not.) */
 function numbersChanged(patch: CardPatch | undefined): boolean {
   if (!patch) return false;
-  return Object.keys(patch).some((k) => k !== 'art' && k !== 'cardArtZoom' && k !== 'boardArt' && k !== 'boardArtZoom' && k !== 'text' && k !== 'cost');
+  return Object.keys(patch).some((k) => k !== 'art' && k !== 'cardArtZoom' && k !== 'boardArt' && k !== 'boardArtZoom' && k !== 'text' && k !== 'cost' && k !== 'give');
 }
 
 /**
@@ -230,9 +242,26 @@ export function applyBalance(balance: Balance): void {
   Object.assign(DEFAULT_RULES, BASE_RULES, current.rules ?? {});
 }
 
+/** How a live card is handed out (Reward pool unless the editor changed it). */
+export function cardGive(id: string): CardGive {
+  const custom = current.customCards?.find((c) => c.id === id);
+  if (custom) return custom.give ?? DEFAULT_CARD_GIVE;
+  return current.cards[id]?.give ?? DEFAULT_CARD_GIVE;
+}
+
+/** Every live card handed out in a given way (shipped catalog and admin-created). */
+export function cardsGiven(give: CardGive): string[] {
+  return allCards().filter((c) => cardGive(c.id) === give).map((c) => c.id);
+}
+
+/** Cards currently in the reward pool. */
+export function rewardCards(): string[] {
+  return cardsGiven('reward');
+}
+
 /** Custom cards handed out in a given way (for the server's collection logic). */
 export function customCardsGiven(give: CardGive): string[] {
-  return (current.customCards ?? []).filter((c) => c.give === give).map((c) => c.id);
+  return (current.customCards ?? []).filter((c) => (c.give ?? DEFAULT_CARD_GIVE) === give).map((c) => c.id);
 }
 
 /**
@@ -429,6 +458,7 @@ export function validateBalance(b: unknown): string[] {
     if (patch.cardArtZoom !== undefined && !zoomOk(patch.cardArtZoom)) problems.push(`${where}: card zoom must be ${BOARD_ART_ZOOM_MIN}–${BOARD_ART_ZOOM_MAX}.`);
     if (patch.boardArt !== undefined && !artOk(patch.boardArt)) problems.push(`${where}: board sprite must be an uploaded image.`);
     if (patch.boardArtZoom !== undefined && !zoomOk(patch.boardArtZoom)) problems.push(`${where}: board zoom must be ${BOARD_ART_ZOOM_MIN}–${BOARD_ART_ZOOM_MAX}.`);
+    if (patch.give !== undefined && !GIVES.includes(patch.give)) problems.push(`${where}: choose who receives the card.`);
     if (base.type === 'summon') {
       if (patch.tier !== undefined && !isInt(patch.tier, 1, 6)) problems.push(`${where}: tier must be 1–6.`);
       if (patch.sacrificeTier !== undefined && !isInt(patch.sacrificeTier, 1, 4)) problems.push(`${where}: sacrifice tier must be 1–4 (nothing above the Queen can be sacrificed).`);

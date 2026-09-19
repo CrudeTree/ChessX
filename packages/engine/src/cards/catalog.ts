@@ -1,8 +1,8 @@
 // Card catalog. Every card is pure data; adding one is adding an entry here.
 //
 //  STARTER_CARDS — what every new player owns (3 copies each) and Deck 1 is built from.
-//  REWARD_CARDS  — unlocked one at a time: the first finished match always grants one,
-//                  and each checkmate has a chance to grant another (or a spare starter copy).
+//  Reward pool   — every card by default (Give in the Card Editor). The first finished
+//                  match always grants one you don't own yet; each checkmate may grant another.
 
 import { DIRS } from '../pieces.js';
 import { registerCards } from './registry.js';
@@ -406,13 +406,6 @@ export const RETIRED_CARDS: readonly string[] = [
 export const STARTER_CARDS: string[] = [
   'the_ox', 'stone_sentinel', 'war_chariot', 'elder_wyrm',
   'foresight', 'hex', 'dark_ritual',
-];
-
-export const REWARD_CARDS: string[] = [
-  'ziglet', 'greedpot', 'thunderhead',
-  'thornback_boar', 'frost_owl', 'iron_golem', 'shadow_panther', 'ancient_treant', 'storm_drake',
-  'battle_trance', 'leyburst', 'disarray', 'schism',
-  'transpose', 'muster', 'fissure', 'gild',
 ];
 
 /** The deck every new player starts with: 3 copies of each starter card. */

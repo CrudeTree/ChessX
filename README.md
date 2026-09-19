@@ -117,7 +117,7 @@ The server is authoritative: the client only ever offers the player actions from
 
 - Every account starts with **3 copies of each of the 7 starter cards** and **Deck 1** built from them.
 - Finishing a two-player match gives **20 XP**; winning gives **30 more**. Levels need 100, 200, 300… XP each. Practice games don't count.
-- Your **first finished match** (win or lose) unlocks a brand-new reward card. After that, every win by **checkmate** rolls a reward: a 50/50 between a reward card you don't own yet and a spare copy of a card you do.
+- Your **first finished match** (win or lose) unlocks a brand-new card from the **Reward pool**. After that, every win by **checkmate** rolls a reward: a 50/50 between a pool card you don't own yet and a spare copy of a card you do. Every card is in the pool by default; the Card Editor's **Who gets it** control can move a card to Everyone (3 copies now) or Nobody.
 - The **Binder** shows your whole collection (new cards are flagged) and holds up to **3 named decks**. Click a card to add it, use −/+ in the deck list, rename, Save. A deck needs 18–40 cards, max 3 copies of anything, and only cards you own. Pick which deck to play with on the home page before creating, joining or practising.
 
 ### Phones
@@ -171,4 +171,4 @@ Reward cards (unlocked through play):
 
 ### Adding a card
 
-Add an entry to `CATALOG`. A summon card carries its creature's `PieceDef`, whose `movement` is data: `leaps` (knight-style jumps), `slides` (rook/bishop-style rays with optional `range`), or `pawn`. Set `relative: true` to make "forward" depend on the owner's colour. Spells are a `target` rule plus a list of `effects`. New effect kinds go in `cards/types.ts` and `rules.ts → applyEffect`.
+Add an entry to `CATALOG`. New cards join the **Reward pool** automatically (the Card Editor's **Who gets it** defaults to Reward pool). Change that to Everyone (3 copies now) or Nobody if you don't want them granted after matches. A summon card carries its creature's `PieceDef`, whose `movement` is data: `leaps` (knight-style jumps), `slides` (rook/bishop-style rays with optional `range`), or `pawn`. Set `relative: true` to make "forward" depend on the owner's colour. Spells are a `target` rule plus a list of `effects`. New effect kinds go in `cards/types.ts` and `rules.ts → applyEffect`.

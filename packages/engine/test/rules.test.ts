@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  allCards,
   applyAction,
   applyArenaOp,
   createArenaGame,
   applyBalance,
   baseCardDef,
+  cardsGiven,
   createGame,
   customCardsGiven,
   describeAbility,
@@ -26,8 +28,7 @@ import {
   pruneUnknownCards,
   rebasePieces,
   RETIRED_CARDS,
-  REWARD_CARDS,
-  STARTER_CARDS,
+  rewardCards,
   starterDeck,
   validateBalance,
   validateDeck,
@@ -542,10 +543,9 @@ describe('cards', () => {
       const g = realGame();
       expect(g.players.white.mana).toBe(0);
       expect(g.players.black.mana).toBe(0);
-      for (const id of [...STARTER_CARDS, ...REWARD_CARDS]) {
-        const cost = getCardDef(id).cost;
-        if (id === 'leyburst' || id === 'disarray') expect(cost).toBe(0);
-        else expect(cost).toBeGreaterThanOrEqual(150);
+      for (const card of allCards()) {
+        if (card.id === 'leyburst' || card.id === 'disarray') expect(card.cost).toBe(0);
+        else expect(card.cost).toBeGreaterThanOrEqual(150);
       }
     });
 
@@ -1030,6 +1030,39 @@ describe('balance patches', () => {
     expect(g.players.white.hand.some((c) => c.cardId === 'custom_zap')).toBe(false);
     expect(pruneUnknownCards(g)).toBe(false);
     expect(legalActions(g).length).toBeGreaterThan(0); // the game still works
+  });
+
+  it('every card is in the reward pool unless Give is changed', () => {
+    const ids = allCards().map((c) => c.id);
+    expect(rewardCards()).toEqual(ids);
+    expect(cardsGiven('everyone')).toEqual([]);
+    expect(ids).toContain('gild');
+    expect(ids).toContain('the_ox');
+
+    applyBalance({ cards: { hex: { give: 'none' }, foresight: { give: 'everyone' } }, pieces: {} });
+    expect(rewardCards()).not.toContain('hex');
+    expect(rewardCards()).not.toContain('foresight');
+    expect(cardsGiven('none')).toEqual(['hex']);
+    expect(cardsGiven('everyone')).toEqual(['foresight']);
+    expect(validateBalance({ cards: { hex: { give: 'maybe' as never } }, pieces: {} })).toEqual(
+      expect.arrayContaining([expect.stringMatching(/who receives/)]),
+    );
+
+    const zap = {
+      id: 'custom_zap',
+      type: 'spell' as const,
+      name: 'Zap',
+      glyph: '⚡',
+      cost: 150,
+      target: 'none' as const,
+      text: 'Zap.',
+      effects: [{ kind: 'draw' as const, count: 1 }],
+      give: 'reward' as const,
+    };
+    applyBalance({ cards: {}, pieces: {}, customCards: [zap] });
+    expect(rewardCards()).toContain('custom_zap');
+    expect(customCardsGiven('reward')).toEqual(['custom_zap']);
+    applyBalance(EMPTY_BALANCE);
   });
 
   it('rule patches change what new games start with', () => {

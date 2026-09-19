@@ -20,6 +20,7 @@ import {
   describeCard,
   describeMovement,
   DIRS,
+  CARD_GIVE_OPTIONS,
   isCustomCard,
   patchedCard,
   STANDARD_KINDS,
@@ -262,9 +263,9 @@ export class BalanceEditor {
             summonTurns: 2,
             text: '',
             piece: { kind: id, name, glyph: '✨', tier: 2, movement: { leaps: DIRS.ALL.map(([f, r]) => [f, r] as const) } },
-            give: 'everyone',
+            give: 'reward',
           }
-        : { id, type, name, glyph: '✨', cost: 150, target: 'none', text: '', effects: [{ kind: 'draw', count: 1 }], give: 'everyone' };
+        : { id, type, name, glyph: '✨', cost: 150, target: 'none', text: '', effects: [{ kind: 'draw', count: 1 }], give: 'reward' };
     card.text = describeCard(card);
     (this.draft.customCards ??= []).push(card);
     this.selected = { kind: 'custom', id };
@@ -778,6 +779,14 @@ export class BalanceEditor {
 
     const cost = this.group(form, 'Cost');
     cost.appendChild(this.numField('Mana cost', patch.cost, base.cost, setC('cost')));
+    cost.appendChild(
+      this.selectField(
+        'Who gets it',
+        patch.give ?? 'reward',
+        CARD_GIVE_OPTIONS,
+        (v) => setC('give')(v === 'reward' ? undefined : v),
+      ),
+    );
 
     const images = this.group(form, 'Pictures');
     images.appendChild(this.imageField('Card image', 'shown on the card in hand, the binder and the inspector', live.art, base.art, setC('art')));
@@ -964,11 +973,7 @@ export class BalanceEditor {
       this.selectField(
         'Who gets it',
         card.give,
-        [
-          ['everyone', 'Everyone (3 copies, now)'],
-          ['reward', 'Reward pool (won after checkmates)'],
-          ['none', 'Nobody yet'],
-        ],
+        CARD_GIVE_OPTIONS,
         (v) => (card.give = v),
       ),
     );
