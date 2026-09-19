@@ -1,6 +1,6 @@
 import { allCards, clampBoardArtZoom, getPieceDef, STANDARD_PIECES, type Piece } from '@chessx/engine';
 import { Container, Graphics, Rectangle, Sprite, Text, type Texture } from 'pixi.js';
-import { artTextures } from './art.js';
+import { artTextures, loadArt } from './art.js';
 import { CHESS_FONT, COLORS, EMOJI_FONT, SQ, UI_FONT } from './layout.js';
 
 const isStandard = (kind: string) => kind in STANDARD_PIECES;
@@ -10,9 +10,13 @@ function summonCard(kind: string) {
   return allCards().find((c) => c.type === 'summon' && c.piece.kind === kind);
 }
 
-function artFor(kind: string): Texture | undefined {
+function artUrlFor(kind: string): string | undefined {
   const card = summonCard(kind);
-  const url = card?.boardArt ?? card?.art ?? getPieceDef(kind).art;
+  return card?.boardArt ?? card?.art ?? getPieceDef(kind).art;
+}
+
+function artFor(kind: string): Texture | undefined {
+  const url = artUrlFor(kind);
   return url ? artTextures.get(url) : undefined;
 }
 
@@ -34,6 +38,8 @@ export class PieceSprite extends Container {
   private timer = new Container();
   private timerText: Text;
   private lock: Text;
+  private lastLocked = false;
+  private lastVeiled = false;
 
   constructor(piece: Piece) {
     super();
@@ -61,20 +67,16 @@ export class PieceSprite extends Container {
     this.glyph.y = standard ? -2 * k : -4 * k;
     this.addChild(this.glyph);
 
-    // Creatures with card art: show the art itself (the emoji is only the fallback).
-    // Black's creatures are mirrored so the two armies face each other.
-    const tex = standard ? undefined : artFor(piece.kind);
-    if (tex) {
-      this.art = new Sprite(tex);
-      this.art.anchor.set(0.5);
-      // The art has ~10% empty margin inside its frame, so a little over a square
-      // reads as square-sized; lifted so it stands on the plinth above the badges.
-      // boardArtZoom scales the whole figure — it may overflow the square, not crop.
-      const size = SQ * 1.12 * clampBoardArtZoom(summonCard(piece.kind)?.boardArtZoom);
-      this.art.scale.set((size / tex.height) * (piece.owner === 'black' ? -1 : 1), size / tex.height);
-      this.art.y = -8 * k;
-      this.glyph.visible = false;
-      this.addChild(this.art);
+    this.tryAttachArt(piece);
+    if (!this.art && !standard) {
+      const url = artUrlFor(piece.kind);
+      if (url) {
+        void loadArt(url).then((tex) => {
+          if (!tex || this.destroyed) return;
+          this.tryAttachArt(piece);
+          this.update(piece, this.lastLocked, this.lastVeiled);
+        });
+      }
     }
     this.addChild(this.badges);
 
@@ -96,9 +98,30 @@ export class PieceSprite extends Container {
     this.update(piece, false);
   }
 
+  /** Swap the emoji for card art once the texture is in the cache. */
+  private tryAttachArt(piece: Piece): void {
+    if (this.art || isStandard(piece.kind)) return;
+    const tex = artFor(piece.kind);
+    if (!tex || tex.height <= 0) return;
+    this.art = new Sprite(tex);
+    this.art.anchor.set(0.5);
+    // The art has ~10% empty margin inside its frame, so a little over a square
+    // reads as square-sized; lifted so it stands on the plinth above the badges.
+    // boardArtZoom scales the whole figure — it may overflow the square, not crop.
+    const k = SQ / 72;
+    const size = SQ * 1.12 * clampBoardArtZoom(summonCard(piece.kind)?.boardArtZoom);
+    this.art.scale.set((size / tex.height) * (piece.owner === 'black' ? -1 : 1), size / tex.height);
+    this.art.y = -8 * k;
+    this.glyph.visible = false;
+    this.addChildAt(this.art, this.getChildIndex(this.glyph) + 1);
+  }
+
   update(piece: Piece, locked: boolean, veiled = false): void {
     this.kind = piece.kind;
     this.square = piece.square;
+    this.lastLocked = locked;
+    this.lastVeiled = veiled;
+    this.tryAttachArt(piece);
     const def = getPieceDef(piece.kind);
     const standard = isStandard(piece.kind);
     if (this.glyph.text !== def.glyph) this.glyph.text = def.glyph; // promotion

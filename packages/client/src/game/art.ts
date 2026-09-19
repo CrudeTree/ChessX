@@ -20,24 +20,28 @@ function artUrls(): string[] {
 /** A request that never answers must not hold up the board: give each image this long. */
 const LOAD_TIMEOUT_MS = 8000;
 
+/** Load one image into the cache. Resolves undefined if it is missing or times out. */
+export async function loadArt(url: string): Promise<Texture | undefined> {
+  const cached = artTextures.get(url);
+  if (cached) return cached;
+  try {
+    const tex = await Promise.race([
+      Assets.load<Texture>(url),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`timed out loading ${url}`)), LOAD_TIMEOUT_MS)),
+    ]);
+    // The art is 512px and is always drawn much smaller (cards ~46px, board ~80px);
+    // nearest-neighbour at those ratios speckles, so let the GPU filter it.
+    tex.source.scaleMode = 'linear';
+    tex.source.autoGenerateMipmaps = true;
+    artTextures.set(url, tex);
+    return tex;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Load any textures not loaded yet. Safe to call repeatedly (e.g. after the admin uploads new art). */
 export async function preloadArt(): Promise<void> {
   const missing = artUrls().filter((u) => !artTextures.has(u));
-  await Promise.all(
-    missing.map(async (url) => {
-      try {
-        const tex = await Promise.race([
-          Assets.load<Texture>(url),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`timed out loading ${url}`)), LOAD_TIMEOUT_MS)),
-        ]);
-        // The art is 512px and is always drawn much smaller (cards ~46px, board ~80px);
-        // nearest-neighbour at those ratios speckles, so let the GPU filter it.
-        tex.source.scaleMode = 'linear';
-        tex.source.autoGenerateMipmaps = true;
-        artTextures.set(url, tex);
-      } catch {
-        /* missing art just falls back to the glyph */
-      }
-    }),
-  );
+  await Promise.all(missing.map((url) => loadArt(url)));
 }

@@ -1,5 +1,5 @@
 import { registerPieceDef, removePieceDef, setPieceDef } from '../pieces.js';
-import type { CardDef } from './types.js';
+import type { CardDef, SummonCardDef } from './types.js';
 
 /** Cards as shipped in code (plus admin-created cards, which are their own base). */
 const base = new Map<string, CardDef>();
@@ -8,8 +8,16 @@ const cards = new Map<string, CardDef>();
 /** Ids of admin-created cards currently registered. */
 const custom = new Set<string>();
 
+/** Board sprites look up `piece.art`; keep that in sync with the card picture. */
+function bindSummonArt(card: SummonCardDef): void {
+  if (card.piece.art) return;
+  const url = card.boardArt ?? card.art;
+  if (url) card.piece.art = url;
+}
+
 export function registerCard(card: CardDef): void {
   if (base.has(card.id)) throw new Error(`Duplicate card id: ${card.id}`);
+  if (card.type === 'summon') bindSummonArt(card);
   base.set(card.id, card);
   cards.set(card.id, card);
   if (card.type === 'summon') registerPieceDef(card.piece);
@@ -30,6 +38,7 @@ export function setCustomCards(list: CardDef[]): void {
     if (old?.type === 'summon') removePieceDef(old.piece.kind);
   }
   for (const card of list) {
+    if (card.type === 'summon') bindSummonArt(card);
     base.set(card.id, card);
     cards.set(card.id, card);
     custom.add(card.id);
@@ -48,6 +57,7 @@ export function registerCards(list: CardDef[]): void {
 /** Replace the live definition of a card (balance patches). The shipped one is kept. */
 export function setCardDef(card: CardDef): void {
   if (!base.has(card.id)) throw new Error(`Unknown card: ${card.id}`);
+  if (card.type === 'summon') bindSummonArt(card);
   cards.set(card.id, card);
   if (card.type === 'summon') setPieceDef(card.piece);
 }

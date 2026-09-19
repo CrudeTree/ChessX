@@ -521,6 +521,11 @@ describe('cards', () => {
     expect(legalActions(g).some((a) => a.type === 'setStance' && a.square === s('e2'))).toBe(false);
   });
 
+  it('summoned creatures carry their card picture on the piece def', () => {
+    expect(getPieceDef('stone_sentinel').art).toBe('/art/stone_sentinel.png');
+    expect(getPieceDef('the_ox').art).toBe('/art/the_ox.png');
+  });
+
   describe('mana', () => {
     it('starts at 0 and every card costs at least 150, except free opening spells', () => {
       const g = realGame();
