@@ -569,5 +569,6 @@ export function describeCard(card: CardDef): string {
     : card.target === 'ownDefending' ? 'Target friendly piece in Defense mode'
     : 'You';
   const body = card.effects.map((e) => describeEffect(e, targetWord)).join(' ');
-  return card.firstTurnOnly ? `On your first turn only. ${body}` : body;
+  const turn = card.endsTurn ? ' Ends your turn.' : '';
+  return card.firstTurnOnly ? `On your first turn only. ${body}${turn}` : `${body}${turn}`;
 }

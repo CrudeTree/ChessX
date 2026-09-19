@@ -34,6 +34,7 @@ const PROMOTIONS: PromotionKind[] = ['queen', 'rook', 'bishop', 'knight'];
  *  2. Main — play any number of cards (summons or spells) you have the mana for,
  *     switch any pieces' stance (a piece that switched is frozen for the turn),
  *     and use creature board abilities (once per turn unless the ability says otherwise).
+ *     A spell with `endsTurn` (Hex) closes the turn like a move.
  *  3. Move — move or attack with one piece. The move ends the turn automatically.
  *
  * `endTurn` is only a *pass*: legal when you have no legal move at all (and are
@@ -84,7 +85,9 @@ export function legalActions(state: GameState, color: Color = state.turn): Actio
       continue;
     }
     for (const target of cardTargets(state, inst, color)) {
-      out.push({ type: 'playCard', cardInstanceId: inst.instanceId, target });
+      const action = { type: 'playCard' as const, cardInstanceId: inst.instanceId, target };
+      if (card.type === 'spell' && card.endsTurn && !leavesKingSafe(state, action, color)) continue;
+      out.push(action);
     }
   }
 
@@ -192,13 +195,13 @@ export function applyAction(state: GameState, action: Action): GameState {
 
   performAction(next, action, color); // throws a descriptive IllegalActionError if malformed
 
-  if (action.type === 'move') {
+  if (action.type === 'move' || (action.type === 'playCard' && cardEndsTurn(action, state, color))) {
     if (!kingSafe(next, color)) {
       throw new IllegalActionError(
         isInCheck(state, color) ? 'You must get your King out of check.' : 'That would leave your King in check.',
       );
     }
-    // The move is the last thing you do: it ends the turn (unless it ended the game).
+    // A move — or a spell like Hex — is the last thing you do this turn.
     if (next.status.kind === 'playing') endTurn(next);
   }
 
@@ -316,6 +319,13 @@ function leavesKingSafe(state: GameState, action: Action, color: Color): boolean
     throw e;
   }
   return kingSafe(sim, color);
+}
+
+function cardEndsTurn(action: Extract<Action, { type: 'playCard' }>, state: GameState, color: Color): boolean {
+  const inst = state.players[color].hand.find((c) => c.instanceId === action.cardInstanceId);
+  if (!inst) return false;
+  const card = getCardDef(inst.cardId);
+  return card.type === 'spell' && !!card.endsTurn;
 }
 
 /** After `color` has acted: did they capture the enemy king, or at least leave their own king out of check? */

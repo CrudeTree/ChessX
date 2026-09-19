@@ -101,6 +101,8 @@ export interface SpellCardDef extends CardBase {
   targetTier?: number;
   /** Only legal while this player is still on their first turn. */
   firstTurnOnly?: boolean;
+  /** Playing this card ends the turn, the same way a move does. */
+  endsTurn?: boolean;
   effects: Effect[];
 }
 

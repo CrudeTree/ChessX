@@ -101,7 +101,7 @@ The server is authoritative: the client only ever offers the player actions from
 
 **Kings.** Any piece reaching the king's square captures it. **Royal strike**: the King's own capture destroys any piece, including one in Defense.
 
-**Hex** is a spell that destroys a target enemy Tier 1 piece. It ignores Defense.
+**Hex** is a spell that destroys a target enemy Tier 1 piece. It ignores Defense and **ends your turn**.
 
 **Inspecting.** Click any piece (yours or the opponent's) to see its card on the left: Defense charges if any, movement, lock/summon status. The button is **Leave Defense** when the piece is in Defense mode.
 
@@ -144,7 +144,7 @@ Cards live in `packages/engine/src/cards/catalog.ts` and are pure data. Starter 
 | War Chariot    | Summon | Tier 3, 3 turns. Moves like Rook or Knight.                             |
 | Elder Wyrm     | Summon | Tier 4, 4 turns, **costs a Tier 4** (a beefed-up Queen). Moves ≤3 any direction. |
 | Foresight      | Spell  | Draw 2                                                                  |
-| Hex            | Spell  | Destroy target enemy Tier 1 piece                                       |
+| Hex            | Spell  | Destroy target enemy Tier 1 piece. Ends your turn.                      |
 | Dark Ritual    | Spell  | A friendly summon timer drops by 2                                      |
 
 Reward cards (unlocked through play):

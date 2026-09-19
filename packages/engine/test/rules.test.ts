@@ -189,12 +189,11 @@ describe('turn structure', () => {
     let g = newGame();
     expect(viewFor(g, 'white').phase).toBe('main');
     const fs = giveCard(g, 'white', 'foresight');
-    const hex = giveCard(g, 'white', 'hex');
+    const fs2 = giveCard(g, 'white', 'foresight');
     g = act(g, { type: 'playCard', cardInstanceId: fs });
-    g = act(g, { type: 'playCard', cardInstanceId: hex, target: s('e7') });
     expect(g.turn).toBe('white');
-    expect(g.turnInfo.cardsPlayed).toBe(2);
-    expect(pieceAt(g, s('e7'))).toBeUndefined();
+    expect(g.turnInfo.cardsPlayed).toBe(1);
+    expect(legalActions(g).some((a) => a.type === 'playCard' && a.cardInstanceId === fs2)).toBe(true);
     // The move closes the turn: black to play, mana collected, turn info reset.
     g = move(g, 'e2', 'e4');
     expect(g.turn).toBe('black');
@@ -392,6 +391,16 @@ describe('one-hit combat', () => {
     g = act(g, { type: 'playCard', cardInstanceId: hex, target: s('e7') });
     expect(pieceAt(g, s('e7'))).toBeUndefined();
     expect(g.events.some((e) => e.type === 'destroyed')).toBe(true);
+    expect(g.turn).toBe('black');
+  });
+
+  it('Hex ends the turn immediately', () => {
+    let g = newGame();
+    const hex = giveCard(g, 'white', 'hex');
+    g = act(g, { type: 'playCard', cardInstanceId: hex, target: s('e7') });
+    expect(g.turn).toBe('black');
+    expect(g.events.some((e) => e.type === 'turnEnded' && e.color === 'white')).toBe(true);
+    expect(pieceAt(g, s('e7'))).toBeUndefined();
   });
 
   it('an attack that breaks Defense does not skip that piece', () => {
@@ -495,14 +504,16 @@ describe('cards', () => {
 
   it('Foresight draws and Hex destroys', () => {
     let g = newGame();
-    const hex = giveCard(g, 'white', 'hex');
-    g = act(g, { type: 'playCard', cardInstanceId: hex, target: s('e7') });
-    expect(pieceAt(g, s('e7'))).toBeUndefined();
-
     const before = g.players.white.hand.length;
     const fs = giveCard(g, 'white', 'foresight');
     g = act(g, { type: 'playCard', cardInstanceId: fs });
+    expect(g.turn).toBe('white');
     expect(g.players.white.hand.length).toBe(before + 2); // +1 given, -1 played, +2 drawn
+
+    const hex = giveCard(g, 'white', 'hex');
+    g = act(g, { type: 'playCard', cardInstanceId: hex, target: s('e7') });
+    expect(pieceAt(g, s('e7'))).toBeUndefined();
+    expect(g.turn).toBe('black');
   });
 
   it('Stone Sentinel completes in Attack with its Defense charges', () => {
@@ -577,8 +588,9 @@ describe('cards', () => {
       const hex = giveCard(g, 'white', 'hex');
       expect(legalActions(g).some((a) => a.type === 'playCard' && a.cardInstanceId === hex)).toBe(true);
       g = act(g, { type: 'playCard', cardInstanceId: hex, target: s('e7') });
-      expect(g.players.white.mana).toBe(10);
-      expect(viewFor(g, 'white').players.white.mana).toBe(10);
+      expect(g.turn).toBe('black');
+      expect(g.players.white.mana).toBe(42);
+      expect(viewFor(g, 'black').players.white.mana).toBe(42);
     });
   });
 
@@ -872,7 +884,7 @@ describe('balance patches', () => {
     expect((getCardDef('stone_sentinel') as SummonCardDef).piece.defense).toBe(2);
     expect(getCardDef('stone_sentinel').text).toMatch(/Starts with 2 Defense/);
     expect(getPieceDef('stone_sentinel').defense).toBe(2);
-    expect(getCardDef('hex').text).toBe('Destroy target enemy Tier 1 piece.');
+    expect(getCardDef('hex').text).toBe('Destroy target enemy Tier 1 piece. Ends your turn.');
     expect(getPieceDef('pawn').manaYield).toBe(2);
 
     let g = realGame();

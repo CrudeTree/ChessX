@@ -112,7 +112,8 @@ export const CATALOG: CardDef[] = [
     art: '/art/hex.png',
     target: 'enemyPiece',
     targetTier: 1,
-    text: 'Destroy target enemy Tier 1 piece.',
+    text: 'Destroy target enemy Tier 1 piece. Ends your turn.',
+    endsTurn: true,
     effects: [{ kind: 'destroy' }],
   },
   {
