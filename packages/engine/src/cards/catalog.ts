@@ -301,6 +301,7 @@ export const CATALOG: CardDef[] = [
     cost: 300,
     name: 'Battle Cry',
     glyph: '📣',
+    art: '/art/battle_cry.png',
     target: 'none',
     text: 'All your Pawns gain +1 ATK.',
     effects: [{ kind: 'modifyStatsAll', pieceKind: 'pawn', atk: 1 }],
