@@ -267,6 +267,7 @@ export class BalanceEditor {
     cb.type = 'checkbox';
     cb.checked = true;
     knock.append(cb, ' remove white background');
+    knock.title = 'Cuts out the paper-white backdrop from the edges. White creatures (like Frost Owl) keep their feathers.';
     const up = document.createElement('button');
     up.type = 'button';
     up.textContent = current ? 'Replace image…' : 'Upload image…';
