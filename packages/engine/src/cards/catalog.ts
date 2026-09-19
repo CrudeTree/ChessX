@@ -151,6 +151,7 @@ export const CATALOG: CardDef[] = [
     cost: 150,
     name: 'Hex',
     glyph: '💀',
+    art: '/art/hex.png',
     target: 'enemyPiece',
     targetTier: 1,
     text: 'Deal 1 damage to target enemy Tier 1 piece.',
