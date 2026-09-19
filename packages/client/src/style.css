@@ -118,6 +118,19 @@ button.primary {
   border-color: var(--accent);
 }
 
+button:disabled,
+button:disabled:hover {
+  filter: none;
+  cursor: default;
+  opacity: 0.42;
+}
+
+button.primary:disabled {
+  background: #4a4a58;
+  color: #9a9aa8;
+  border-color: #3d3d4c;
+}
+
 button.secondary {
   width: 100%;
   margin-top: 8px;

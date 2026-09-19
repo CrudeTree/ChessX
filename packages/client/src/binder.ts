@@ -40,7 +40,6 @@ export class Binder {
   private slot = 1;
   /** Working copies of the decks (unsaved edits live here). */
   private drafts = new Map<number, DeckInfo>();
-  private dirty = new Set<number>();
 
   constructor(private onBack: () => void) {
     $('binder-back').onclick = () => this.back();
@@ -48,15 +47,14 @@ export class Binder {
     $<HTMLInputElement>('deck-name').oninput = (e) => {
       const d = this.draft();
       d.name = (e.target as HTMLInputElement).value;
-      this.dirty.add(this.slot);
       this.renderTabs();
+      this.syncSave();
     };
   }
 
   open(profile: Profile): void {
     this.profile = profile;
     this.drafts = new Map(profile.decks.map((d) => [d.slot, { ...d, cards: d.cards.slice() }]));
-    this.dirty.clear();
     this.render();
     // Looking at the binder clears the "new" badges (after this render so they show once).
     if (profile.collection.some((c) => c.isNew)) {
@@ -70,8 +68,25 @@ export class Binder {
   }
 
   private back(): void {
-    if (this.dirty.size && !confirm('You have unsaved deck changes. Leave anyway?')) return;
+    if (this.hasUnsaved() && !confirm('You have unsaved deck changes. Leave anyway?')) return;
     this.onBack();
+  }
+
+  private savedDeck(slot: number): DeckInfo | undefined {
+    return this.profile?.decks.find((d) => d.slot === slot);
+  }
+
+  private slotChanged(slot: number): boolean {
+    const draft = this.drafts.get(slot);
+    if (!draft) return false;
+    const saved = this.savedDeck(slot);
+    const savedName = saved?.name ?? `Deck ${slot}`;
+    const savedCards = saved?.cards ?? [];
+    return draft.name !== savedName || draft.cards.join('\0') !== savedCards.join('\0');
+  }
+
+  private hasUnsaved(): boolean {
+    return [...this.drafts.keys()].some((slot) => this.slotChanged(slot));
   }
 
   private draft(): DeckInfo {
@@ -95,7 +110,6 @@ export class Binder {
       return this.msg(this.inDeck(cardId) >= DEFAULT_RULES.maxCopies ? `Max ${DEFAULT_RULES.maxCopies} copies of a card per deck.` : 'You have no more copies of that card.', true);
     }
     d.cards.push(cardId);
-    this.dirty.add(this.slot);
     this.msg('');
     this.render();
   }
@@ -104,9 +118,12 @@ export class Binder {
     const d = this.draft();
     const i = d.cards.indexOf(cardId);
     if (i >= 0) d.cards.splice(i, 1);
-    this.dirty.add(this.slot);
     this.msg('');
     this.render();
+  }
+
+  private syncSave(): void {
+    $<HTMLButtonElement>('deck-save').disabled = !this.slotChanged(this.slot);
   }
 
   private msg(text: string, bad = false): void {
@@ -116,11 +133,11 @@ export class Binder {
   }
 
   private async save(): Promise<void> {
+    if (!this.slotChanged(this.slot)) return;
     const d = this.draft();
     try {
       const saved = await profileApi.saveDeck(d.slot, d.name, d.cards);
       this.drafts.set(d.slot, { ...saved, cards: saved.cards.slice() });
-      this.dirty.delete(d.slot);
       if (this.profile) {
         this.profile = { ...this.profile, decks: this.profile.decks.map((x) => (x.slot === saved.slot ? saved : x)) };
         this.onProfileChanged(this.profile);
@@ -164,6 +181,7 @@ export class Binder {
     }
 
     this.renderTabs();
+    this.syncSave();
 
     const d = this.draft();
     $<HTMLInputElement>('deck-name').value = d.name;
@@ -210,7 +228,7 @@ export class Binder {
       const b = document.createElement('button');
       const valid = d.cards.length >= DEFAULT_RULES.deckMin && d.cards.length <= DEFAULT_RULES.deckMax;
       b.className = `${slot === this.slot ? 'active' : ''} ${d.cards.length && !valid ? 'invalid' : ''}`;
-      b.textContent = `${d.name}${this.dirty.has(slot) ? ' *' : ''}`;
+      b.textContent = `${d.name}${this.slotChanged(slot) ? ' *' : ''}`;
       b.title = valid ? `${d.cards.length} cards — ready to play` : d.cards.length ? `${d.cards.length} cards — needs ${DEFAULT_RULES.deckMin}` : 'Empty';
       b.onclick = () => {
         this.slot = slot;
