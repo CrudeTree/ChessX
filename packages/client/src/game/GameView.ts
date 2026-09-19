@@ -148,6 +148,8 @@ export class GameView {
   private pulse = 0;
   /** The current set of target-square highlights, faded in and out by the ticker. */
   private pulsingHighlights: Graphics | null = null;
+  /** Pieces waiting to be picked for an on-summon grant — they pulse with the overlay. */
+  private grantPulseSprites: PieceSprite[] = [];
 
   async init(mount: HTMLElement): Promise<void> {
     const base = { width: CANVAS_W, height: CANVAS_H, backgroundAlpha: 0, autoDensity: true } as const;
@@ -171,8 +173,8 @@ export class GameView {
       this.lastMoveLayer,
       this.inspectLayer,
       this.voidLayer,
-      this.highlightLayer,
       this.pieceLayer,
+      this.highlightLayer,
       this.fxLayer,
       this.deckLayer,
       this.oppHandLayer,
@@ -180,6 +182,7 @@ export class GameView {
       this.dragLayer,
       this.banner,
     );
+    this.highlightLayer.eventMode = 'none';
     this.drawBoard();
 
     this.myDeck.position.set(MY_DECK.x, MY_DECK.y);
@@ -227,8 +230,12 @@ export class GameView {
       this.myDeck.tick(tk.deltaMS);
       this.oppDeck.tick(tk.deltaMS);
       // Target highlights breathe on a 2 s cycle.
+      const beat = 0.7 + 0.3 * Math.sin((this.pulse * 2 * Math.PI) / 2);
       const hl = this.pulsingHighlights;
-      if (hl && !hl.destroyed) hl.alpha = 0.7 + 0.3 * Math.sin((this.pulse * 2 * Math.PI) / 2);
+      if (hl && !hl.destroyed) hl.alpha = beat;
+      for (const sprite of this.grantPulseSprites) {
+        if (!sprite.destroyed) sprite.alpha = 0.62 + 0.38 * Math.sin((this.pulse * 2 * Math.PI) / 2);
+      }
     });
 
     this.ready = true;
@@ -259,6 +266,7 @@ export class GameView {
     for (const v of this.voids.values()) v.destroy();
     this.sprites.clear();
     this.voids.clear();
+    this.clearGrantPulse();
     for (const layer of [this.highlightLayer, this.lastMoveLayer, this.inspectLayer, this.fxLayer, this.banner]) layer.removeChildren();
     for (const old of this.handLayer.removeChildren()) old.destroy();
     for (const old of this.dragLayer.removeChildren()) old.destroy({ children: true }); // an in-flight card reveal
@@ -344,6 +352,7 @@ export class GameView {
 
     this.cancelDrag();
     this.selection = null;
+    this.clearGrantPulse();
     this.highlightLayer.removeChildren();
 
     // Pieces: tween existing, pop new, fade removed.
@@ -418,7 +427,20 @@ export class GameView {
     const targets = { bySquare, anywhere: null };
     this.selection = { square: pending.from, targets };
     this.drawHighlights(targets, pending.from);
+    this.clearGrantPulse();
+    for (const to of pending.targets) {
+      const id = view.board[to];
+      const sprite = id ? this.sprites.get(id) : undefined;
+      if (sprite) this.grantPulseSprites.push(sprite);
+    }
     this.setInspected(pending.pieceId);
+  }
+
+  private clearGrantPulse(): void {
+    for (const sprite of this.grantPulseSprites) {
+      if (!sprite.destroyed) sprite.alpha = 1;
+    }
+    this.grantPulseSprites = [];
   }
 
   private syncVoid(pieceId: string, active: boolean, x: number, y: number): void {
@@ -607,8 +629,9 @@ export class GameView {
         : action.type === 'useAbility' ? COLORS.ability
         : this.view?.board[square] ? COLORS.attack
         : COLORS.move;
-      pulse.roundRect(x - SQ / 2 + 3, y - SQ / 2 + 3, SQ - 6, SQ - 6, 6).fill({ color, alpha: 0.28 });
-      pulse.roundRect(x - SQ / 2 + 3, y - SQ / 2 + 3, SQ - 6, SQ - 6, 6).stroke({ width: 3, color, alpha: 1 });
+      const pad = action.type === 'useAbility' ? 1 : 3;
+      pulse.roundRect(x - SQ / 2 + pad, y - SQ / 2 + pad, SQ - pad * 2, SQ - pad * 2, 6).fill({ color, alpha: action.type === 'useAbility' ? 0.4 : 0.28 });
+      pulse.roundRect(x - SQ / 2 + pad, y - SQ / 2 + pad, SQ - pad * 2, SQ - pad * 2, 6).stroke({ width: action.type === 'useAbility' ? 4 : 3, color, alpha: 1 });
     }
     this.highlightLayer.addChild(g, pulse);
     this.pulsingHighlights = pulse;
@@ -1058,6 +1081,10 @@ export class GameView {
 
   /** Highlight a palette drop target (or clear when `none`). */
   previewDrop(target: ArenaDrop): void {
+    if (this.view?.pendingGrant) {
+      if (target.zone === 'none') this.showPendingGrant();
+      return;
+    }
     this.highlightLayer.removeChildren();
     this.pulsingHighlights = null;
     if (target.zone === 'none') return;
