@@ -77,7 +77,10 @@ function defaultEffect(kind: Effect['kind']): Effect {
       return { kind, turns: 1 };
     case 'destroy':
     case 'freeStance':
+    case 'scrambleBackRank':
       return { kind };
+    case 'gainMana':
+      return { kind, amount: 60 };
   }
 }
 
@@ -1058,6 +1061,18 @@ export class BalanceEditor {
       };
       king.append(cb, ' may target the King');
       targeting.appendChild(king);
+      const first = document.createElement('label');
+      first.className = 'eflag';
+      const firstCb = document.createElement('input');
+      firstCb.type = 'checkbox';
+      firstCb.checked = !!card.firstTurnOnly;
+      firstCb.onchange = () => {
+        if (firstCb.checked) card.firstTurnOnly = true;
+        else delete card.firstTurnOnly;
+        this.refreshQuiet();
+      };
+      first.append(firstCb, ' only on your first turn');
+      targeting.appendChild(first);
       this.customEffectsEditor(form, card);
     }
 
@@ -1201,6 +1216,8 @@ export class BalanceEditor {
       ['draw', 'Draw cards'],
       ['hastenSummon', 'Speed up a summon'],
       ['freeStance', 'Leave Defense and still act'],
+      ['gainMana', 'Gain mana'],
+      ['scrambleBackRank', "Rearrange the opponent's back rank"],
     ];
     card.effects.forEach((e, i) => {
       const row = document.createElement('div');
@@ -1220,6 +1237,9 @@ export class BalanceEditor {
           break;
         case 'hastenSummon':
           num('Turns', 'turns');
+          break;
+        case 'gainMana':
+          num('Mana gained', 'amount');
           break;
         default:
           break;
@@ -1273,6 +1293,9 @@ export class BalanceEditor {
           break;
         case 'hastenSummon':
           num('Turns', e as never, 'turns', (be?.kind === 'hastenSummon' ? be.turns : e.turns));
+          break;
+        case 'gainMana':
+          num('Mana gained', e as never, 'amount', (be?.kind === 'gainMana' ? be.amount : e.amount));
           break;
         default: {
           const p = document.createElement('p');

@@ -24,7 +24,11 @@ export type Effect =
   /** Reduce a pending summon's timer. Resolves immediately if it hits 0. */
   | { kind: 'hastenSummon'; turns: number }
   /** Drop Defense to 0 and let the piece act this turn. */
-  | { kind: 'freeStance' };
+  | { kind: 'freeStance' }
+  /** Add mana to the caster's pool right away. */
+  | { kind: 'gainMana'; amount: number }
+  /** Shuffle the opponent's pieces on their back rank (empties move with them). */
+  | { kind: 'scrambleBackRank' };
 
 interface CardBase {
   id: string;
@@ -87,6 +91,8 @@ export interface SpellCardDef extends CardBase {
   allowKing?: boolean;
   /** Restrict targets to pieces of this tier (e.g. 1 = pawns and other Tier 1 units). */
   targetTier?: number;
+  /** Only legal while this player is still on their first turn. */
+  firstTurnOnly?: boolean;
   effects: Effect[];
 }
 

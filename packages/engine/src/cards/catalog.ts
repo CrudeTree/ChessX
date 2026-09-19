@@ -309,6 +309,29 @@ export const CATALOG: CardDef[] = [
     text: 'Target friendly piece in Defense mode switches to Attack mode and may still act this turn.',
     effects: [{ kind: 'freeStance' }],
   },
+  {
+    id: 'leyburst',
+    type: 'spell',
+    cost: 0,
+    name: 'Leyburst',
+    glyph: '✴️',
+    art: '/art/leyburst.png',
+    target: 'none',
+    text: 'Gain 60 mana.',
+    effects: [{ kind: 'gainMana', amount: 60 }],
+  },
+  {
+    id: 'disarray',
+    type: 'spell',
+    cost: 0,
+    name: 'Disarray',
+    glyph: '🌀',
+    art: '/art/disarray.png',
+    target: 'none',
+    firstTurnOnly: true,
+    text: 'On your first turn only. Rearrange the opponent\'s back rank.',
+    effects: [{ kind: 'scrambleBackRank' }],
+  },
 ];
 
 registerCards(CATALOG);
@@ -331,7 +354,7 @@ export const STARTER_CARDS: string[] = [
 export const REWARD_CARDS: string[] = [
   'ziglet', 'greedpot', 'thunderhead',
   'thornback_boar', 'frost_owl', 'iron_golem', 'shadow_panther', 'ancient_treant', 'storm_drake',
-  'battle_trance',
+  'battle_trance', 'leyburst', 'disarray',
 ];
 
 /** The deck every new player starts with: 3 copies of each starter card. */

@@ -2,6 +2,7 @@ import { getCardDef } from './cards/registry.js';
 import type { CardInstance, Effect, SummonCardDef, TargetRule } from './cards/types.js';
 import { isInCheck, lastRank, pseudoMoves, type MoveCandidate } from './movement.js';
 import { getPieceDef } from './pieces.js';
+import { shuffleInPlace } from './rng.js';
 import { cloneState, drawCards, freshTurnInfo, manaFrom, pieceAt, piecesOf, stormAt, type GameState } from './state.js';
 import {
   fileOf,
@@ -70,6 +71,7 @@ export function legalActions(state: GameState, color: Color = state.turn): Actio
   for (const inst of state.players[color].hand) {
     const card = getCardDef(inst.cardId);
     if (card.cost > state.players[color].mana) continue;
+    if (card.type === 'spell' && card.firstTurnOnly && state.players[color].turnsTaken !== 1) continue;
     for (const target of cardTargets(state, inst, color)) {
       out.push({ type: 'playCard', cardInstanceId: inst.instanceId, target });
     }
@@ -450,6 +452,9 @@ function performCard(state: GameState, action: Extract<Action, { type: 'playCard
     );
   }
 
+  if (card.type === 'spell' && card.firstTurnOnly && player.turnsTaken !== 1) {
+    throw new IllegalActionError(`${card.name} can only be played on your first turn.`);
+  }
   if (card.cost > player.mana) throw new IllegalActionError(`Not enough mana: ${card.name} costs ${card.cost}, you have ${player.mana}.`);
 
   player.hand.splice(idx, 1);
@@ -522,6 +527,55 @@ export function applyEffect(state: GameState, effect: Effect, color: Color, targ
       if (target.summon.turnsRemaining <= 0) resolveSummon(state, target);
       else state.events.push({ type: 'summonTick', square: target.square, turnsRemaining: target.summon.turnsRemaining });
       return;
+    }
+    case 'gainMana': {
+      const player = state.players[color];
+      player.mana += effect.amount;
+      state.events.push({ type: 'manaGained', color, total: effect.amount, mana: player.mana, pieces: [] });
+      return;
+    }
+    case 'scrambleBackRank': {
+      scrambleOpponentBackRank(state, color);
+      return;
+    }
+  }
+}
+
+/** The rank the opponent started on (white's far side is 7, black's is 0). */
+function opponentBackRank(color: Color): number {
+  return color === 'white' ? 7 : 0;
+}
+
+/** Permute enemy pieces (and empty squares) on the opponent's back rank. */
+function scrambleOpponentBackRank(state: GameState, color: Color): void {
+  const rank = opponentBackRank(color);
+  const squares: Square[] = [];
+  for (let file = 0; file < 8; file++) squares.push(sq(file, rank));
+
+  const movableIdx: number[] = [];
+  const occupants: (Piece | null)[] = [];
+  for (let i = 0; i < squares.length; i++) {
+    const piece = pieceAt(state, squares[i]!);
+    if (piece && piece.owner === color) continue;
+    movableIdx.push(i);
+    occupants.push(piece ?? null);
+  }
+  if (occupants.length < 2) return;
+  shuffleInPlace(occupants, state);
+
+  for (const piece of occupants) {
+    if (piece) state.board[piece.square] = null;
+  }
+  for (let k = 0; k < movableIdx.length; k++) {
+    const piece = occupants[k];
+    if (!piece) continue;
+    const from = piece.square;
+    const to = squares[movableIdx[k]!]!;
+    piece.square = to;
+    state.board[to] = piece.id;
+    if (from !== to) {
+      piece.hasMoved = true;
+      state.events.push({ type: 'moved', pieceId: piece.id, from, to });
     }
   }
 }

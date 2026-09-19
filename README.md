@@ -111,7 +111,7 @@ The server is authoritative: the client only ever offers the player actions from
 
 **Summon cards.** Pieces have tiers: Pawn = 1, Knight/Bishop = 2, Rook = 3, Queen = 4, King = 6 (never sacrificable). A tier-N summon card is played by dropping it on one of your pieces of tier N−1, which becomes the sacrifice. A void opens beneath it with a timer. While the timer runs the sacrificed piece cannot move or attack. The timer ticks down at the start of each of your turns; when it reaches 0 the piece is replaced by the summoned creature. If the sacrifice is destroyed first, the summon fails and the card is lost.
 
-**Spell cards** resolve immediately: destroy, draw, hasten a summon, or drop Defense (Battle Trance). Kings can't be targeted unless a card says so.
+**Spell cards** resolve immediately: destroy, draw, hasten a summon, drop Defense (Battle Trance), gain mana (Leyburst), or scramble the opponent's back rank (Disarray, first turn only). Kings can't be targeted unless a card says so.
 
 ### Progression, collection and decks
 
@@ -161,6 +161,8 @@ Reward cards (unlocked through play):
 | Ancient Treant  | Summon | Tier 3, 3 turns. 1 any direction. Starts with 1 Defense.                           |
 | Storm Drake     | Summon | Tier 4, 4 turns. Knight jumps or ≤2 orthogonal.                                   |
 | Battle Trance   | Spell  | Friendly piece in Defense mode → Attack mode, and it may still act this turn      |
+| Leyburst        | Spell  | Costs 0. Gain 60 mana.                                                            |
+| Disarray        | Spell  | Costs 0. On your first turn only, rearrange the opponent's back rank.             |
 
 ### Adding a card
 

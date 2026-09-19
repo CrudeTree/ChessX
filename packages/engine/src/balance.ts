@@ -72,7 +72,7 @@ export const EMPTY_BALANCE: Balance = { cards: {}, pieces: {} };
 
 const RETIRED = new Set(RETIRED_CARDS);
 
-const LIVE_EFFECTS = new Set<Effect['kind']>(['destroy', 'draw', 'hastenSummon', 'freeStance']);
+const LIVE_EFFECTS = new Set<Effect['kind']>(['destroy', 'draw', 'hastenSummon', 'freeStance', 'gainMana', 'scrambleBackRank']);
 
 function sanitizeAbility(a: PieceAbility): PieceAbility {
   if (a?.kind === 'stormCloud') {
@@ -337,6 +337,11 @@ function validateEffects(effects: unknown, where: string, problems: string[]): v
       case 'hastenSummon':
         if (!isInt(e.turns, 1, 10)) problems.push(`${where}: turns must be 1–10.`);
         break;
+      case 'gainMana':
+        if (!isInt(e.amount, 1, 999)) problems.push(`${where}: mana gained must be 1–999.`);
+        break;
+      case 'scrambleBackRank':
+        break;
       default:
         problems.push(`${where}: unknown effect.`);
     }
@@ -497,6 +502,10 @@ function describeEffect(e: Effect, target: string): string {
       return `${target}: its summon timer drops by ${e.turns}.`;
     case 'freeStance':
       return `${target} switches to Attack mode and may still act this turn.`;
+    case 'gainMana':
+      return `Gain ${e.amount} mana.`;
+    case 'scrambleBackRank':
+      return `Rearrange the opponent's back rank.`;
   }
 }
 
@@ -547,5 +556,6 @@ export function describeCard(card: CardDef): string {
     : card.target === 'ownSummoning' ? 'Target friendly piece being sacrificed'
     : card.target === 'ownDefending' ? 'Target friendly piece in Defense mode'
     : 'You';
-  return card.effects.map((e) => describeEffect(e, targetWord)).join(' ');
+  const body = card.effects.map((e) => describeEffect(e, targetWord)).join(' ');
+  return card.firstTurnOnly ? `On your first turn only. ${body}` : body;
 }

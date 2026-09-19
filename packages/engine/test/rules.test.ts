@@ -521,11 +521,15 @@ describe('cards', () => {
   });
 
   describe('mana', () => {
-    it('starts at 0 and every card has a cost of at least 150', () => {
+    it('starts at 0 and every card costs at least 150, except free opening spells', () => {
       const g = realGame();
       expect(g.players.white.mana).toBe(0);
       expect(g.players.black.mana).toBe(0);
-      for (const id of [...STARTER_CARDS, ...REWARD_CARDS]) expect(getCardDef(id).cost).toBeGreaterThanOrEqual(150);
+      for (const id of [...STARTER_CARDS, ...REWARD_CARDS]) {
+        const cost = getCardDef(id).cost;
+        if (id === 'leyburst' || id === 'disarray') expect(cost).toBe(0);
+        else expect(cost).toBeGreaterThanOrEqual(150);
+      }
     });
 
     it('cards cannot be played without mana, with a clear error', () => {
@@ -613,6 +617,48 @@ describe('cards', () => {
     expect(g.turnInfo.stanceChanged).not.toContain(pieceAt(g, s('e2'))!.id);
     g = move(g, 'e2', 'e4');
     expect(g.turn).toBe('black');
+  });
+
+  it('Leyburst costs 0 and grants 60 mana', () => {
+    let g = realGame();
+    expect(g.players.white.mana).toBe(0);
+    const burst = giveCard(g, 'white', 'leyburst');
+    expect(legalActions(g).some((a) => a.type === 'playCard' && a.cardInstanceId === burst)).toBe(true);
+    g = act(g, { type: 'playCard', cardInstanceId: burst });
+    expect(g.players.white.mana).toBe(60);
+    expect(g.events.some((e) => e.type === 'manaGained' && e.total === 60 && e.mana === 60)).toBe(true);
+    const hex = giveCard(g, 'white', 'hex');
+    expect(legalActions(g).some((a) => a.type === 'playCard' && a.cardInstanceId === hex)).toBe(false);
+    expect(describeCard(getCardDef('leyburst'))).toBe('Gain 60 mana.');
+  });
+
+  it('Disarray rearranges the opponent back rank on your first turn only', () => {
+    let g = realGame();
+    const before = [...'abcdefgh'].map((f) => pieceAt(g, s(`${f}8`))!);
+    const ids = before.map((p) => p.id);
+    const burst = giveCard(g, 'white', 'disarray');
+    expect(legalActions(g).some((a) => a.type === 'playCard' && a.cardInstanceId === burst)).toBe(true);
+    g = act(g, { type: 'playCard', cardInstanceId: burst });
+    const after = [...'abcdefgh'].map((f) => pieceAt(g, s(`${f}8`)));
+    expect(after.every((p) => p && p.owner === 'black')).toBe(true);
+    expect(after.map((p) => p!.id).sort()).toEqual(ids.sort());
+    expect(after.some((p, i) => p!.id !== before[i]!.id)).toBe(true);
+    expect(g.events.filter((e) => e.type === 'moved').length).toBeGreaterThan(0);
+    expect(describeCard(getCardDef('disarray'))).toMatch(/first turn only.*back rank/i);
+
+    g = move(g, 'e2', 'e4');
+    const late = giveCard(g, 'black', 'disarray');
+    expect(g.players.black.turnsTaken).toBe(1);
+    expect(legalActions(g).some((a) => a.type === 'playCard' && a.cardInstanceId === late)).toBe(true);
+    g = act(g, { type: 'playCard', cardInstanceId: late });
+    const whiteBack = [...'abcdefgh'].map((f) => pieceAt(g, s(`${f}1`)));
+    expect(whiteBack.every((p) => p && p.owner === 'white')).toBe(true);
+
+    g = move(g, 'e7', 'e5');
+    const tooLate = giveCard(g, 'white', 'disarray');
+    expect(g.players.white.turnsTaken).toBe(2);
+    expect(legalActions(g).some((a) => a.type === 'playCard' && a.cardInstanceId === tooLate)).toBe(false);
+    expect(() => act(g, { type: 'playCard', cardInstanceId: tooLate })).toThrow(/first turn/);
   });
 
   it('reward creatures have sensible movement patterns', () => {
