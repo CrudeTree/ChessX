@@ -1,4 +1,4 @@
-import { canAct, getCardDef, getPieceDef, opposite, previewAbilities, previewMoves, type Action, type ArenaOp, type Color, type GameEvent, type Piece, type PlayerView, type Square } from '@chessx/engine';
+import { canAct, getCardDef, getPieceDef, opposite, previewAbilities, previewMoves, rankOf, type Action, type ArenaOp, type Color, type GameEvent, type Piece, type PlayerView, type Square } from '@chessx/engine';
 import { Application, Container, Graphics, Text, type FederatedPointerEvent } from 'pixi.js';
 import { preloadArt } from './art.js';
 import { CardSprite } from './CardSprite.js';
@@ -417,6 +417,7 @@ export class GameView {
         sprite.position.set(x, y);
         sprite.on('pointerdown', (e) => this.onPiecePointerDown(e, sprite!));
         this.pieceLayer.addChild(sprite);
+        sprite.zIndex = this.stackZ(piece.square);
         this.sprites.set(piece.id, sprite);
         if (!first) {
           sprite.scale.set(0);
@@ -433,8 +434,10 @@ export class GameView {
           this.tweens.run(
             first ? 0 : 220,
             (t) => !s.destroyed && s.position.set(sx + (x - sx) * t, sy + (y - sy) * t),
-            { ease: easeInOutQuad, done: () => !s.destroyed && (s.zIndex = 0) },
+            { ease: easeInOutQuad, done: () => !s.destroyed && (s.zIndex = this.stackZ(piece.square)) },
           );
+        } else {
+          sprite.zIndex = this.stackZ(piece.square);
         }
       }
       this.syncVoid(piece.id, !!piece.summon, x, y);
@@ -530,7 +533,7 @@ export class GameView {
               if (attacker.destroyed || this.drag?.sprite === attacker) return;
               const k = Math.sin(t * Math.PI) * 0.6;
               attacker.position.set(home.x + (target.x - home.x) * k, home.y + (target.y - home.y) * k);
-            }, { ease: easeInOutQuad, done: () => !attacker.destroyed && (attacker.zIndex = 0) });
+            }, { ease: easeInOutQuad, done: () => !attacker.destroyed && (attacker.zIndex = this.stackZ(ev.from)) });
           }
           break;
         }
@@ -1352,7 +1355,7 @@ export class GameView {
       const action = square !== null && square !== d.from ? d.targets.bySquare.get(square) : undefined;
       this.dragLayer.removeChild(d.sprite);
       this.pieceLayer.addChild(d.sprite);
-      d.sprite.zIndex = 0;
+      d.sprite.zIndex = this.stackZ(d.from);
       d.sprite.cursor = 'grab';
       const home = squareToXY(d.from, this.flipped);
       if (action) {
@@ -1470,6 +1473,11 @@ export class GameView {
     this.highlightLayer.removeChildren();
   }
 
+  /** Near-side ranks draw on top so a tall summon isn't hidden by the piece in front. */
+  private stackZ(square: Square): number {
+    return this.flipped ? rankOf(square) : 7 - rankOf(square);
+  }
+
   private cancelDrag(): void {
     this.pendingCard = null;
     this.handScrolling = false;
@@ -1481,6 +1489,7 @@ export class GameView {
       this.pieceLayer.addChild(d.sprite);
       const home = squareToXY(d.from, this.flipped);
       d.sprite.position.set(home.x, home.y);
+      d.sprite.zIndex = this.stackZ(d.from);
     } else {
       d.sprite.destroy();
     }

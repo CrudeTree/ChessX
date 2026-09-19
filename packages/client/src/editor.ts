@@ -357,7 +357,7 @@ export class BalanceEditor {
     return wrap;
   }
 
-  /** Slider that crops the board sprite in (closer) or out (further). */
+  /** Slider that scales the board sprite (closer = larger, further = smaller). */
   private artZoomField(
     url: string | undefined,
     value: number | undefined,
@@ -368,12 +368,15 @@ export class BalanceEditor {
     const live = clampBoardArtZoom(value ?? fallback);
     const wrap = document.createElement('div');
     wrap.className = `ezoom ${value !== undefined ? 'changed' : ''}`;
+    const frame = document.createElement('div');
+    frame.className = 'ezoom-frame';
     const preview = document.createElement('div');
     preview.className = 'ezoom-preview';
     preview.style.setProperty('--art-zoom', String(live));
     preview.innerHTML = url
       ? `<img src="${esc(url)}" alt="" draggable="false">`
       : '<span class="muted">—</span>';
+    frame.append(preview);
     const col = document.createElement('div');
     col.className = 'ezoom-col';
     const label = document.createElement('div');
@@ -384,7 +387,7 @@ export class BalanceEditor {
     };
     setPct(live);
     label.append('Board zoom', document.createElement('small'));
-    label.lastElementChild!.textContent = 'Closer crops in on the creature; further shows more of the picture.';
+    label.lastElementChild!.textContent = 'Closer makes the creature larger on the square; further makes it smaller. The whole figure stays visible.';
     const row = document.createElement('div');
     row.className = 'ezoom-row';
     const far = document.createElement('span');
@@ -406,7 +409,7 @@ export class BalanceEditor {
     };
     row.append(far, input, near);
     col.append(label, row, pct);
-    wrap.append(preview, col);
+    wrap.append(frame, col);
     return wrap;
   }
 

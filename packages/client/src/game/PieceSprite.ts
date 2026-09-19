@@ -1,5 +1,5 @@
 import { allCards, clampBoardArtZoom, getPieceDef, STANDARD_PIECES, type Piece } from '@chessx/engine';
-import { Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
+import { Container, Graphics, Rectangle, Sprite, Text, type Texture } from 'pixi.js';
 import { artTextures } from './art.js';
 import { CHESS_FONT, COLORS, EMOJI_FONT, SQ, UI_FONT } from './layout.js';
 
@@ -67,14 +67,12 @@ export class PieceSprite extends Container {
       this.art.anchor.set(0.5);
       // The art has ~10% empty margin inside its frame, so a little over a square
       // reads as square-sized; lifted so it stands on the plinth above the badges.
-      // boardArtZoom crops in (closer) or shows more of the picture (further).
+      // boardArtZoom scales the whole figure — it may overflow the square, not crop.
       const size = SQ * 1.12 * clampBoardArtZoom(summonCard(piece.kind)?.boardArtZoom);
       this.art.scale.set((size / tex.height) * (piece.owner === 'black' ? -1 : 1), size / tex.height);
       this.art.y = -8 * k;
       this.glyph.visible = false;
-      const mask = new Graphics().roundRect(-SQ / 2 + 2, -SQ / 2 + 2, SQ - 4, SQ - 4, 8).fill(0xffffff);
-      this.art.mask = mask;
-      this.addChild(mask, this.art);
+      this.addChild(this.art);
     }
     this.addChild(this.badges);
 
@@ -92,6 +90,7 @@ export class PieceSprite extends Container {
     this.addChild(this.lock);
 
     this.eventMode = 'static';
+    this.hitArea = new Rectangle(-SQ / 2, -SQ / 2, SQ, SQ);
     this.update(piece, false);
   }
 

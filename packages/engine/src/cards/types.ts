@@ -50,7 +50,7 @@ interface CardBase {
   boardArt?: string;
   /**
    * How large the creature looks on the board. 1 is the default; above 1
-   * crops in (closer), below 1 shows more of the picture (further).
+   * makes the figure larger (it may overflow the square), below 1 smaller.
    */
   boardArtZoom?: number;
 }

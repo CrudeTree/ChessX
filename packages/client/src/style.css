@@ -1325,11 +1325,21 @@ button.danger {
   color: var(--mana);
 }
 
+.ezoom-frame {
+  width: 200px;
+  height: 200px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
 .ezoom-preview {
   width: 96px;
   height: 96px;
   border-radius: 10px;
-  overflow: hidden;
+  overflow: visible;
   flex-shrink: 0;
   background-color: #7a5f45;
   background-image:
@@ -1347,9 +1357,9 @@ button.danger {
 .ezoom-preview img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   transform: scale(var(--art-zoom, 1));
-  transform-origin: center 40%;
+  transform-origin: center bottom;
 }
 
 .ezoom-col {
