@@ -1,9 +1,9 @@
-import { applyBalance, EMPTY_BALANCE, getCardDef, DIRS } from '@chessx/engine';
+import { applyBalance, EMPTY_BALANCE, getCardDef, DIRS, type CustomCard } from '@chessx/engine';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { Admin, AdminError } from '../src/admin.js';
+import { Admin, AdminError, restyleCowardlyCandle } from '../src/admin.js';
 import { Db } from '../src/db.js';
 import { GameManager } from '../src/games.js';
 import { Progression } from '../src/progression.js';
@@ -39,6 +39,28 @@ const wolf = {
 };
 
 describe('admin', () => {
+  it('renames Cowardly Candle to Emberling and points at the new art', () => {
+    const candle: CustomCard = {
+      id: 'custom_2gmmis',
+      type: 'summon',
+      name: 'Cowardly Candle',
+      glyph: '✨',
+      cost: 100,
+      tier: 1,
+      summonTurns: 1,
+      text: 'Scared of sideways.',
+      piece: { kind: 'custom_2gmmis', name: 'Cowardly Candle', glyph: '✨', tier: 1, movement: { leaps: [[0, 1], [0, -1]], relative: true } },
+      give: 'reward',
+      art: '/uploads/c9f7c8e25f9d03cb2fda.png',
+    };
+    const next = restyleCowardlyCandle({ cards: {}, pieces: {}, customCards: [candle] });
+    const card = next.customCards![0]!;
+    expect(card.name).toBe('Emberling');
+    expect(card.art).toBe('/art/emberling.png');
+    expect(card.type === 'summon' && card.piece.name).toBe('Emberling');
+    expect(restyleCowardlyCandle(next)).toBe(next);
+  });
+
   it('pins admin to the earliest account with the name; later namesakes get nothing', () => {
     const { admin, mk } = setup();
     const real = mk('Djabooty');

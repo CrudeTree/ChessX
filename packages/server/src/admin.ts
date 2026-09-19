@@ -11,7 +11,7 @@
 // applied to the engine at startup and after every save. They live in the
 // database volume, so deploys and code changes never overwrite them.
 
-import { applyBalance, currentBalance, EMPTY_BALANCE, validateBalance, type Balance } from '@chessx/engine';
+import { applyBalance, currentBalance, EMPTY_BALANCE, validateBalance, type Balance, type CustomCard } from '@chessx/engine';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -22,6 +22,31 @@ const DEVELOPERS_KEY = 'developer_user_ids';
 const BALANCE_KEY = 'balance';
 /** Uploaded art is re-encoded by the browser to a 512px PNG before upload; allow headroom. */
 const MAX_UPLOAD_BYTES = 3 * 1024 * 1024;
+
+const CANDLE_ID = 'custom_2gmmis';
+const CANDLE_ART = '/uploads/c9f7c8e25f9d03cb2fda.png';
+
+/** One-shot: rename the production Cowardly Candle custom card and give it creature art. */
+export function restyleCowardlyCandle(balance: Balance): Balance {
+  const list = balance.customCards;
+  if (!list?.length) return balance;
+  let changed = false;
+  const customCards = list.map((card) => {
+    const isCandle = card.id === CANDLE_ID || card.name === 'Cowardly Candle' || card.art === CANDLE_ART;
+    if (!isCandle || card.type !== 'summon') return card;
+    if (card.name === 'Emberling' && card.art === '/art/emberling.png') return card;
+    changed = true;
+    return {
+      ...card,
+      name: 'Emberling',
+      glyph: '🦊',
+      art: '/art/emberling.png',
+      text: 'Too shy to step sideways.',
+      piece: { ...card.piece, name: 'Emberling', glyph: '🦊' },
+    } satisfies CustomCard;
+  });
+  return changed ? { ...balance, customCards } : balance;
+}
 
 export class AdminError extends Error {}
 
@@ -79,6 +104,12 @@ export class Admin {
       } catch (e) {
         console.error('[admin] could not parse saved balance; using shipped values', e);
       }
+    }
+    const restyled = restyleCowardlyCandle(balance);
+    if (restyled !== balance) {
+      this.db.setKv(BALANCE_KEY, JSON.stringify(restyled));
+      console.log('[admin] restyled Cowardly Candle into Emberling');
+      balance = restyled;
     }
     applyBalance(balance);
     const n = Object.keys(balance.cards).length + Object.keys(balance.pieces).length;
