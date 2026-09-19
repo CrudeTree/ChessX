@@ -1,8 +1,9 @@
 import { Container, Graphics, Text } from 'pixi.js';
 import { SQ, UI_FONT } from './layout.js';
 
-const CLOUD = 0x07060c;
-const RIM = 0x1a1628;
+const CLOUD = 0x6e5f7c;
+const CLOUD_DARK = 0x524860;
+const CLOUD_LIGHT = 0x8a7a96;
 const FLASH = 0xfff3a0;
 const BOLT = 0xfffce8;
 
@@ -11,7 +12,7 @@ function hash(n: number): number {
   return x - Math.floor(x);
 }
 
-/** One storm-covered square: a black cloud that occasionally flickers with lightning. */
+/** One storm-covered square: a gray-purple cloud that occasionally flickers with lightning. */
 export class StormTile extends Container {
   private puffs = new Graphics();
   private glow = new Graphics();
@@ -64,26 +65,27 @@ export class StormTile extends Container {
 
   private drawCloud(t: number): void {
     const k = SQ / 72;
-    const w = SQ / 2 - 3;
     const wobble = (i: number) => Math.sin(t * (1.1 + i * 0.17) + this.seed) * 2.2 * k;
     this.puffs.clear();
-    this.puffs.roundRect(-w, -w, w * 2, w * 2, 10 * k).fill({ color: CLOUD, alpha: 0.88 });
-    const blobs: [number, number, number, number][] = [
-      [0, -6 * k, 28 * k, 16 * k],
-      [-16 * k, 2 * k, 20 * k, 14 * k],
-      [16 * k, 3 * k, 19 * k, 13 * k],
-      [0, 12 * k, 24 * k, 12 * k],
-      [-8 * k, -14 * k, 16 * k, 10 * k],
-      [10 * k, -12 * k, 14 * k, 9 * k],
+    const blobs: [number, number, number, number, number][] = [
+      [0, -4 * k, 30 * k, 18 * k, CLOUD],
+      [-18 * k, 4 * k, 22 * k, 16 * k, CLOUD_DARK],
+      [18 * k, 5 * k, 21 * k, 15 * k, CLOUD_DARK],
+      [0, 14 * k, 26 * k, 14 * k, CLOUD],
+      [-10 * k, -16 * k, 18 * k, 12 * k, CLOUD_LIGHT],
+      [12 * k, -14 * k, 16 * k, 11 * k, CLOUD_LIGHT],
+      [-4 * k, 2 * k, 16 * k, 12 * k, CLOUD],
     ];
     for (let i = 0; i < blobs.length; i++) {
-      const [x, y, rx, ry] = blobs[i]!;
-      this.puffs.ellipse(x + wobble(i), y + wobble(i + 3), rx, ry).fill({ color: i % 2 ? 0x0c0b14 : CLOUD, alpha: 0.92 });
+      const [x, y, rx, ry, color] = blobs[i]!;
+      this.puffs.ellipse(x + wobble(i), y + wobble(i + 3), rx, ry).fill({
+        color,
+        alpha: i % 2 ? 0.48 : 0.58,
+      });
     }
-    this.puffs.roundRect(-w, -w, w * 2, w * 2, 10 * k).stroke({ width: 2, color: RIM, alpha: 0.7 });
 
     this.glow.clear();
-    this.glow.roundRect(-w, -w, w * 2, w * 2, 10 * k).fill({ color: FLASH, alpha: 1 });
+    this.glow.ellipse(0, 0, 26 * k, 20 * k).fill({ color: FLASH, alpha: 1 });
   }
 
   private drawBolt(): void {
