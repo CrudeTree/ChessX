@@ -324,6 +324,7 @@ export const CATALOG: CardDef[] = [
     cost: 150,
     name: 'Battle Trance',
     glyph: '🔥',
+    art: '/art/battle_trance.png',
     target: 'ownDefending',
     text: 'Target friendly piece in Defense mode switches to Attack mode and may still act this turn.',
     effects: [{ kind: 'freeStance' }],
