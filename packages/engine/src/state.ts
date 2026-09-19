@@ -170,7 +170,7 @@ export function addPiece(state: GameState, kind: string, owner: Color, square: S
     square,
     defense,
     hasMoved,
-    stance: defense > 0 ? 'defense' : 'attack',
+    stance: 'attack',
   };
   state.pieces[piece.id] = piece;
   state.board[square] = piece.id;
@@ -178,8 +178,8 @@ export function addPiece(state: GameState, kind: string, owner: Color, square: S
 }
 
 /**
- * Drop leftover ATK/HP/DEF fields from older saves and keep stance in sync
- * with Defense charges.
+ * Drop leftover ATK/HP/DEF fields from older saves. Charges and stance are
+ * independent — only force Attack when a piece has no Defense left.
  */
 export function rebasePieces(state: GameState): boolean {
   let changed = false;
@@ -195,9 +195,8 @@ export function rebasePieces(state: GameState): boolean {
       p.defense = getPieceDef(p.kind).defense ?? 0;
       changed = true;
     }
-    const stance = p.defense > 0 ? 'defense' : 'attack';
-    if (p.stance !== stance) {
-      p.stance = stance;
+    if (p.defense <= 0 && p.stance !== 'attack') {
+      p.stance = 'attack';
       changed = true;
     }
   }

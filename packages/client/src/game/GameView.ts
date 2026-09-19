@@ -360,7 +360,7 @@ export class GameView {
       square: 0,
       defense,
       hasMoved: true,
-      stance: defense > 0 ? 'defense' : 'attack',
+      stance: 'attack',
     };
     this.inspected = null;
     this.inspectedCard = null;

@@ -505,7 +505,7 @@ describe('cards', () => {
     expect(g.players.white.hand.length).toBe(before + 2); // +1 given, -1 played, +2 drawn
   });
 
-  it('Stone Sentinel starts in Defense', () => {
+  it('Stone Sentinel completes in Attack with its Defense charges', () => {
     let g = newGame();
     const card = giveCard(g, 'white', 'stone_sentinel');
     g = act(g, { type: 'playCard', cardInstanceId: card, target: s('e2') });
@@ -516,8 +516,9 @@ describe('cards', () => {
     const sentinel = pieceAt(g, s('e2'))!;
     expect(sentinel.kind).toBe('stone_sentinel');
     expect(sentinel.defense).toBe(1);
-    expect(sentinel.stance).toBe('defense');
-    expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(false);
+    expect(sentinel.stance).toBe('attack');
+    expect(legalMoves(g).some((m) => m.from === s('e2'))).toBe(true);
+    expect(legalActions(g).some((a) => a.type === 'setStance' && a.square === s('e2'))).toBe(false);
   });
 
   describe('mana', () => {
@@ -897,7 +898,7 @@ describe('balance patches', () => {
     applyBalance(EMPTY_BALANCE);
   });
 
-  it('rebasePieces drops leftover stat fields and keeps stance in sync with Defense', () => {
+  it('rebasePieces drops leftover stat fields and only forces Attack when Defense is gone', () => {
     const g = newGame();
     const pawn = pieceAt(g, s('e2'))! as GameState['pieces'][string] & { atk?: number; hp?: number };
     pawn.atk = 2;
@@ -908,8 +909,14 @@ describe('balance patches', () => {
     expect(pieceAt(g, s('e2'))).not.toHaveProperty('atk');
     expect(pieceAt(g, s('e2'))).not.toHaveProperty('hp');
     expect(pieceAt(g, s('e2'))!.defense).toBe(2);
-    expect(pieceAt(g, s('e2'))!.stance).toBe('defense');
+    expect(pieceAt(g, s('e2'))!.stance).toBe('attack');
     expect(rebasePieces(g)).toBe(false);
+
+    const other = pieceAt(g, s('d2'))!;
+    other.defense = 0;
+    other.stance = 'defense';
+    expect(rebasePieces(g)).toBe(true);
+    expect(pieceAt(g, s('d2'))!.stance).toBe('attack');
   });
 
   it('admin-created cards register, play like any other, and can be removed again', () => {
@@ -1307,6 +1314,7 @@ describe('testing arena', () => {
     let g = createArenaGame(1);
     g = applyArenaOp(g, { type: 'spawnPiece', kind: 'stone_sentinel', color: 'white', square: s('e4') });
     expect(pieceAt(g, s('e4'))!.defense).toBe(1);
+    expect(pieceAt(g, s('e4'))!.stance).toBe('attack');
     g = applyArenaOp(g, { type: 'setStance', square: s('e4'), stance: 'attack' });
     expect(pieceAt(g, s('e4'))!.defense).toBe(0);
     expect(pieceAt(g, s('e4'))!.stance).toBe('attack');

@@ -120,8 +120,10 @@ export class InspectPanel {
     if (piece.summon) {
       const c = summonCardFor(piece.summon.cardId) ?? allCards().find((x) => x.id === piece.summon!.cardId);
       status.push(`Being sacrificed: ${c?.name ?? 'summon'} arrives in ${piece.summon.turnsRemaining} turn${piece.summon.turnsRemaining === 1 ? '' : 's'}.`);
-    } else if (piece.defense > 0) {
+    } else if (piece.stance === 'defense') {
       status.push(`Defense ${piece.defense}: an attack destroys Defense and bounces the attacker. You may still move this piece on your next turn. Cannot move or attack while defending.`);
+    } else if (piece.defense > 0) {
+      status.push(`Defense ${piece.defense}: an attack destroys Defense and bounces the attacker.`);
     }
     if (currentView?.turnInfo.stanceChanged.includes(piece.id)) {
       status.push('Changed stance this turn: cannot act or switch again until the turn ends.');
@@ -147,7 +149,7 @@ export class InspectPanel {
       ${artBanner(card?.art ?? def.art, card?.cardArtZoom)}
       ${movementMap(def.movement, `<span class="glyph ${isBasic ? 'chess' : 'emoji'} ${piece.owner}">${def.glyph}</span>`)}
       ${piece.defense > 0 ? `<div class="zoom-stats"><div class="stat def">Defense<b>${piece.defense}</b></div></div>` : ''}
-      ${isKing ? '' : `<div class="zoom-stance ${piece.stance}">${piece.defense > 0 ? `🛡 Defense mode — ${piece.defense} charge${piece.defense === 1 ? '' : 's'}` : '⚔ Attack mode'}</div>`}
+      ${isKing ? '' : `<div class="zoom-stance ${piece.stance}">${piece.stance === 'defense' ? `🛡 Defense mode — ${piece.defense} charge${piece.defense === 1 ? '' : 's'}` : '⚔ Attack mode'}</div>`}
       <div class="zoom-text">${esc(card?.text ?? def.description ?? '')}</div>
       <div class="zoom-status">${status.map(esc).join('<br>')}</div>
     `;

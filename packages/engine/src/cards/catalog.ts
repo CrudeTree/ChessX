@@ -43,7 +43,7 @@ export const CATALOG: CardDef[] = [
     art: '/art/stone_sentinel.png',
     tier: 2,
     summonTurns: 2,
-    text: 'Sacrifice a Tier 1 piece. Summons in 2 turns. Moves 1 square in any direction. Starts in Defense.',
+    text: 'Sacrifice a Tier 1 piece. Summons in 2 turns. Moves 1 square in any direction. Starts with 1 Defense.',
     piece: {
       kind: 'stone_sentinel',
       name: 'Stone Sentinel',
@@ -231,7 +231,7 @@ export const CATALOG: CardDef[] = [
     art: '/art/iron_golem.png',
     tier: 3,
     summonTurns: 3,
-    text: 'Sacrifice a Tier 2 piece. Summons in 3 turns. Moves 1 square orthogonally. Starts in Defense.',
+    text: 'Sacrifice a Tier 2 piece. Summons in 3 turns. Moves 1 square orthogonally. Starts with 1 Defense.',
     piece: {
       kind: 'iron_golem',
       name: 'Iron Golem',
@@ -268,7 +268,7 @@ export const CATALOG: CardDef[] = [
     art: '/art/ancient_treant.png',
     tier: 3,
     summonTurns: 3,
-    text: 'Sacrifice a Tier 2 piece. Summons in 3 turns. Moves 1 square in any direction. Starts in Defense.',
+    text: 'Sacrifice a Tier 2 piece. Summons in 3 turns. Moves 1 square in any direction. Starts with 1 Defense.',
     piece: {
       kind: 'ancient_treant',
       name: 'Ancient Treant',

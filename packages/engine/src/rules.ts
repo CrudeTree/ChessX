@@ -213,9 +213,9 @@ function isFrozenThisTurn(state: GameState, square: Square): boolean {
   return !!id && state.turnInfo.stanceChanged.includes(id);
 }
 
-/** Only a piece that currently has Defense charges can leave Defense. */
+/** Only a piece that is actually in Defense can leave it. */
 export function canChangeStance(piece: Piece): boolean {
-  return piece.kind !== 'king' && !piece.summon && piece.defense > 0;
+  return piece.kind !== 'king' && !piece.summon && piece.stance === 'defense' && piece.defense > 0;
 }
 
 /** Squares a card may target (or [undefined] for untargeted cards). Empty if unplayable. */
@@ -642,7 +642,7 @@ export function resolveSummon(state: GameState, sacrifice: Piece): void {
     square,
     defense,
     hasMoved: true,
-    stance: defense > 0 ? 'defense' : 'attack',
+    stance: 'attack',
   };
   state.pieces[summoned.id] = summoned;
   state.board[square] = summoned.id;

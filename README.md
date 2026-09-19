@@ -97,13 +97,13 @@ The server is authoritative: the client only ever offers the player actions from
 
 **Combat.** Capturing is chess: land on an undefended enemy and it dies; the attacker takes the square. There is no HP or ATK.
 
-**Defense** is a charge count on a piece, not a shield bar. A piece with `defense > 0` is in Defense mode: it cannot move or attack, and it does not give check. A capture against it **destroys Defense** and **repels** the attacker (the piece stays and may act on its next turn). Only leaving Defense yourself skips that piece for the rest of the turn. Charges still stack from grants. Only summons and grants put a piece into Defense — you cannot toggle a standard piece into it. **Battle Trance** drops Defense to 0 and lets that piece act this turn (no skip).
+**Defense** is a charge count on a piece, not a shield bar. A piece in Defense mode cannot move or attack, and it does not give check. A capture against a piece with Defense charges **destroys Defense** and **repels** the attacker (the piece stays and may act on its next turn). Only leaving Defense yourself skips that piece for the rest of the turn. Charges still stack from grants. Summons complete in Attack even if they start with Defense charges — grants are what put a piece into Defense. You cannot toggle a standard piece into it. **Battle Trance** drops Defense to 0 and lets that piece act this turn (no skip).
 
 **Kings.** Any piece reaching the king's square captures it. **Royal strike**: the King's own capture destroys any piece, including one in Defense.
 
 **Hex** is a spell that destroys a target enemy Tier 1 piece. It ignores Defense.
 
-**Inspecting.** Click any piece (yours or the opponent's) to see its card on the left: Defense charges if any, movement, lock/summon status. The button is **Leave Defense** when the piece has charges.
+**Inspecting.** Click any piece (yours or the opponent's) to see its card on the left: Defense charges if any, movement, lock/summon status. The button is **Leave Defense** when the piece is in Defense mode.
 
 **Check and checkmate.** A move may never leave your own king in check. A piece in Defense does not give check. Capturing the checking piece (or Hexing it) resolves the check. While in check you may still play spells and leave Defense, but you cannot end the turn. Checkmate = in check with no single action that gets the king out. A player with no possible move simply passes, so there is no stalemate.
 
