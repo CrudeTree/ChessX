@@ -4,7 +4,7 @@
 import { getCardDef, hasCard } from './cards/registry.js';
 import type { CardInstance, SummonCardDef } from './cards/types.js';
 import { hasPieceDef } from './pieces.js';
-import { applyEffect, beginSummon, IllegalActionError, resolveSummon } from './rules.js';
+import { applyEffect, applySandboxAbility, beginSummon, IllegalActionError, resolveSummon } from './rules.js';
 import {
   addPiece,
   cloneState,
@@ -22,6 +22,7 @@ export type ArenaOp =
   | { type: 'spawnPiece'; kind: string; color: Color; square: Square }
   | { type: 'relocate'; from: Square; to: Square }
   | { type: 'removePiece'; square: Square }
+  | { type: 'useAbility'; from: Square; to: Square; index?: number }
   | { type: 'setMana'; color: Color; mana: number };
 
 const MANA_MAX = 99_999;
@@ -162,6 +163,12 @@ export function applyArenaOp(state: GameState, op: ArenaOp): GameState {
     case 'removePiece': {
       assertSquare(op.square);
       if (!removePieceAt(next, op.square)) throw new IllegalActionError('Nothing on that square.');
+      break;
+    }
+    case 'useAbility': {
+      assertSquare(op.from);
+      assertSquare(op.to);
+      applySandboxAbility(next, op.from, op.to, op.index ?? 0);
       break;
     }
     case 'setMana': {

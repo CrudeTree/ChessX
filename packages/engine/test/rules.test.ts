@@ -20,6 +20,7 @@ import {
   legalMoves,
   parseSquare as s,
   pieceAt,
+  previewAbilities,
   previewMoves,
   pruneUnknownCards,
   rebasePieces,
@@ -833,6 +834,24 @@ describe('creature abilities', () => {
     expect(legalActions(g).some((a) => a.type === 'useAbility' && a.from === s('e2') && a.to === s('d2'))).toBe(true);
     g = act(g, { type: 'useAbility', from: s('e2'), to: s('d2') });
     expect(pieceAt(g, s('d2'))!.def).toBe(1);
+  });
+
+  it('grants +1 DEF from the arena without spending a turn', () => {
+    applyBalance({ cards: {}, pieces: {}, customCards: [knight] });
+    let g = createArenaGame(1);
+    g = applyArenaOp(g, { type: 'spawnPiece', kind: 'custom_ngk', color: 'white', square: s('e4') });
+    g = applyArenaOp(g, { type: 'spawnPiece', kind: 'pawn', color: 'white', square: s('e5') });
+    expect(pieceAt(g, s('e5'))!.def).toBe(0);
+    expect(previewAbilities(g, pieceAt(g, s('e4'))!).some((a) => a.to === s('e5'))).toBe(true);
+    g = applyArenaOp(g, { type: 'useAbility', from: s('e4'), to: s('e5') });
+    expect(pieceAt(g, s('e5'))!.def).toBe(1);
+    expect(pieceAt(g, s('e5'))!.maxDef).toBe(1);
+  });
+
+  it('awakens Nullglass even when abilities was an empty list', () => {
+    const { abilities: _drop, ...piece } = knight.piece;
+    applyBalance({ cards: {}, pieces: {}, customCards: [{ ...knight, piece: { ...piece, abilities: [] } }] });
+    expect(getPieceDef('custom_ngk').abilities).toEqual([{ kind: 'grantAdjacent', def: 1 }]);
   });
 
   it('awakens a Nullglass Knight whose ability was only written in the card text', () => {

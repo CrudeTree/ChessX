@@ -451,7 +451,7 @@ export function describeAbility(a: PieceAbility): string {
 function awakenNamedCreatureAbilities(cards: CustomCard[]): void {
   for (const card of cards) {
     if (card.type !== 'summon') continue;
-    if (card.piece.abilities !== undefined) continue;
+    if (card.piece.abilities?.length) continue;
     if (!/null\s*glass\s*knight/i.test(card.name)) continue; // "Nullglass Knight" and close spellings
     card.piece.abilities = [{ kind: 'grantAdjacent', def: 1 }];
   }

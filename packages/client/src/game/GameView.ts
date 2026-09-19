@@ -1,4 +1,4 @@
-import { canAct, getCardDef, opposite, previewMoves, type Action, type ArenaOp, type Color, type GameEvent, type Piece, type PlayerView, type Square } from '@chessx/engine';
+import { canAct, getCardDef, opposite, previewAbilities, previewMoves, type Action, type ArenaOp, type Color, type GameEvent, type Piece, type PlayerView, type Square } from '@chessx/engine';
 import { Application, Container, Graphics, Text, type FederatedPointerEvent } from 'pixi.js';
 import { preloadArt } from './art.js';
 import { CardSprite } from './CardSprite.js';
@@ -1077,6 +1077,7 @@ export class GameView {
           bySquare.set(cand.to, { type: 'move', from: cand.from, to: cand.to, promotion: cand.promotion ? 'queen' : undefined });
         }
       }
+      for (const a of previewAbilities(this.view, piece)) bySquare.set(a.to, a);
       return { bySquare, anywhere: null };
     }
     for (const a of this.view.legalActions) {
@@ -1248,9 +1249,14 @@ export class GameView {
       if (action) {
         this.highlightLayer.removeChildren();
         if (this.arena) {
-          const dest = squareToXY(square!, this.flipped);
-          d.sprite.position.set(dest.x, dest.y);
-          this.onArena({ type: 'relocate', from: d.from, to: square! });
+          if (action.type === 'useAbility') {
+            d.sprite.position.set(home.x, home.y);
+            this.onArena({ type: 'useAbility', from: d.from, to: square!, index: action.index });
+          } else {
+            const dest = squareToXY(square!, this.flipped);
+            d.sprite.position.set(dest.x, dest.y);
+            this.onArena({ type: 'relocate', from: d.from, to: square! });
+          }
           return;
         }
         if (action.type === 'useAbility') {
@@ -1333,9 +1339,14 @@ export class GameView {
     if (!sel) return false;
     if (this.arena) {
       if (square === sel.square) return false;
+      const marked = sel.targets.bySquare.get(square);
       this.selection = null;
       this.highlightLayer.removeChildren();
-      this.onArena({ type: 'relocate', from: sel.square, to: square });
+      if (marked?.type === 'useAbility') {
+        this.onArena({ type: 'useAbility', from: sel.square, to: square, index: marked.index });
+      } else {
+        this.onArena({ type: 'relocate', from: sel.square, to: square });
+      }
       return true;
     }
     const action = sel.targets.bySquare.get(square);

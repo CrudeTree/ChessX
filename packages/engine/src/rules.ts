@@ -561,7 +561,7 @@ function emitStats(state: GameState, p: Piece): void {
 // ---------------------------------------------------------------------------
 // Creature board abilities
 
-function neighborsOf(square: Square): Square[] {
+export function neighborsOf(square: Square): Square[] {
   const f = fileOf(square);
   const r = rankOf(square);
   const out: Square[] = [];
@@ -581,6 +581,29 @@ function matchesAbilityTarget(user: Piece, target: Piece, ability: PieceAbility)
   if (rule === 'ownAdjacent') return mine;
   if (rule === 'enemyAdjacent') return !mine;
   return true;
+}
+
+/** Adjacent ability targets, ignoring turn and once-per-turn (arena overlay). */
+export function previewAbilities(state: Pick<GameState, 'board' | 'pieces'>, piece: Piece): Extract<Action, { type: 'useAbility' }>[] {
+  const abilities = getPieceDef(piece.kind).abilities ?? [];
+  const out: Extract<Action, { type: 'useAbility' }>[] = [];
+  for (let i = 0; i < abilities.length; i++) {
+    const ability = abilities[i]!;
+    for (const n of neighborsOf(piece.square)) {
+      const target = pieceAt(state as GameState, n);
+      if (!target || !matchesAbilityTarget(piece, target, ability)) continue;
+      out.push(abilities.length > 1 ? { type: 'useAbility', from: piece.square, to: n, index: i } : { type: 'useAbility', from: piece.square, to: n });
+    }
+  }
+  return out;
+}
+
+/** Apply a board ability without the once-per-turn lock (sandbox). */
+export function applySandboxAbility(state: GameState, from: Square, to: Square, index = 0): void {
+  const piece = pieceAt(state, from);
+  if (!piece) throw new IllegalActionError(`No piece on ${squareName(from)}.`);
+  state.turnInfo.abilitiesUsed = state.turnInfo.abilitiesUsed.filter((id) => id !== piece.id);
+  performAbility(state, { type: 'useAbility', from, to, index }, piece.owner);
 }
 
 function performAbility(state: GameState, action: Extract<Action, { type: 'useAbility' }>, color: Color): void {
