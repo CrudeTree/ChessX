@@ -119,6 +119,7 @@ export const CATALOG: CardDef[] = [
     cost: 150,
     name: 'Whetstone',
     glyph: '⚔️',
+    art: '/art/whetstone.png',
     target: 'ownPiece',
     allowKing: true,
     text: 'Target friendly piece gains +1 ATK.',
