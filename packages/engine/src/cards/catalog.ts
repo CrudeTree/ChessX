@@ -129,6 +129,25 @@ export const CATALOG: CardDef[] = [
 
   // ========================================================= REWARD SUMMONS
   {
+    id: 'ziglet',
+    type: 'summon',
+    cost: 150,
+    name: 'Ziglet',
+    glyph: '🦎',
+    art: '/art/ziglet.png',
+    tier: 1,
+    sacrificeTier: 1,
+    summonTurns: 1,
+    text: 'Sacrifice a Tier 1 piece. Summons in 1 turn. Hops one square diagonally forward, or one square back.',
+    piece: {
+      kind: 'ziglet',
+      name: 'Ziglet',
+      glyph: '🦎',
+      tier: 1,
+      movement: { leaps: [[-1, 1], [1, 1], [0, -1]], relative: true },
+    },
+  },
+  {
     id: 'thornback_boar',
     type: 'summon',
     cost: 200,
@@ -271,6 +290,7 @@ export const STARTER_CARDS: string[] = [
 ];
 
 export const REWARD_CARDS: string[] = [
+  'ziglet',
   'thornback_boar', 'frost_owl', 'iron_golem', 'shadow_panther', 'ancient_treant', 'storm_drake',
   'battle_trance',
 ];

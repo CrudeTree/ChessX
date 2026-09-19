@@ -151,6 +151,7 @@ Reward cards (unlocked through play):
 
 | card            | type   | effect                                                                           |
 | --------------- | ------ | -------------------------------------------------------------------------------- |
+| Ziglet          | Summon | Tier 1, 1 turn. Hops 1 diagonally forward or 1 back.                              |
 | Thornback Boar  | Summon | Tier 2, 2 turns. Charges ≤2 forward or 1 sideways.                                |
 | Frost Owl       | Summon | Tier 2, 2 turns. Knight jumps or 1 diagonal.                                      |
 | Iron Golem      | Summon | Tier 3, 3 turns. 1 orthogonal. Starts with 1 Defense.                             |

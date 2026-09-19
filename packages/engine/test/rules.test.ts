@@ -630,6 +630,12 @@ describe('cards', () => {
     expect(to).not.toContain(s('e1')); // never backwards
   });
 
+  it('Ziglet hops diagonally forward or one square back', () => {
+    const g = applyArenaOp(createArenaGame(1), { type: 'spawnPiece', kind: 'ziglet', color: 'white', square: s('e4') });
+    const to = previewMoves(g, pieceAt(g, s('e4'))!).map((m) => m.to);
+    expect(to.sort()).toEqual([s('d5'), s('e3'), s('f5')].sort());
+  });
+
   it('Dark Ritual hastens a summon', () => {
     let g = newGame();
     const ox = giveCard(g, 'white', 'the_ox');
@@ -789,6 +795,9 @@ describe('balance patches', () => {
     expect(describeMovement({ slides: [{ dirs: DIRS.ORTHOGONAL, range: 2 }] })).toBe('Moves up to 2 squares orthogonally.');
     expect(describeMovement({ slides: [{ dirs: DIRS.ALL }] })).toBe('Slides any distance in any direction.');
     expect(describeMovement({ leaps: DIRS.ALL })).toBe('Moves 1 square in any direction.');
+    expect(describeMovement({ leaps: [[-1, 1], [1, 1], [0, -1]], relative: true })).toBe(
+      'Hops 1 square diagonally forward or 1 square back.',
+    );
   });
 });
 

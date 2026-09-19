@@ -459,6 +459,7 @@ export function describeMovement(m: MovementSpec): string {
     else if (['1,0', '-1,0', '0,1', '0,-1'].every((k) => set.has(k)) && set.size === 4) parts.push('moves 1 square orthogonally');
     else if (['1,1', '1,-1', '-1,1', '-1,-1'].every((k) => set.has(k)) && set.size === 4) parts.push('moves 1 square diagonally');
     else if (set.size === 2 && set.has('1,0') && set.has('-1,0')) parts.push('steps 1 square sideways');
+    else if (set.size === 3 && set.has('-1,1') && set.has('1,1') && set.has('0,-1')) parts.push('hops 1 square diagonally forward or 1 square back');
     else parts.push(`jumps to ${set.size} fixed square${set.size === 1 ? '' : 's'}`);
   }
   if (!parts.length) return 'Cannot move.';
