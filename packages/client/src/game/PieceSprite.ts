@@ -94,7 +94,7 @@ export class PieceSprite extends Container {
     this.update(piece, false);
   }
 
-  update(piece: Piece, locked: boolean): void {
+  update(piece: Piece, locked: boolean, veiled = false): void {
     this.square = piece.square;
     const def = getPieceDef(piece.kind);
     const standard = isStandard(piece.kind);
@@ -156,5 +156,9 @@ export class PieceSprite extends Container {
 
     // Stance lock (not shown for sacrifices, which already have the timer).
     this.lock.visible = locked && !piece.summon;
+
+    // Your piece in a storm: a faint outline only you can see.
+    this.alpha = veiled ? 0.38 : 1;
+    if (this.art) this.art.tint = veiled ? 0xc8d4ff : 0xffffff;
   }
 }

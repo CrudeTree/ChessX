@@ -2,7 +2,7 @@ import type { CardInstance } from './cards/types.js';
 import { hasCard } from './cards/registry.js';
 import { getPieceDef } from './pieces.js';
 import { shuffleInPlace } from './rng.js';
-import type { Color, GameEvent, GameStatus, PendingGrant, Piece, Square } from './types.js';
+import type { Color, GameEvent, GameStatus, PendingGrant, Piece, Square, StormCloud } from './types.js';
 import { sq } from './types.js';
 
 export interface RuleConstants {
@@ -87,6 +87,8 @@ export interface GameState {
   pendingGrant?: PendingGrant;
   /** Pieces that must sit out their next owner turn (only used if they left Defense off-turn). */
   skipTurn: string[];
+  /** Public storm clouds. Enemy pieces on these squares are hidden from you. */
+  storms: StormCloud[];
 }
 
 export interface GameConfig {
@@ -138,6 +140,7 @@ export function createGame(config: GameConfig): GameState {
     rngState: (config.seed ?? Date.now()) | 0,
     events: [],
     skipTurn: [],
+    storms: [],
   };
 
   setupStandardBoard(state);
@@ -260,6 +263,7 @@ export function upgradeState(state: GameState): GameState {
     enPassant: ti.enPassant ?? null,
   };
   if (!state.skipTurn) state.skipTurn = [];
+  if (!state.storms) state.storms = [];
   // Card/piece numbers may have been edited since this game was saved.
   rebasePieces(state);
   return state;
@@ -307,5 +311,14 @@ export function cloneState(state: GameState): GameState {
       ? { ...state.pendingGrant, targets: state.pendingGrant.targets.slice() }
       : undefined,
     skipTurn: (state.skipTurn ?? []).slice(),
+    storms: (state.storms ?? []).map((c) => ({ ...c })),
   };
+}
+
+export function isStormed(state: Pick<GameState, 'storms'>, square: Square): boolean {
+  return (state.storms ?? []).some((c) => c.square === square);
+}
+
+export function stormAt(state: Pick<GameState, 'storms'>, square: Square): StormCloud | undefined {
+  return (state.storms ?? []).find((c) => c.square === square);
 }

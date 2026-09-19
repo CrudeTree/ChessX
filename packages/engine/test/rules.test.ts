@@ -644,6 +644,52 @@ describe('cards', () => {
     expect(describeCard(getCardDef('greedpot'))).toMatch(/Cannot move or attack.*10 mana/);
   });
 
+  it('Thunderhead spends 50 mana to hide an enemy on a tile; the owner still sees it', () => {
+    let g = createArenaGame(1);
+    g = applyArenaOp(g, { type: 'spawnPiece', kind: 'thunderhead', color: 'white', square: s('e4') });
+    g = applyArenaOp(g, { type: 'spawnPiece', kind: 'pawn', color: 'black', square: s('d5') });
+    g.players.white.mana = 120;
+    const clouds = legalActions(g, 'white').filter((a) => a.type === 'useAbility');
+    expect(clouds).toHaveLength(64);
+    g = applyArenaOp(g, { type: 'useAbility', from: s('e4'), to: s('d5') });
+    expect(g.players.white.mana).toBe(70);
+    expect(g.storms).toEqual([expect.objectContaining({ square: s('d5'), turnsRemaining: 3 })]);
+    const hidden = pieceAt(g, s('d5'))!.id;
+    const whiteView = viewFor(g, 'white');
+    expect(whiteView.board[s('d5')]).toBeNull();
+    expect(whiteView.pieces[hidden]).toBeUndefined();
+    expect(JSON.stringify(whiteView)).not.toContain(hidden);
+    const blackView = viewFor(g, 'black');
+    expect(blackView.pieces[hidden]?.kind).toBe('pawn');
+    expect(blackView.board[s('d5')]).toBe(hidden);
+    expect(whiteView.storms).toEqual([{ square: s('d5'), turnsRemaining: 3 }]);
+
+    g = applyArenaOp(g, { type: 'useAbility', from: s('e4'), to: s('e4') });
+    const head = pieceAt(g, s('e4'))!.id;
+    expect(viewFor(g, 'white').pieces[head]?.kind).toBe('thunderhead');
+    expect(viewFor(g, 'black').pieces[head]).toBeUndefined();
+    expect(g.players.white.mana).toBe(20);
+    expect(() => applyArenaOp(g, { type: 'useAbility', from: s('e4'), to: s('a8') })).toThrow(/Not enough mana/);
+
+    g.players.white.mana = 50;
+    g.storms[0]!.turnsRemaining = 1;
+    g = applyArenaOp(g, { type: 'useAbility', from: s('e4'), to: s('d5') });
+    expect(g.storms.find((c) => c.square === s('d5'))!.turnsRemaining).toBe(3);
+  });
+
+  it('storm clouds expire after three of the caster\'s turns', () => {
+    let g = createArenaGame(1);
+    g = applyArenaOp(g, { type: 'spawnPiece', kind: 'thunderhead', color: 'white', square: s('e4') });
+    g = applyArenaOp(g, { type: 'spawnPiece', kind: 'pawn', color: 'black', square: s('a7') });
+    g = applyArenaOp(g, { type: 'useAbility', from: s('e4'), to: s('d5') });
+    g = applyArenaOp(g, { type: 'relocate', from: s('a7'), to: s('a6') });
+    expect(g.storms[0]!.turnsRemaining).toBe(2);
+    g = applyArenaOp(g, { type: 'relocate', from: s('a6'), to: s('a5') });
+    expect(g.storms[0]!.turnsRemaining).toBe(1);
+    g = applyArenaOp(g, { type: 'relocate', from: s('a5'), to: s('a4') });
+    expect(g.storms).toHaveLength(0);
+  });
+
   it('Dark Ritual hastens a summon', () => {
     let g = newGame();
     const ox = giveCard(g, 'white', 'the_ox');
@@ -808,6 +854,7 @@ describe('balance patches', () => {
       'Hops 1 square diagonally forward or 1 square back.',
     );
     expect(describeMovement({ immobile: true })).toBe('Cannot move or attack.');
+    expect(describeAbility({ kind: 'stormCloud', manaCost: 50, duration: 3 })).toMatch(/50 mana.*3 turns/);
   });
 });
 

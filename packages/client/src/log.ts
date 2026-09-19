@@ -58,6 +58,13 @@ export function describeEvents(view: PlayerView, names: Record<'white' | 'black'
       }
       case 'abilityUsed': {
         const owner = ownerOf(e.pieceId);
+        if (!e.targetId) {
+          lines.push({
+            text: `${names[owner ?? 'white']}: ${pieceName(e.pieceId)} uses its ability on ${squareName(e.to)}`,
+            color: owner,
+          });
+          break;
+        }
         const grant = e.defense ? `+${e.defense} Defense` : 'its ability';
         lines.push({
           text: `${names[owner ?? 'white']}: ${pieceName(e.pieceId)} ${squareName(e.from)} grants ${pieceName(e.targetId)} on ${squareName(e.to)} ${grant}`,
@@ -65,6 +72,12 @@ export function describeEvents(view: PlayerView, names: Record<'white' | 'black'
         });
         break;
       }
+      case 'stormCloud':
+        lines.push({ text: e.reset ? `Storm cloud on ${squareName(e.square)} resets to ${e.turnsRemaining}.` : `A storm cloud covers ${squareName(e.square)} (${e.turnsRemaining} turns).` });
+        break;
+      case 'stormExpired':
+        lines.push({ text: `The storm on ${squareName(e.square)} clears.` });
+        break;
       case 'cardPlayed': {
         const card = getCardDef(e.cardId);
         const where = e.target !== undefined ? ` on ${squareName(e.target)}` : '';

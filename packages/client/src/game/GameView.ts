@@ -104,6 +104,7 @@ export class GameView {
   private lastMoveLayer = new Container();
   private inspectLayer = new Container();
   private voidLayer = new Container();
+  private stormLayer = new Container();
   private highlightLayer = new Container();
   private pieceLayer = new Container();
   private fxLayer = new Container();
@@ -177,6 +178,7 @@ export class GameView {
       this.lastMoveLayer,
       this.inspectLayer,
       this.voidLayer,
+      this.stormLayer,
       this.pieceLayer,
       this.highlightLayer,
       this.fxLayer,
@@ -409,15 +411,30 @@ export class GameView {
     this.clearGrantPulse();
     this.highlightLayer.removeChildren();
 
-    // Pieces: tween existing, pop new, fade removed.
+    this.syncStorms(view);
+    const stormed = new Set((view.storms ?? []).map((c) => c.square));
+    const stormMove = view.events.some(
+      (e) =>
+        (e.type === 'moved' || e.type === 'attacked') &&
+        (stormed.has(e.from) || stormed.has(e.to)),
+    );
+
+    // Pieces: tween existing, pop new, fade removed. Enemy pieces in a storm
+    // never arrive in the view; your own show as a faint outline.
     const seen = new Set<string>();
     for (const piece of Object.values(view.pieces)) {
       seen.add(piece.id);
+      if (this.arena && stormed.has(piece.square) && piece.owner !== view.you) {
+        const buried = this.sprites.get(piece.id);
+        if (buried) this.dropHiddenSprite(buried, piece.id);
+        continue;
+      }
+      const veiled = stormed.has(piece.square);
       const { x, y } = squareToXY(piece.square, this.flipped);
       let sprite = this.sprites.get(piece.id);
       if (!sprite) {
         sprite = new PieceSprite(piece);
-        sprite.update(piece, !this.arena && this.isLocked(piece));
+        sprite.update(piece, !this.arena && this.isLocked(piece), veiled);
         sprite.position.set(x, y);
         sprite.on('pointerdown', (e) => this.onPiecePointerDown(e, sprite!));
         this.pieceLayer.addChild(sprite);
@@ -429,8 +446,12 @@ export class GameView {
           this.tweens.run(320, (t) => !s.destroyed && s.scale.set(t), { ease: easeOutBack });
         }
       } else {
-        sprite.update(piece, !this.arena && this.isLocked(piece));
+        sprite.update(piece, !this.arena && this.isLocked(piece), veiled);
         if (sprite.x !== x || sprite.y !== y) {
+          if (stormMove) {
+            sprite.position.set(x, y);
+            sprite.zIndex = this.stackZ(piece.square);
+          } else {
           const s = sprite;
           const sx = s.x;
           const sy = s.y;
@@ -440,6 +461,7 @@ export class GameView {
             (t) => !s.destroyed && s.position.set(sx + (x - sx) * t, sy + (y - sy) * t),
             { ease: easeInOutQuad, done: () => !s.destroyed && (s.zIndex = this.stackZ(piece.square)) },
           );
+          }
         } else {
           sprite.zIndex = this.stackZ(piece.square);
         }
@@ -448,6 +470,10 @@ export class GameView {
     }
     for (const [id, sprite] of this.sprites) {
       if (seen.has(id)) continue;
+      if (stormMove) {
+        this.dropHiddenSprite(sprite, id);
+        continue;
+      }
       this.sprites.delete(id);
       this.syncVoid(id, false, 0, 0);
       sprite.eventMode = 'none';
@@ -523,6 +549,41 @@ export class GameView {
     }
   }
 
+  private dropHiddenSprite(sprite: PieceSprite, id: string): void {
+    this.sprites.delete(id);
+    this.syncVoid(id, false, 0, 0);
+    sprite.eventMode = 'none';
+    if (!sprite.destroyed) sprite.destroy();
+  }
+
+  private syncStorms(view: PlayerView): void {
+    this.stormLayer.removeChildren();
+    for (const cloud of view.storms ?? []) {
+      const { x, y } = squareToXY(cloud.square, this.flipped);
+      const tile = new Container();
+      tile.position.set(x, y);
+      const g = new Graphics();
+      g.roundRect(-SQ / 2 + 3, -SQ / 2 + 3, SQ - 6, SQ - 6, 8).fill({ color: COLORS.storm, alpha: 0.55 });
+      g.roundRect(-SQ / 2 + 3, -SQ / 2 + 3, SQ - 6, SQ - 6, 8).stroke({ width: 2, color: 0xc9b6ff, alpha: 0.85 });
+      g.moveTo(-14, -8).bezierCurveTo(-6, -18, 6, -18, 14, -8).stroke({ width: 2, color: 0xe8dcff, alpha: 0.7 });
+      const bolt = new Graphics();
+      bolt.moveTo(-2, -10).lineTo(4, 0).lineTo(-1, 0).lineTo(3, 12).stroke({ width: 2.5, color: 0xffe566, alpha: 0.95 });
+      const timer = new Text({
+        text: `${cloud.turnsRemaining}`,
+        style: {
+          fontFamily: UI_FONT,
+          fontSize: Math.round(SQ * 0.42),
+          fontWeight: '900',
+          fill: 0xffffff,
+          stroke: { color: 0x14081f, width: 5 },
+        },
+      });
+      timer.anchor.set(0.5);
+      tile.addChild(g, bolt, timer);
+      this.stormLayer.addChild(tile);
+    }
+  }
+
   private playEvents(events: GameEvent[]): void {
     for (const ev of events) {
       switch (ev.type) {
@@ -579,6 +640,17 @@ export class GameView {
         case 'summonStarted': {
           const { x, y } = squareToXY(ev.square, this.flipped);
           this.flash(x, y, COLORS.summon);
+          break;
+        }
+        case 'stormCloud': {
+          const { x, y } = squareToXY(ev.square, this.flipped);
+          this.flash(x, y, COLORS.storm, 280);
+          this.floatText(x, y, ev.reset ? 'Storm 3' : 'Storm', 0xffe566, 0, MOBILE ? 15 : 18, 700);
+          break;
+        }
+        case 'stormExpired': {
+          const { x, y } = squareToXY(ev.square, this.flipped);
+          this.flash(x, y, COLORS.storm, 200);
           break;
         }
         case 'manaGained': {
@@ -650,6 +722,10 @@ export class GameView {
           const { x, y } = squareToXY(s, this.flipped);
           g.rect(x - SQ / 2, y - SQ / 2, SQ, SQ).fill({ color: COLORS.ability, alpha: 0.28 });
         }
+      }
+      if (ev.type === 'stormCloud') {
+        const { x, y } = squareToXY(ev.square, this.flipped);
+        g.rect(x - SQ / 2, y - SQ / 2, SQ, SQ).fill({ color: COLORS.storm, alpha: 0.35 });
       }
     }
     this.lastMoveLayer.addChild(g);
@@ -1295,6 +1371,7 @@ export class GameView {
       return;
     }
     if (this.tryActOnSquare(square)) return;
+    if (this.trySelectHidden(square)) return;
     this.clearSelection();
     if (!this.view?.board[square]) this.setInspected(null, true);
   }
@@ -1438,6 +1515,26 @@ export class GameView {
         d.sprite.scale.set(1.08 + (d.homeScale - 1.08) * t);
       });
     }
+  }
+
+  /** Click a storm tile that has a hidden mover: select it without showing the piece. */
+  private trySelectHidden(square: Square): boolean {
+    if (!this.view) return false;
+    const stormed = (this.view.storms ?? []).some((c) => c.square === square);
+    if (!stormed) return false;
+    const hidden = Object.values(this.view.pieces).find((p) => p.square === square);
+    if (hidden) {
+      const targets = this.moveTargetsFrom(square);
+      if (!this.arena && targets.bySquare.size === 0) return false;
+      this.selection = { square, targets };
+      this.drawHighlights(targets, square);
+      return true;
+    }
+    const targets = this.moveTargetsFrom(square);
+    if (targets.bySquare.size === 0) return false;
+    this.selection = { square, targets };
+    this.drawHighlights(targets, square);
+    return true;
   }
 
   private tryActOnSquare(square: Square): boolean {

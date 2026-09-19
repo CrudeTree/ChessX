@@ -168,6 +168,25 @@ export const CATALOG: CardDef[] = [
     },
   },
   {
+    id: 'thunderhead',
+    type: 'summon',
+    cost: 200,
+    name: 'Thunderhead',
+    glyph: '⛈️',
+    art: '/art/thunderhead.png',
+    tier: 2,
+    summonTurns: 2,
+    text: 'Sacrifice a Tier 1 piece. Summons in 2 turns. Moves 1 square in any direction. Spend 50 mana to hide a square under a storm cloud for 3 turns, or reset a cloud to 3. Enemy pieces in the storm are hidden; you see your own as an outline.',
+    piece: {
+      kind: 'thunderhead',
+      name: 'Thunderhead',
+      glyph: '⛈️',
+      tier: 2,
+      movement: { leaps: DIRS.ALL },
+      abilities: [{ kind: 'stormCloud', manaCost: 50, duration: 3, oncePerTurn: false }],
+    },
+  },
+  {
     id: 'thornback_boar',
     type: 'summon',
     cost: 200,
@@ -310,7 +329,7 @@ export const STARTER_CARDS: string[] = [
 ];
 
 export const REWARD_CARDS: string[] = [
-  'ziglet', 'greedpot',
+  'ziglet', 'greedpot', 'thunderhead',
   'thornback_boar', 'frost_owl', 'iron_golem', 'shadow_panther', 'ancient_treant', 'storm_drake',
   'battle_trance',
 ];

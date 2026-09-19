@@ -1090,7 +1090,7 @@ export class BalanceEditor {
     const abilities = card.piece.abilities ?? [];
     const hint = document.createElement('p');
     hint.className = 'hint';
-    hint.textContent = 'Used from the board: select the creature, then a neighbouring piece. Does not end the turn.';
+    hint.textContent = 'Used from the board. Does not end the turn.';
     g.appendChild(hint);
     abilities.forEach((a, i) => {
       const row = document.createElement('div');
@@ -1099,11 +1099,32 @@ export class BalanceEditor {
         this.selectField(
           'Ability',
           a.kind,
-          [['grantAdjacent', 'Grant Defense to an adjacent piece']],
-          () => undefined,
+          [
+            ['grantAdjacent', 'Grant Defense to an adjacent piece'],
+            ['stormCloud', 'Storm cloud over a tile'],
+          ],
+          (v) => {
+            if (v === 'stormCloud') abilities[i] = { kind: 'stormCloud', manaCost: 50, duration: 3, oncePerTurn: false };
+            else abilities[i] = { kind: 'grantAdjacent', defense: 1 };
+            card.piece.abilities = abilities;
+            this.refresh();
+          },
         ),
       );
-      if (a.kind === 'grantAdjacent') {
+      if (a.kind === 'stormCloud') {
+        row.appendChild(
+          this.plainNum('Mana cost', a.manaCost ?? 50, (v) => {
+            a.manaCost = Math.max(0, v);
+            this.refreshQuiet();
+          }),
+        );
+        row.appendChild(
+          this.plainNum('Duration', a.duration ?? 3, (v) => {
+            a.duration = Math.max(1, v);
+            this.refreshQuiet();
+          }),
+        );
+      } else if (a.kind === 'grantAdjacent') {
         row.appendChild(
           this.plainNum('Defense granted', a.defense ?? 1, (v) => {
             a.defense = Math.max(1, v);
@@ -1162,6 +1183,14 @@ export class BalanceEditor {
         this.refresh();
       };
       g.appendChild(add);
+      const addStorm = document.createElement('button');
+      addStorm.type = 'button';
+      addStorm.textContent = '+ Storm cloud';
+      addStorm.onclick = () => {
+        card.piece.abilities = [...abilities, { kind: 'stormCloud', manaCost: 50, duration: 3, oncePerTurn: false }];
+        this.refresh();
+      };
+      g.appendChild(addStorm);
     }
   }
 

@@ -75,7 +75,15 @@ const RETIRED = new Set(RETIRED_CARDS);
 const LIVE_EFFECTS = new Set<Effect['kind']>(['destroy', 'draw', 'hastenSummon', 'freeStance']);
 
 function sanitizeAbility(a: PieceAbility): PieceAbility {
-  const old = a as PieceAbility & { atk?: number; def?: number; hp?: number };
+  if (a?.kind === 'stormCloud') {
+    return {
+      kind: 'stormCloud',
+      manaCost: a.manaCost ?? 50,
+      duration: a.duration ?? 3,
+      ...(a.oncePerTurn !== undefined ? { oncePerTurn: a.oncePerTurn } : {}),
+    };
+  }
+  const old = a as Extract<PieceAbility, { kind: 'grantAdjacent' }> & { atk?: number; def?: number; hp?: number };
   const defense = old.defense ?? (old.def || old.atk || old.hp ? 1 : 1);
   return {
     kind: 'grantAdjacent',
@@ -300,6 +308,12 @@ const ABILITY_TARGETS: AbilityTarget[] = ['ownAdjacent', 'enemyAdjacent', 'anyAd
 function validateAbilities(list: unknown, where: string, problems: string[]): void {
   if (!Array.isArray(list)) return void problems.push(`${where}: abilities must be a list.`);
   for (const a of list as PieceAbility[]) {
+    if (a?.kind === 'stormCloud') {
+      if (a.manaCost !== undefined && !isInt(a.manaCost, 0, 999)) problems.push(`${where}: storm mana cost must be 0–999.`);
+      if (a.duration !== undefined && !isInt(a.duration, 1, 9)) problems.push(`${where}: storm duration must be 1–9 turns.`);
+      if (a.oncePerTurn !== undefined && typeof a.oncePerTurn !== 'boolean') problems.push(`${where}: oncePerTurn must be true or false.`);
+      continue;
+    }
     if (a?.kind !== 'grantAdjacent') {
       problems.push(`${where}: unknown ability.`);
       continue;
@@ -488,6 +502,11 @@ function describeEffect(e: Effect, target: string): string {
 
 /** Rules text for a creature's activated board ability. */
 export function describeAbility(a: PieceAbility): string {
+  if (a.kind === 'stormCloud') {
+    const cost = a.manaCost ?? 50;
+    const n = a.duration ?? 3;
+    return `Spend ${cost} mana to hide a square under a storm cloud for ${n} turns, or reset a cloud back to ${n}. Enemy pieces in the storm are hidden; you see your own as an outline.`;
+  }
   if (a.kind !== 'grantAdjacent') return '';
   const who =
     a.target === 'enemyAdjacent' ? 'an adjacent enemy piece'

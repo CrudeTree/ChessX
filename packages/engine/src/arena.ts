@@ -4,7 +4,7 @@
 import { getCardDef, hasCard } from './cards/registry.js';
 import type { CardInstance, SummonCardDef } from './cards/types.js';
 import { canHaveDefense, getPieceDef, hasPieceDef } from './pieces.js';
-import { applyEffect, applySandboxAbility, beginSummon, IllegalActionError, offerOnSummonGrant, resolveSummon } from './rules.js';
+import { applyEffect, applySandboxAbility, beginSummon, IllegalActionError, offerOnSummonGrant, resolveSummon, tickStorms } from './rules.js';
 import {
   addPiece,
   cloneState,
@@ -49,6 +49,7 @@ export function createArenaGame(seed?: number): GameState {
     rngState: (seed ?? Date.now()) | 0,
     events: [],
     skipTurn: [],
+    storms: [],
   };
 }
 
@@ -96,6 +97,7 @@ function tickOppositeSummons(state: GameState, mover: Color): void {
     if (piece.summon.turnsRemaining <= 0) resolveSummon(state, piece);
     else state.events.push({ type: 'summonTick', square: piece.square, turnsRemaining: piece.summon.turnsRemaining });
   }
+  tickStorms(state, victim);
 }
 
 function playSandboxCard(state: GameState, cardId: string, color: Color, square: Square, inst: CardInstance): void {

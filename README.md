@@ -153,6 +153,7 @@ Reward cards (unlocked through play):
 | --------------- | ------ | -------------------------------------------------------------------------------- |
 | Ziglet          | Summon | Tier 1, 1 turn. Hops 1 diagonally forward or 1 back.                              |
 | Greedpot        | Summon | Tier 1, 2 turns. Cannot move or attack. Generates 10 mana per turn.               |
+| Thunderhead     | Summon | Tier 2, 2 turns. 1 any direction. Spend 50 mana: 3-turn storm hides enemies on that tile. |
 | Thornback Boar  | Summon | Tier 2, 2 turns. Charges ≤2 forward or 1 sideways.                                |
 | Frost Owl       | Summon | Tier 2, 2 turns. Knight jumps or 1 diagonal.                                      |
 | Iron Golem      | Summon | Tier 3, 3 turns. 1 orthogonal. Starts with 1 Defense.                             |

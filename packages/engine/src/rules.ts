@@ -2,7 +2,7 @@ import { getCardDef } from './cards/registry.js';
 import type { CardInstance, Effect, SummonCardDef, TargetRule } from './cards/types.js';
 import { isInCheck, lastRank, pseudoMoves, type MoveCandidate } from './movement.js';
 import { getPieceDef } from './pieces.js';
-import { cloneState, drawCards, freshTurnInfo, manaFrom, pieceAt, piecesOf, type GameState } from './state.js';
+import { cloneState, drawCards, freshTurnInfo, manaFrom, pieceAt, piecesOf, stormAt, type GameState } from './state.js';
 import {
   fileOf,
   inBounds,
@@ -86,7 +86,15 @@ export function legalActions(state: GameState, color: Color = state.turn): Actio
     const abilities = getPieceDef(piece.kind).abilities ?? [];
     for (let i = 0; i < abilities.length; i++) {
       const ability = abilities[i]!;
-      if (ability.oncePerTurn !== false && state.turnInfo.abilitiesUsed.includes(piece.id)) continue;
+      if (abilityLocksTurn(ability) && state.turnInfo.abilitiesUsed.includes(piece.id)) continue;
+      if (ability.kind === 'stormCloud') {
+        const cost = ability.manaCost ?? 50;
+        if (state.players[color].mana < cost) continue;
+        for (let to = 0; to < 64; to++) {
+          out.push(abilities.length > 1 ? { type: 'useAbility', from: piece.square, to, index: i } : { type: 'useAbility', from: piece.square, to });
+        }
+        continue;
+      }
       for (const n of neighborsOf(piece.square)) {
         const target = pieceAt(state, n);
         if (!target || !matchesAbilityTarget(piece, target, ability)) continue;
@@ -534,10 +542,14 @@ export function neighborsOf(square: Square): Square[] {
   return out;
 }
 
+function abilityLocksTurn(ability: PieceAbility): boolean {
+  return ability.kind === 'stormCloud' ? ability.oncePerTurn === true : ability.oncePerTurn !== false;
+}
+
 function matchesAbilityTarget(user: Piece, target: Piece, ability: PieceAbility): boolean {
   if (target.id === user.id || target.kind === 'king') return false;
   const mine = target.owner === user.owner;
-  const rule = ability.target ?? 'ownAdjacent';
+  const rule = ability.kind === 'grantAdjacent' ? (ability.target ?? 'ownAdjacent') : 'ownAdjacent';
   if (rule === 'ownAdjacent') return mine;
   if (rule === 'enemyAdjacent') return !mine;
   return true;
@@ -587,12 +599,18 @@ export function offerOnSummonGrant(state: GameState, piece: Piece): void {
   }
 }
 
-/** Adjacent ability targets, ignoring turn and once-per-turn (arena overlay). */
+/** Ability targets, ignoring turn and once-per-turn (arena overlay). */
 export function previewAbilities(state: Pick<GameState, 'board' | 'pieces'>, piece: Piece): Extract<Action, { type: 'useAbility' }>[] {
   const abilities = getPieceDef(piece.kind).abilities ?? [];
   const out: Extract<Action, { type: 'useAbility' }>[] = [];
   for (let i = 0; i < abilities.length; i++) {
     const ability = abilities[i]!;
+    if (ability.kind === 'stormCloud') {
+      for (let to = 0; to < 64; to++) {
+        out.push(abilities.length > 1 ? { type: 'useAbility', from: piece.square, to, index: i } : { type: 'useAbility', from: piece.square, to });
+      }
+      continue;
+    }
     for (const n of neighborsOf(piece.square)) {
       const target = pieceAt(state as GameState, n);
       if (!target || !matchesAbilityTarget(piece, target, ability)) continue;
@@ -620,8 +638,33 @@ function performAbility(state: GameState, action: Extract<Action, { type: 'useAb
   const index = action.index ?? 0;
   const ability = def.abilities?.[index];
   if (!ability) throw new IllegalActionError(`${def.name} has no such ability.`);
-  if (ability.oncePerTurn !== false && state.turnInfo.abilitiesUsed.includes(piece.id)) {
+  if (abilityLocksTurn(ability) && state.turnInfo.abilitiesUsed.includes(piece.id)) {
     throw new IllegalActionError(`${def.name} already used its ability this turn.`);
+  }
+
+  if (ability.kind === 'stormCloud') {
+    const cost = ability.manaCost ?? 50;
+    const duration = ability.duration ?? 3;
+    if (!inBounds(fileOf(action.to), rankOf(action.to))) {
+      throw new IllegalActionError(`${def.name} cannot cover ${squareName(action.to)}.`);
+    }
+    const player = state.players[color];
+    if (player.mana < cost) {
+      throw new IllegalActionError(`Not enough mana: a storm cloud costs ${cost}, you have ${player.mana}.`);
+    }
+    player.mana -= cost;
+    const existing = stormAt(state, action.to);
+    const reset = !!existing;
+    if (existing) {
+      existing.turnsRemaining = duration;
+      existing.owner = color;
+    } else {
+      state.storms.push({ square: action.to, owner: color, turnsRemaining: duration });
+    }
+    if (abilityLocksTurn(ability)) state.turnInfo.abilitiesUsed.push(piece.id);
+    state.pendingGrant = undefined;
+    state.events.push({ type: 'stormCloud', square: action.to, turnsRemaining: duration, reset });
+    return;
   }
 
   const target = pieceAt(state, action.to);
@@ -630,9 +673,9 @@ function performAbility(state: GameState, action: Extract<Action, { type: 'useAb
     throw new IllegalActionError(`${def.name} cannot use that ability on ${squareName(action.to)}.`);
   }
 
-  const granted = ability.defense ?? 1;
+  const granted = ability.kind === 'grantAdjacent' ? (ability.defense ?? 1) : 1;
   if (ability.kind === 'grantAdjacent') grantDefense(state, target, granted);
-  if (ability.oncePerTurn !== false) state.turnInfo.abilitiesUsed.push(piece.id);
+  if (abilityLocksTurn(ability)) state.turnInfo.abilitiesUsed.push(piece.id);
   state.pendingGrant = undefined;
   state.events.push({
     type: 'abilityUsed',
@@ -642,6 +685,24 @@ function performAbility(state: GameState, action: Extract<Action, { type: 'useAb
     targetId: target.id,
     defense: granted,
   });
+}
+
+export function tickStorms(state: GameState, owner: Color): void {
+  const kept: typeof state.storms = [];
+  for (const cloud of state.storms) {
+    if (cloud.owner !== owner) {
+      kept.push(cloud);
+      continue;
+    }
+    cloud.turnsRemaining--;
+    if (cloud.turnsRemaining <= 0) {
+      state.events.push({ type: 'stormExpired', square: cloud.square });
+    } else {
+      kept.push(cloud);
+      state.events.push({ type: 'stormTick', square: cloud.square, turnsRemaining: cloud.turnsRemaining });
+    }
+  }
+  state.storms = kept;
 }
 
 // ---------------------------------------------------------------------------
@@ -687,6 +748,7 @@ function endTurn(state: GameState): void {
     if (piece.summon.turnsRemaining <= 0) resolveSummon(state, piece);
     else state.events.push({ type: 'summonTick', square: piece.square, turnsRemaining: piece.summon.turnsRemaining });
   }
+  tickStorms(state, color);
 
   if (player.turnsTaken % state.rules.drawEvery === 0 && player.deck.length > 0) {
     player.pendingDraws++;

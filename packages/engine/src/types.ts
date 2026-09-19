@@ -52,15 +52,32 @@ export interface PendingGrant {
   index: number;
 }
 
-export interface PieceAbility {
-  kind: 'grantAdjacent';
-  /** Defense charges granted (default 1). */
-  defense?: number;
-  /** Who may be targeted. Defaults to a friendly neighbour. */
-  target?: AbilityTarget;
-  /** Defaults to true. */
-  oncePerTurn?: boolean;
+/** A public storm cloud covering one square. Enemy pieces under it are hidden; you see your own as an outline. */
+export interface StormCloud {
+  square: Square;
+  owner: Color;
+  turnsRemaining: number;
 }
+
+export type PieceAbility =
+  | {
+      kind: 'grantAdjacent';
+      /** Defense charges granted (default 1). */
+      defense?: number;
+      /** Who may be targeted. Defaults to a friendly neighbour. */
+      target?: AbilityTarget;
+      /** Defaults to true. */
+      oncePerTurn?: boolean;
+    }
+  | {
+      kind: 'stormCloud';
+      /** Mana spent to place or refresh a cloud. Default 50. */
+      manaCost?: number;
+      /** Turns the cloud lasts, or is reset to. Default 3. */
+      duration?: number;
+      /** Defaults to false: many clouds can be placed in one turn. */
+      oncePerTurn?: boolean;
+    };
 
 export interface PieceDef {
   /** Unique kind id, e.g. "knight" or "the_ox". */
@@ -146,7 +163,10 @@ export type GameEvent =
   | { type: 'summonTick'; square: Square; turnsRemaining: number }
   | { type: 'summoned'; color: Color; cardId: string; pieceId: string; square: Square }
   | { type: 'summonFailed'; color: Color; cardId: string; square: Square }
-  | { type: 'abilityUsed'; pieceId: string; from: Square; to: Square; targetId: string; defense?: number }
+  | { type: 'abilityUsed'; pieceId: string; from: Square; to: Square; targetId?: string; defense?: number }
+  | { type: 'stormCloud'; square: Square; turnsRemaining: number; reset?: boolean }
+  | { type: 'stormTick'; square: Square; turnsRemaining: number }
+  | { type: 'stormExpired'; square: Square }
   | { type: 'drew'; color: Color; count: number }
   /** The draw timer completed: this player must click their deck before acting. */
   | { type: 'drawReady'; color: Color }

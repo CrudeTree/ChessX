@@ -1,8 +1,8 @@
 import type { CardInstance } from './cards/types.js';
 import { isInCheck } from './movement.js';
 import { legalActions } from './rules.js';
-import { manaIncome, type GameState, type RuleConstants, type TurnInfo, type TurnPhase } from './state.js';
-import type { Action, Color, GameEvent, GameStatus, PendingGrant, Piece, Square } from './types.js';
+import { isStormed, manaIncome, type GameState, type RuleConstants, type TurnInfo, type TurnPhase } from './state.js';
+import type { Action, Color, GameEvent, GameStatus, PendingGrant, Piece, Square, StormCloud } from './types.js';
 
 export interface PlayerViewSide {
   turnsTaken: number;
@@ -41,6 +41,8 @@ export interface PlayerView {
   legalActions: Action[];
   /** Summoned creature is waiting for you to pick a grant target. */
   pendingGrant: PendingGrant | null;
+  /** Public storm clouds. Timers are visible to everyone; enemy pieces under them are not. */
+  storms: Pick<StormCloud, 'square' | 'turnsRemaining'>[];
 }
 
 export interface ViewOptions {
@@ -48,6 +50,55 @@ export interface ViewOptions {
   openHands?: boolean;
   /** Skip check detection and legal-move lists. */
   sandbox?: boolean;
+}
+
+function hideEnemyStormOccupants(
+  state: GameState,
+  you: Color,
+): { board: (string | null)[]; pieces: Record<string, Piece>; hiddenIds: Set<string> } {
+  const hiddenIds = new Set<string>();
+  const board = state.board.slice();
+  const pieces = { ...state.pieces };
+  for (const cloud of state.storms ?? []) {
+    const id = board[cloud.square];
+    if (!id) continue;
+    const piece = state.pieces[id];
+    if (!piece || piece.owner === you) continue;
+    hiddenIds.add(id);
+    board[cloud.square] = null;
+    delete pieces[id];
+  }
+  return { board, pieces, hiddenIds };
+}
+
+function redactFogEvents(events: GameEvent[], hiddenIds: Set<string>, state: GameState, you: Color): GameEvent[] {
+  return events.map((e) => {
+    if (e.type === 'manaGained') {
+      return {
+        ...e,
+        pieces: e.pieces.filter((p) => {
+          if (!isStormed(state, p.square)) return true;
+          const id = state.board[p.square];
+          const piece = id ? state.pieces[id] : undefined;
+          return piece?.owner === you;
+        }),
+      };
+    }
+    if (e.type === 'destroyed' && hiddenIds.has(e.pieceId)) {
+      return { ...e, kind: 'hidden', pieceId: 'hidden' };
+    }
+    if (e.type === 'moved' && hiddenIds.has(e.pieceId)) {
+      return { ...e, pieceId: 'hidden' };
+    }
+    if (e.type === 'attacked' && (hiddenIds.has(e.attackerId) || hiddenIds.has(e.targetId))) {
+      return {
+        ...e,
+        attackerId: hiddenIds.has(e.attackerId) ? 'hidden' : e.attackerId,
+        targetId: hiddenIds.has(e.targetId) ? 'hidden' : e.targetId,
+      };
+    }
+    return e;
+  });
 }
 
 export function viewFor(state: GameState, you: Color, opts?: ViewOptions): PlayerView {
@@ -64,6 +115,9 @@ export function viewFor(state: GameState, you: Color, opts?: ViewOptions): Playe
       manaIncome: manaIncome(state, c),
     };
   };
+  const fog = opts?.sandbox
+    ? { board: state.board, pieces: state.pieces, hiddenIds: new Set<string>() }
+    : hideEnemyStormOccupants(state, you);
   return {
     you,
     turn: state.turn,
@@ -73,13 +127,14 @@ export function viewFor(state: GameState, you: Color, opts?: ViewOptions): Playe
     turnInfo: state.turnInfo,
     phase: state.players[state.turn].pendingDraws > 0 ? 'draw' : 'main',
     rules: state.rules,
-    board: state.board,
-    pieces: state.pieces,
+    board: fog.board,
+    pieces: fog.pieces,
     enPassant: state.enPassant,
     players: { white: side('white'), black: side('black') },
-    events: state.events,
+    events: opts?.sandbox ? state.events : redactFogEvents(state.events, fog.hiddenIds, state, you),
     inCheck: !opts?.sandbox && state.status.kind === 'playing' && isInCheck(state, state.turn),
     legalActions: opts?.sandbox || state.turn !== you ? [] : legalActions(state, you),
     pendingGrant: state.pendingGrant ?? null,
+    storms: (state.storms ?? []).map((c) => ({ square: c.square, turnsRemaining: c.turnsRemaining })),
   };
 }
