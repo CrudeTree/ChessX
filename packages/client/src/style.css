@@ -2421,76 +2421,47 @@ button.danger {
   font-size: 12px;
 }
 
+#arena > .arena-head,
+#arena > .arena-hint,
+#arena-search {
+  flex-shrink: 0;
+}
+
 #arena-search {
   width: 100%;
 }
 
 .arena-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   overflow-y: auto;
   min-height: 0;
   flex: 1;
-  padding-right: 2px;
+  padding: 4px 2px 8px;
   scrollbar-width: thin;
 }
 
-.arena-list .bcard {
-  min-height: 0;
+.arena-list .editor-section:first-child {
+  margin-top: 2px;
+}
+
+.arena-list .editor-item {
   cursor: grab;
-  padding: 6px;
-  gap: 4px;
-}
-
-.arena-list .bcard .bart {
-  height: 56px;
-  font-size: 28px;
-}
-
-.arena-list .bcard .btext {
-  display: none;
-}
-
-.arena-list .bcard,
-.arena-piece {
-  touch-action: none;
+  width: 100%;
   user-select: none;
-}
-
-.arena-piece {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 8px 4px;
-  border-radius: 10px;
-  background: #222232;
-  border: 1px solid #3a3a52;
-  cursor: grab;
-  font-size: 11px;
-  text-align: center;
-}
-
-.arena-piece img {
-  width: 48px;
-  height: 48px;
-  object-fit: contain;
-}
-
-.arena-piece .glyph {
-  font-size: 28px;
-  line-height: 1;
 }
 
 .arena-ghost {
   position: fixed;
   z-index: 80;
   pointer-events: none;
-  width: 100px;
-  transform: translate(-50%, -50%) scale(0.9);
+  transform: translate(-50%, -50%);
   opacity: 0.95;
   filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.55));
+  background: var(--panel);
+  border: 1px solid #3a3a52;
+  border-radius: 8px;
 }
 
 /* ------------------------------------------------------------------- Chat */
