@@ -2,6 +2,7 @@
 
 import {
   allCards,
+  clampArtZoom,
   describeAbility,
   getCardDef,
   getPieceDef,
@@ -85,7 +86,7 @@ export class InspectPanel {
       </div>
       <div class="zoom-type">${esc(typeLine)}</div>
       <div class="zoom-cost"><span class="mana-gem">${card.cost}</span> mana to play${this.manaNote(card.cost)}</div>
-      ${artBanner(card.art)}
+      ${artBanner(card.art, card.cardArtZoom)}
       ${isSummon ? movementMap(card.piece.movement, `<span class="glyph emoji">${card.piece.glyph}</span>`) : card.art ? '' : `<div class="zoom-art"><span class="glyph emoji">${card.glyph}</span></div>`}
       ${stats}
       <div class="zoom-text">${esc(card.text)}</div>
@@ -148,7 +149,7 @@ export class InspectPanel {
         <div class="zoom-owner">${esc(ownerName)}</div>
       </div>
       <div class="zoom-type">${esc(typeLine)}</div>
-      ${artBanner(card?.art)}
+      ${artBanner(card?.art, card?.cardArtZoom)}
       ${movementMap(def.movement, `<span class="glyph ${isBasic ? 'chess' : 'emoji'} ${piece.owner}">${def.glyph}</span>`)}
       <div class="zoom-stats">
         <div class="stat atk">ATK<b>${piece.atk}</b></div>
@@ -193,7 +194,8 @@ export class InspectPanel {
   }
 }
 
-const artBanner = (url: string | undefined): string => (url ? `<div class="zoom-banner"><img src="${url}" alt=""></div>` : '');
+const artBanner = (url: string | undefined, zoom?: number): string =>
+  url ? `<div class="zoom-banner" style="--card-art-zoom: ${clampArtZoom(zoom)}"><img src="${esc(url)}" alt=""></div>` : '';
 
 /**
  * 7x7 mini board with the piece in the middle and dots on every square it

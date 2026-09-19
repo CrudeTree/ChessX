@@ -46,6 +46,12 @@ interface CardBase {
   glyph: string;
   /** Optional artwork (URL path served by the client), shown where there is room. */
   art?: string;
+  /**
+   * How large the picture looks in the card window (hand, binder, inspect).
+   * 1 is the default; above 1 crops in, below 1 shows more of the picture.
+   * Does not change the piece on the board.
+   */
+  cardArtZoom?: number;
   /** Optional separate picture for the piece on the board (summons). Defaults to `art`. */
   boardArt?: string;
   /**
@@ -55,14 +61,19 @@ interface CardBase {
   boardArtZoom?: number;
 }
 
-export const BOARD_ART_ZOOM_DEFAULT = 1;
-export const BOARD_ART_ZOOM_MIN = 0.5;
-export const BOARD_ART_ZOOM_MAX = 2;
+export const ART_ZOOM_DEFAULT = 1;
+export const ART_ZOOM_MIN = 0.5;
+export const ART_ZOOM_MAX = 2;
+export const BOARD_ART_ZOOM_DEFAULT = ART_ZOOM_DEFAULT;
+export const BOARD_ART_ZOOM_MIN = ART_ZOOM_MIN;
+export const BOARD_ART_ZOOM_MAX = ART_ZOOM_MAX;
 
-export function clampBoardArtZoom(z: number | undefined): number {
-  if (typeof z !== 'number' || !Number.isFinite(z)) return BOARD_ART_ZOOM_DEFAULT;
-  return Math.min(BOARD_ART_ZOOM_MAX, Math.max(BOARD_ART_ZOOM_MIN, Math.round(z * 20) / 20));
+export function clampArtZoom(z: number | undefined): number {
+  if (typeof z !== 'number' || !Number.isFinite(z)) return ART_ZOOM_DEFAULT;
+  return Math.min(ART_ZOOM_MAX, Math.max(ART_ZOOM_MIN, Math.round(z * 20) / 20));
 }
+
+export const clampBoardArtZoom = clampArtZoom;
 
 export interface SummonCardDef extends CardBase {
   type: 'summon';

@@ -9,10 +9,11 @@ import {
   BASE_RULES,
   baseCardDef,
   basePieceDef,
+  ART_ZOOM_DEFAULT,
+  ART_ZOOM_MAX,
+  ART_ZOOM_MIN,
   BOARD_ART_ZOOM_DEFAULT,
-  BOARD_ART_ZOOM_MAX,
-  BOARD_ART_ZOOM_MIN,
-  clampBoardArtZoom,
+  clampArtZoom,
   cloneMovement,
   currentBalance,
   describeAbility,
@@ -357,24 +358,29 @@ export class BalanceEditor {
     return wrap;
   }
 
-  /** Slider that scales the board sprite (closer = larger, further = smaller). */
-  private artZoomField(
-    url: string | undefined,
-    value: number | undefined,
-    def: number | undefined,
-    set: (v: number | undefined) => void,
-  ): HTMLElement {
-    const fallback = def ?? BOARD_ART_ZOOM_DEFAULT;
-    const live = clampBoardArtZoom(value ?? fallback);
+  /** Slider that scales card-window art or the board sprite. */
+  private artZoomField(opts: {
+    url: string | undefined;
+    value: number | undefined;
+    def: number | undefined;
+    set: (v: number | undefined) => void;
+    title: string;
+    hint: string;
+    preview: 'board' | 'card';
+    far: string;
+    near: string;
+  }): HTMLElement {
+    const fallback = opts.def ?? ART_ZOOM_DEFAULT;
+    const live = clampArtZoom(opts.value ?? fallback);
     const wrap = document.createElement('div');
-    wrap.className = `ezoom ${value !== undefined ? 'changed' : ''}`;
+    wrap.className = `ezoom ${opts.value !== undefined ? 'changed' : ''}`;
     const frame = document.createElement('div');
-    frame.className = 'ezoom-frame';
+    frame.className = `ezoom-frame ${opts.preview}`;
     const preview = document.createElement('div');
-    preview.className = 'ezoom-preview';
+    preview.className = `ezoom-preview ${opts.preview}`;
     preview.style.setProperty('--art-zoom', String(live));
-    preview.innerHTML = url
-      ? `<img src="${esc(url)}" alt="" draggable="false">`
+    preview.innerHTML = opts.url
+      ? `<img src="${esc(opts.url)}" alt="" draggable="false">`
       : '<span class="muted">—</span>';
     frame.append(preview);
     const col = document.createElement('div');
@@ -383,28 +389,28 @@ export class BalanceEditor {
     label.className = 'el';
     const pct = document.createElement('strong');
     const setPct = (z: number) => {
-      pct.textContent = z === BOARD_ART_ZOOM_DEFAULT ? '100% (default)' : `${Math.round(z * 100)}%`;
+      pct.textContent = z === ART_ZOOM_DEFAULT ? '100% (default)' : `${Math.round(z * 100)}%`;
     };
     setPct(live);
-    label.append('Board zoom', document.createElement('small'));
-    label.lastElementChild!.textContent = 'Closer makes the creature larger on the square; further makes it smaller. The whole figure stays visible.';
+    label.append(opts.title, document.createElement('small'));
+    label.lastElementChild!.textContent = opts.hint;
     const row = document.createElement('div');
     row.className = 'ezoom-row';
     const far = document.createElement('span');
-    far.textContent = 'Further';
+    far.textContent = opts.far;
     const near = document.createElement('span');
-    near.textContent = 'Closer';
+    near.textContent = opts.near;
     const input = document.createElement('input');
     input.type = 'range';
-    input.min = String(Math.round(BOARD_ART_ZOOM_MIN * 100));
-    input.max = String(Math.round(BOARD_ART_ZOOM_MAX * 100));
+    input.min = String(Math.round(ART_ZOOM_MIN * 100));
+    input.max = String(Math.round(ART_ZOOM_MAX * 100));
     input.step = '5';
     input.value = String(Math.round(live * 100));
     input.oninput = () => {
-      const z = clampBoardArtZoom(Number(input.value) / 100);
+      const z = clampArtZoom(Number(input.value) / 100);
       preview.style.setProperty('--art-zoom', String(z));
       setPct(z);
-      set(z === fallback ? undefined : z);
+      opts.set(z === fallback ? undefined : z);
       this.refreshQuiet();
     };
     row.append(far, input, near);
@@ -778,17 +784,35 @@ export class BalanceEditor {
 
     const images = this.group(form, 'Pictures');
     images.appendChild(this.imageField('Card image', 'shown on the card in hand, the binder and the inspector', live.art, base.art, setC('art')));
+    images.appendChild(
+      this.artZoomField({
+        url: live.art,
+        value: patch.cardArtZoom,
+        def: base.cardArtZoom,
+        set: setC('cardArtZoom'),
+        title: 'Card zoom',
+        hint: 'Larger crops in on the picture in the card window. Does not change the piece on the board.',
+        preview: 'card',
+        far: 'Smaller',
+        near: 'Larger',
+      }),
+    );
     if (base.type === 'summon') {
       images.appendChild(
         this.imageField('Board sprite', 'the piece on the board; uses the card image unless set', live.type === 'summon' ? live.boardArt ?? live.art : undefined, base.boardArt ?? base.art, (u) => setC('boardArt')(u)),
       );
       images.appendChild(
-        this.artZoomField(
-          live.type === 'summon' ? live.boardArt ?? live.art : undefined,
-          patch.boardArtZoom,
-          base.boardArtZoom,
-          setC('boardArtZoom'),
-        ),
+        this.artZoomField({
+          url: live.type === 'summon' ? live.boardArt ?? live.art : undefined,
+          value: patch.boardArtZoom,
+          def: base.boardArtZoom,
+          set: setC('boardArtZoom'),
+          title: 'Board zoom',
+          hint: 'Closer makes the creature larger on the square; further makes it smaller. The whole figure stays visible.',
+          preview: 'board',
+          far: 'Further',
+          near: 'Closer',
+        }),
       );
     }
 
@@ -956,12 +980,38 @@ export class BalanceEditor {
 
     const images = this.group(form, 'Pictures');
     images.appendChild(this.imageField('Card image', 'shown on the card in hand, the binder and the inspector', card.art, undefined, (u) => (card.art = u)));
+    images.appendChild(
+      this.artZoomField({
+        url: card.art,
+        value: card.cardArtZoom,
+        def: ART_ZOOM_DEFAULT,
+        set: (v) => {
+          if (v === undefined) delete card.cardArtZoom;
+          else card.cardArtZoom = v;
+        },
+        title: 'Card zoom',
+        hint: 'Larger crops in on the picture in the card window. Does not change the piece on the board.',
+        preview: 'card',
+        far: 'Smaller',
+        near: 'Larger',
+      }),
+    );
     if (card.type === 'summon') {
       images.appendChild(this.imageField('Board sprite', 'the piece on the board; uses the card image unless set', card.boardArt ?? card.art, card.art, (u) => (card.boardArt = u)));
       images.appendChild(
-        this.artZoomField(card.boardArt ?? card.art, card.boardArtZoom, BOARD_ART_ZOOM_DEFAULT, (v) => {
-          if (v === undefined) delete card.boardArtZoom;
-          else card.boardArtZoom = v;
+        this.artZoomField({
+          url: card.boardArt ?? card.art,
+          value: card.boardArtZoom,
+          def: BOARD_ART_ZOOM_DEFAULT,
+          set: (v) => {
+            if (v === undefined) delete card.boardArtZoom;
+            else card.boardArtZoom = v;
+          },
+          title: 'Board zoom',
+          hint: 'Closer makes the creature larger on the square; further makes it smaller. The whole figure stays visible.',
+          preview: 'board',
+          far: 'Further',
+          near: 'Closer',
         }),
       );
     }

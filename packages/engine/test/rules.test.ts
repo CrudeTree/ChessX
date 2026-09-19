@@ -712,9 +712,13 @@ describe('balance patches', () => {
     expect(validateBalance({ cards: {}, pieces: {}, customCards: [{ ...wolf, boardArtZoom: 3 }] })).toEqual(
       expect.arrayContaining([expect.stringMatching(/board zoom/)]),
     );
+    expect(validateBalance({ cards: {}, pieces: {}, customCards: [{ ...wolf, cardArtZoom: 3 }] })).toEqual(
+      expect.arrayContaining([expect.stringMatching(/card zoom/)]),
+    );
 
-    applyBalance({ cards: {}, pieces: {}, customCards: [{ ...wolf, boardArtZoom: 1.5 }, zap] });
+    applyBalance({ cards: {}, pieces: {}, customCards: [{ ...wolf, boardArtZoom: 1.5, cardArtZoom: 1.25 }, zap] });
     expect(getCardDef('custom_wolf').boardArtZoom).toBe(1.5);
+    expect(getCardDef('custom_wolf').cardArtZoom).toBe(1.25);
 
     applyBalance({ cards: {}, pieces: {}, customCards: [wolf, zap] });
     expect(getCardDef('custom_wolf').name).toBe('Dire Wolf');

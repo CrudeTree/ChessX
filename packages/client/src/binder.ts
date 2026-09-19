@@ -1,6 +1,6 @@
 // The Binder: browse your collection and build up to three named decks.
 
-import { DEFAULT_RULES, getCardDef, type CardDef } from '@chessx/engine';
+import { clampArtZoom, DEFAULT_RULES, getCardDef, type CardDef } from '@chessx/engine';
 import { DECK_SLOTS, type DeckInfo, type Profile } from '@chessx/protocol';
 import { ApiError, profileApi } from './net.js';
 
@@ -15,7 +15,7 @@ export function cardElement(card: CardDef, opts: { count?: number; isNew?: boole
   const art = card.art ? `<img src="${card.art}" alt="">` : `<span>${card.glyph}</span>`;
   el.innerHTML = `
     <div class="bname"><span>${card.name}</span></div>
-    <div class="bart">${art}<span class="bcost" title="Mana cost">${card.cost}</span></div>
+    <div class="bart" style="--card-art-zoom: ${clampArtZoom(card.cardArtZoom)}">${art}<span class="bcost" title="Mana cost">${card.cost}</span></div>
     <div class="btype">${type}</div>
     <div class="btext">${card.text}</div>
   `;

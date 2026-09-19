@@ -662,6 +662,8 @@ button.danger {
 .bcard .bart img {
   height: 100%;
   image-rendering: pixelated;
+  transform: scale(var(--card-art-zoom, 1));
+  transform-origin: center 40%;
 }
 
 .bcard .btype {
@@ -1360,6 +1362,24 @@ button.danger {
   object-fit: contain;
   transform: scale(var(--art-zoom, 1));
   transform-origin: center bottom;
+}
+
+.ezoom-frame.card {
+  width: 148px;
+  height: 120px;
+  align-items: center;
+}
+
+.ezoom-preview.card {
+  width: 128px;
+  height: 72px;
+  overflow: hidden;
+  background-color: #2a2030;
+  background-image: none;
+}
+
+.ezoom-preview.card img {
+  transform-origin: center center;
 }
 
 .ezoom-col {
@@ -2335,6 +2355,8 @@ button.danger {
 .zoom-banner img {
   height: 100%;
   image-rendering: pixelated;
+  transform: scale(var(--card-art-zoom, 1));
+  transform-origin: center 40%;
 }
 
 /* Movement mini-map */

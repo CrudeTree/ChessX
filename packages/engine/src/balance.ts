@@ -34,6 +34,8 @@ export interface CardPatch {
   text?: string;
   /** Replacement card picture (an uploaded image URL). */
   art?: string;
+  /** How large the picture looks in the card window (0.5–2, default 1). */
+  cardArtZoom?: number;
   /** Replacement board sprite for the creature (an uploaded image URL). */
   boardArt?: string;
   /** How large the creature looks on the board (0.5–2, default 1). */
@@ -107,6 +109,7 @@ export function patchedCard(id: string, patch: CardPatch | undefined): CardDef {
     if (patch?.sacrificeTier !== undefined) card.sacrificeTier = patch.sacrificeTier;
     if (patch?.summonTurns !== undefined) card.summonTurns = patch.summonTurns;
     if (patch?.art !== undefined) card.art = patch.art;
+    if (patch?.cardArtZoom !== undefined) card.cardArtZoom = patch.cardArtZoom;
     if (patch?.boardArt !== undefined) card.boardArt = patch.boardArt;
     if (patch?.boardArtZoom !== undefined) card.boardArtZoom = patch.boardArtZoom;
     // Hand-written text stays until the numbers change; then it is regenerated (unless set explicitly).
@@ -117,6 +120,7 @@ export function patchedCard(id: string, patch: CardPatch | undefined): CardDef {
   if (patch?.cost !== undefined) card.cost = patch.cost;
   if (patch?.targetTier !== undefined) card.targetTier = patch.targetTier;
   if (patch?.art !== undefined) card.art = patch.art;
+  if (patch?.cardArtZoom !== undefined) card.cardArtZoom = patch.cardArtZoom;
   card.text = patch?.text ?? (numbersChanged(patch) ? describeCard(card) : base.text);
   return card;
 }
@@ -124,7 +128,7 @@ export function patchedCard(id: string, patch: CardPatch | undefined): CardDef {
 /** Did the patch touch anything the rules text describes? (Pictures and cost do not.) */
 function numbersChanged(patch: CardPatch | undefined): boolean {
   if (!patch) return false;
-  return Object.keys(patch).some((k) => k !== 'art' && k !== 'boardArt' && k !== 'boardArtZoom' && k !== 'text' && k !== 'cost');
+  return Object.keys(patch).some((k) => k !== 'art' && k !== 'cardArtZoom' && k !== 'boardArt' && k !== 'boardArtZoom' && k !== 'text' && k !== 'cost');
 }
 
 /**
@@ -280,6 +284,7 @@ function validateCustomCard(c: unknown, problems: string[]): void {
   if (typeof card.glyph !== 'string' || card.glyph.length > 8) problems.push(`${where}: glyph must be a short emoji or symbol.`);
   if (typeof card.text !== 'string' || card.text.length > 300) problems.push(`${where}: text must be 0–300 characters.`);
   if (card.art !== undefined && !artOk(card.art)) problems.push(`${where}: card image must be an uploaded image.`);
+  if (card.cardArtZoom !== undefined && !zoomOk(card.cardArtZoom)) problems.push(`${where}: card zoom must be ${BOARD_ART_ZOOM_MIN}–${BOARD_ART_ZOOM_MAX}.`);
   if (card.boardArt !== undefined && !artOk(card.boardArt)) problems.push(`${where}: board sprite must be an uploaded image.`);
   if (card.boardArtZoom !== undefined && !zoomOk(card.boardArtZoom)) problems.push(`${where}: board zoom must be ${BOARD_ART_ZOOM_MIN}–${BOARD_ART_ZOOM_MAX}.`);
   if (!isInt(card.cost, 0, 9999)) problems.push(`${where}: cost must be 0–9999.`);
@@ -337,6 +342,7 @@ export function validateBalance(b: unknown): string[] {
     if (patch.cost !== undefined && !isInt(patch.cost, 0, 9999)) problems.push(`${where}: cost must be 0–9999.`);
     if (patch.text !== undefined && (typeof patch.text !== 'string' || patch.text.length > 300)) problems.push(`${where}: text too long.`);
     if (patch.art !== undefined && !artOk(patch.art)) problems.push(`${where}: card image must be an uploaded image.`);
+    if (patch.cardArtZoom !== undefined && !zoomOk(patch.cardArtZoom)) problems.push(`${where}: card zoom must be ${BOARD_ART_ZOOM_MIN}–${BOARD_ART_ZOOM_MAX}.`);
     if (patch.boardArt !== undefined && !artOk(patch.boardArt)) problems.push(`${where}: board sprite must be an uploaded image.`);
     if (patch.boardArtZoom !== undefined && !zoomOk(patch.boardArtZoom)) problems.push(`${where}: board zoom must be ${BOARD_ART_ZOOM_MIN}–${BOARD_ART_ZOOM_MAX}.`);
     if (base.type === 'summon') {

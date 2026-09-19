@@ -1,4 +1,4 @@
-import { getCardDef, type CardInstance } from '@chessx/engine';
+import { clampArtZoom, getCardDef, type CardInstance } from '@chessx/engine';
 import { Container, Graphics, Sprite, Text } from 'pixi.js';
 import { artTextures } from './art.js';
 import { CARD_H, CARD_W, COLORS, EMOJI_FONT, UI_FONT } from './layout.js';
@@ -36,7 +36,7 @@ export class CardSprite extends Container {
     const tex = card.art ? artTextures.get(card.art) : undefined;
     if (tex) {
       const img = new Sprite(tex);
-      const scale = artH / tex.height;
+      const scale = (artH / tex.height) * clampArtZoom(card.cardArtZoom);
       img.scale.set(scale);
       img.anchor.set(0.5);
       img.position.set(0, artY + artH / 2);
