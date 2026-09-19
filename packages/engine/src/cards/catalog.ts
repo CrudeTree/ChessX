@@ -141,6 +141,7 @@ export const CATALOG: CardDef[] = [
     cost: 200,
     name: 'Foresight',
     glyph: '🔮',
+    art: '/art/foresight.png',
     target: 'none',
     text: 'Draw 2 cards.',
     effects: [{ kind: 'draw', count: 2 }],
