@@ -72,7 +72,7 @@ export const EMPTY_BALANCE: Balance = { cards: {}, pieces: {} };
 
 const RETIRED = new Set(RETIRED_CARDS);
 
-const LIVE_EFFECTS = new Set<Effect['kind']>(['destroy', 'draw', 'hastenSummon', 'freeStance', 'gainMana', 'scrambleBackRank', 'schism']);
+const LIVE_EFFECTS = new Set<Effect['kind']>(['destroy', 'draw', 'hastenSummon', 'freeStance', 'gainMana', 'scrambleBackRank', 'schism', 'swap', 'spawnPawn', 'castlePush']);
 
 function sanitizeAbility(a: PieceAbility): PieceAbility {
   if (a?.kind === 'stormCloud') {
@@ -342,6 +342,9 @@ function validateEffects(effects: unknown, where: string, problems: string[]): v
         break;
       case 'scrambleBackRank':
       case 'schism':
+      case 'swap':
+      case 'spawnPawn':
+      case 'castlePush':
         break;
       default:
         problems.push(`${where}: unknown effect.`);
@@ -509,6 +512,12 @@ function describeEffect(e: Effect, target: string): string {
       return `Rearrange the opponent's back rank.`;
     case 'schism':
       return `Needs two Rooks and a King. Your Rooks become Regents that move like Kings. Your King becomes a Sovereign that moves like a Queen. You are no longer in check. If both Regents are captured, you lose.`;
+    case 'swap':
+      return `Swap the positions of two pieces.`;
+    case 'spawnPawn':
+      return `Put a Pawn on an empty square of your back rank.`;
+    case 'castlePush':
+      return `If the opponent has castled, push a pawn next to their King one square forward.`;
   }
 }
 

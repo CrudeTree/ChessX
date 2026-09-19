@@ -718,6 +718,60 @@ describe('cards', () => {
     expect(g.status).toEqual({ kind: 'regentsFallen', winner: 'black' });
   });
 
+  it('Transpose swaps two pieces', () => {
+    let g = newGame();
+    const card = giveCard(g, 'white', 'transpose');
+    const pawn = pieceAt(g, s('e2'))!;
+    const enemy = pieceAt(g, s('e7'))!;
+    expect(legalActions(g).some((a) => a.type === 'playCard' && a.cardInstanceId === card && a.target === s('e2') && a.target2 === s('e7'))).toBe(true);
+    g = act(g, { type: 'playCard', cardInstanceId: card, target: s('e2'), target2: s('e7') });
+    expect(pieceAt(g, s('e7'))!.id).toBe(pawn.id);
+    expect(pieceAt(g, s('e2'))!.id).toBe(enemy.id);
+    expect(describeCard(getCardDef('transpose'))).toMatch(/Swap/i);
+  });
+
+  it('Muster puts a pawn on an empty back-rank square and does nothing if the rank is full', () => {
+    let g = newGame();
+    const card = giveCard(g, 'white', 'muster');
+    expect(legalActions(g).some((a) => a.type === 'playCard' && a.cardInstanceId === card)).toBe(false);
+    g = applyArenaOp(g, { type: 'removePiece', square: s('d1') });
+    expect(legalActions(g).some((a) => a.type === 'playCard' && a.cardInstanceId === card && a.target === s('d1'))).toBe(true);
+    g = act(g, { type: 'playCard', cardInstanceId: card, target: s('d1') });
+    expect(pieceAt(g, s('d1'))!.kind).toBe('pawn');
+    expect(pieceAt(g, s('d1'))!.owner).toBe('white');
+    expect(pieceAt(g, s('d1'))!.hasMoved).toBe(false);
+
+    let empty = createArenaGame(1);
+    empty = applyArenaOp(empty, { type: 'dropCard', cardId: 'muster', color: 'white', square: s('e4') });
+    expect(pieceAt(empty, s('e4'))).toBeUndefined();
+    empty = applyArenaOp(empty, { type: 'dropCard', cardId: 'muster', color: 'white', square: s('e1') });
+    expect(pieceAt(empty, s('e1'))!.kind).toBe('pawn');
+  });
+
+  it('Fissure pushes a pawn beside a castled king, and does nothing after Schism', () => {
+    let g = newGame();
+    const early = giveCard(g, 'white', 'fissure');
+    expect(legalActions(g).some((a) => a.type === 'playCard' && a.cardInstanceId === early)).toBe(false);
+
+    let arena = createArenaGame(1);
+    arena = applyArenaOp(arena, { type: 'spawnPiece', kind: 'king', color: 'black', square: s('g8') });
+    arena = applyArenaOp(arena, { type: 'spawnPiece', kind: 'pawn', color: 'black', square: s('g7') });
+    arena = applyArenaOp(arena, { type: 'dropCard', cardId: 'fissure', color: 'white', square: s('g7') });
+    expect(pieceAt(arena, s('g7'))).toBeUndefined();
+    expect(pieceAt(arena, s('g6'))!.kind).toBe('pawn');
+
+    let schism = createArenaGame(1);
+    schism = applyArenaOp(schism, { type: 'spawnPiece', kind: 'king', color: 'black', square: s('g8') });
+    schism = applyArenaOp(schism, { type: 'spawnPiece', kind: 'rook', color: 'black', square: s('a8') });
+    schism = applyArenaOp(schism, { type: 'spawnPiece', kind: 'rook', color: 'black', square: s('h8') });
+    schism = applyArenaOp(schism, { type: 'spawnPiece', kind: 'pawn', color: 'black', square: s('g7') });
+    schism = applyArenaOp(schism, { type: 'dropCard', cardId: 'schism', color: 'black', square: s('e4') });
+    expect(pieceAt(schism, s('g8'))!.kind).toBe('sovereign');
+    schism = applyArenaOp(schism, { type: 'dropCard', cardId: 'fissure', color: 'white', square: s('g7') });
+    expect(pieceAt(schism, s('g7'))!.kind).toBe('pawn');
+    expect(pieceAt(schism, s('g6'))).toBeUndefined();
+  });
+
   it('reward creatures have sensible movement patterns', () => {
     let g = newGame();
     const boar = giveCard(g, 'white', 'thornback_boar');

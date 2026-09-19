@@ -3,7 +3,7 @@ import type { CardInstance, Effect, SummonCardDef, TargetRule } from './cards/ty
 import { isInCheck, lastRank, pseudoMoves, type MoveCandidate } from './movement.js';
 import { getPieceDef, REGENT, SOVEREIGN } from './pieces.js';
 import { shuffleInPlace } from './rng.js';
-import { cloneState, drawCards, findKing, freshTurnInfo, manaFrom, pieceAt, piecesOf, stormAt, type GameState } from './state.js';
+import { addPiece, cloneState, drawCards, findKing, freshTurnInfo, manaFrom, pieceAt, piecesOf, stormAt, type GameState } from './state.js';
 import {
   fileOf,
   inBounds,
@@ -73,6 +73,16 @@ export function legalActions(state: GameState, color: Color = state.turn): Actio
     if (card.cost > state.players[color].mana) continue;
     if (card.type === 'spell' && card.firstTurnOnly && state.players[color].turnsTaken !== 1) continue;
     if (card.type === 'spell' && card.effects.some((e) => e.kind === 'schism') && !canPlaySchism(state, color)) continue;
+    if (card.type === 'spell' && card.effects.some((e) => e.kind === 'swap')) {
+      const squares = cardTargets(state, inst, color).filter((t): t is Square => t !== undefined);
+      for (const a of squares) {
+        for (const b of squares) {
+          if (a === b) continue;
+          out.push({ type: 'playCard', cardInstanceId: inst.instanceId, target: a, target2: b });
+        }
+      }
+      continue;
+    }
     for (const target of cardTargets(state, inst, color)) {
       out.push({ type: 'playCard', cardInstanceId: inst.instanceId, target });
     }
@@ -217,11 +227,65 @@ export function cardTargets(state: GameState, inst: CardInstance, color: Color):
       .filter((p) => p.kind !== 'king' && !p.summon && getPieceDef(p.kind).tier === needTier)
       .map((p) => p.square);
   }
+  if (card.effects.some((e) => e.kind === 'swap')) {
+    return Object.values(state.pieces).map((p) => p.square);
+  }
+  if (card.effects.some((e) => e.kind === 'spawnPawn')) {
+    return emptyBackRankSquares(state, color);
+  }
+  if (card.effects.some((e) => e.kind === 'castlePush')) {
+    return castlePushSquares(state, color);
+  }
   if (card.target === 'none') return [undefined];
   return Object.values(state.pieces)
     .filter((p) => matchesTarget(p, card.target, color, card.allowKing ?? false))
     .filter((p) => card.targetTier === undefined || getPieceDef(p.kind).tier === card.targetTier)
     .map((p) => p.square);
+}
+
+function ownBackRank(color: Color): number {
+  return color === 'white' ? 0 : 7;
+}
+
+export function emptyBackRankSquares(state: GameState, color: Color): Square[] {
+  const rank = ownBackRank(color);
+  const out: Square[] = [];
+  for (let file = 0; file < 8; file++) {
+    const square = sq(file, rank);
+    if (!pieceAt(state, square)) out.push(square);
+  }
+  return out;
+}
+
+/** King on the c- or g-file of its back rank after moving — the usual castle seats. */
+function isCastled(state: GameState, color: Color): boolean {
+  const king = findKing(state, color);
+  if (!king || !king.hasMoved) return false;
+  if (rankOf(king.square) !== ownBackRank(color)) return false;
+  const f = fileOf(king.square);
+  return f === 2 || f === 6;
+}
+
+function pawnForward(pawn: Piece): Square | undefined {
+  const f = fileOf(pawn.square);
+  const r = rankOf(pawn.square) + (pawn.owner === 'white' ? 1 : -1);
+  if (!inBounds(f, r)) return undefined;
+  return sq(f, r);
+}
+
+export function castlePushSquares(state: GameState, color: Color): Square[] {
+  const enemy = opposite(color);
+  if (!isCastled(state, enemy)) return [];
+  const king = findKing(state, enemy)!;
+  const out: Square[] = [];
+  for (const n of neighborsOf(king.square)) {
+    const pawn = pieceAt(state, n);
+    if (!pawn || pawn.kind !== 'pawn') continue;
+    const ahead = pawnForward(pawn);
+    if (ahead === undefined || pieceAt(state, ahead)) continue;
+    out.push(pawn.square);
+  }
+  return out;
 }
 
 function matchesTarget(p: Piece, rule: TargetRule, color: Color, allowKing: boolean): boolean {
@@ -487,6 +551,11 @@ function performCard(state: GameState, action: Extract<Action, { type: 'playCard
       action.target === undefined ? `${card.name} needs a target.` : `${card.name} cannot target ${squareName(action.target)}.`,
     );
   }
+  if (card.type === 'spell' && card.effects.some((e) => e.kind === 'swap')) {
+    if (action.target2 === undefined || !validTargets.includes(action.target2) || action.target2 === action.target) {
+      throw new IllegalActionError(`${card.name} needs two different pieces.`);
+    }
+  }
 
   if (card.type === 'spell' && card.firstTurnOnly && player.turnsTaken !== 1) {
     throw new IllegalActionError(`${card.name} can only be played on your first turn.`);
@@ -499,15 +568,57 @@ function performCard(state: GameState, action: Extract<Action, { type: 'playCard
   player.hand.splice(idx, 1);
   player.mana -= card.cost;
   state.turnInfo.cardsPlayed++;
-  state.events.push({ type: 'cardPlayed', color, cardId: card.id, target: action.target });
+  state.events.push({ type: 'cardPlayed', color, cardId: card.id, target: action.target, target2: action.target2 });
 
   if (card.type === 'summon') {
     beginSummon(state, card, inst, pieceAt(state, action.target!)!);
   } else {
     const target = action.target === undefined ? undefined : pieceAt(state, action.target);
-    for (const effect of card.effects) applyEffect(state, effect, color, target);
+    const other = action.target2 === undefined ? undefined : pieceAt(state, action.target2);
+    for (const effect of card.effects) {
+      if (effect.kind === 'swap') {
+        if (target && other) applySwap(state, target, other);
+      } else if (effect.kind === 'spawnPawn') {
+        if (action.target !== undefined) applySpawnPawn(state, color, action.target);
+      } else if (effect.kind === 'castlePush') {
+        if (target) applyCastlePush(state, target);
+      } else {
+        applyEffect(state, effect, color, target);
+      }
+    }
     player.graveyard.push(inst);
   }
+}
+
+export function applySwap(state: GameState, a: Piece, b: Piece): void {
+  if (a.id === b.id) return;
+  const fromA = a.square;
+  const fromB = b.square;
+  state.board[fromA] = b.id;
+  state.board[fromB] = a.id;
+  a.square = fromB;
+  b.square = fromA;
+  state.events.push({ type: 'moved', pieceId: a.id, from: fromA, to: fromB });
+  state.events.push({ type: 'moved', pieceId: b.id, from: fromB, to: fromA });
+}
+
+export function applySpawnPawn(state: GameState, color: Color, square: Square): void {
+  if (pieceAt(state, square)) return;
+  if (rankOf(square) !== ownBackRank(color)) return;
+  const pawn = addPiece(state, 'pawn', color, square, false);
+  state.events.push({ type: 'spawned', pieceId: pawn.id, square, kind: 'pawn', owner: color });
+}
+
+export function applyCastlePush(state: GameState, pawn: Piece): void {
+  if (pawn.kind !== 'pawn') return;
+  const ahead = pawnForward(pawn);
+  if (ahead === undefined || pieceAt(state, ahead)) return;
+  const from = pawn.square;
+  state.board[from] = null;
+  pawn.square = ahead;
+  pawn.hasMoved = true;
+  state.board[ahead] = pawn.id;
+  state.events.push({ type: 'moved', pieceId: pawn.id, from, to: ahead });
 }
 
 export function beginSummon(state: GameState, card: SummonCardDef, inst: CardInstance, sacrifice: Piece): void {
@@ -581,6 +692,10 @@ export function applyEffect(state: GameState, effect: Effect, color: Color, targ
       applySchism(state, color);
       return;
     }
+    case 'swap':
+    case 'spawnPawn':
+    case 'castlePush':
+      return;
   }
 }
 

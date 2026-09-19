@@ -30,7 +30,13 @@ export type Effect =
   /** Shuffle the opponent's pieces on their back rank (empties move with them). */
   | { kind: 'scrambleBackRank' }
   /** Rooks become Regents, the King becomes a Sovereign; that player leaves check. */
-  | { kind: 'schism' };
+  | { kind: 'schism' }
+  /** Swap the two targeted pieces. */
+  | { kind: 'swap' }
+  /** Place a friendly pawn on the targeted empty back-rank square. */
+  | { kind: 'spawnPawn' }
+  /** Push the targeted pawn one square forward (only legal if the opponent has castled). */
+  | { kind: 'castlePush' };
 
 interface CardBase {
   id: string;

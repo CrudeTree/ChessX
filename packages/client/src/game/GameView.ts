@@ -62,6 +62,11 @@ type Drag =
 interface Selection {
   square: Square;
   targets: Targets;
+  /** Transpose: first piece chosen; next click sends the paired playCard. */
+  swapFrom?: Square;
+  swapCardId?: string;
+  swapColor?: Color;
+  swapFromHand?: string;
 }
 
 /** What the side panel should show: a piece on the board or a card in hand. */
@@ -635,6 +640,12 @@ export class GameView {
           this.floatText(x, y, getPieceDef(ev.to).name, COLORS.card, 0, MOBILE ? 14 : 16, 800);
           break;
         }
+        case 'spawned': {
+          const { x, y } = squareToXY(ev.square, this.flipped);
+          this.burst(x, y, COLORS.card, 1.2);
+          this.floatText(x, y, getPieceDef(ev.kind).name, COLORS.card, 0, MOBILE ? 14 : 16, 800);
+          break;
+        }
         case 'summoned': {
           const { x, y } = squareToXY(ev.square, this.flipped);
           this.burst(x, y, COLORS.summon, 1.6);
@@ -724,6 +735,14 @@ export class GameView {
       }
       if (ev.type === 'cardPlayed' && ev.target !== undefined) {
         const { x, y } = squareToXY(ev.target, this.flipped);
+        g.rect(x - SQ / 2, y - SQ / 2, SQ, SQ).fill({ color: COLORS.card, alpha: 0.3 });
+        if (ev.target2 !== undefined) {
+          const b = squareToXY(ev.target2, this.flipped);
+          g.rect(b.x - SQ / 2, b.y - SQ / 2, SQ, SQ).fill({ color: COLORS.card, alpha: 0.3 });
+        }
+      }
+      if (ev.type === 'spawned') {
+        const { x, y } = squareToXY(ev.square, this.flipped);
         g.rect(x - SQ / 2, y - SQ / 2, SQ, SQ).fill({ color: COLORS.card, alpha: 0.3 });
       }
       if (ev.type === 'abilityUsed') {
@@ -1271,16 +1290,26 @@ export class GameView {
     return { bySquare, anywhere: null };
   }
 
-  private cardTargets(instanceId: string): Targets {
+  private cardTargets(instanceId: string, first?: Square): Targets {
     const bySquare = new Map<Square, Action>();
     let anywhere: Action | null = null;
     if (!this.view) return { bySquare, anywhere };
     for (const a of this.view.legalActions) {
       if (a.type !== 'playCard' || a.cardInstanceId !== instanceId) continue;
+      if (a.target2 !== undefined) {
+        if (first === undefined) bySquare.set(a.target!, a);
+        else if (a.target === first) bySquare.set(a.target2, a);
+        continue;
+      }
       if (a.target === undefined) anywhere = a;
       else bySquare.set(a.target, a);
     }
     return { bySquare, anywhere };
+  }
+
+  private isSwapCard(cardId: string): boolean {
+    const card = getCardDef(cardId);
+    return card.type === 'spell' && card.effects.some((e) => e.kind === 'swap');
   }
 
   private onPiecePointerDown(e: FederatedPointerEvent, sprite: PieceSprite): void {
@@ -1490,6 +1519,10 @@ export class GameView {
       d.sprite.destroy();
       const { x, y } = squareToXY(square, this.flipped);
       this.burst(x, y, COLORS.card, 0.8);
+      if (this.isSwapCard(d.sprite.cardId) && this.view?.board[square]) {
+        this.beginArenaSwap(d.sprite.cardId, square, this.handColorOf(d.sprite.instanceId), d.sprite.instanceId);
+        return;
+      }
       this.onArena({
         type: 'dropCard',
         cardId: d.sprite.cardId,
@@ -1502,6 +1535,15 @@ export class GameView {
     let action: Action | undefined;
     if (square !== null) action = d.targets.bySquare.get(square);
     if (!action && d.targets.anywhere && isOverBoard(e.global.x, e.global.y)) action = d.targets.anywhere;
+    if (action && action.type === 'playCard' && action.target2 !== undefined && square !== null) {
+      this.dragLayer.removeChild(d.sprite);
+      d.homeLayer.addChild(d.sprite);
+      d.sprite.zIndex = 0;
+      d.sprite.position.set(d.homeX, d.homeY);
+      d.sprite.scale.set(d.homeScale);
+      this.beginSwapPick(action.cardInstanceId, square);
+      return;
+    }
     if (action) {
       this.dragLayer.removeChild(d.sprite);
       d.sprite.destroy();
@@ -1546,11 +1588,41 @@ export class GameView {
     return true;
   }
 
+  private beginSwapPick(instanceId: string, first: Square): void {
+    const targets = this.cardTargets(instanceId, first);
+    this.selection = { square: first, targets, swapFrom: first };
+    this.drawHighlights(targets, first);
+  }
+
+  private beginArenaSwap(cardId: string, first: Square, color: Color, fromHand?: string): void {
+    const bySquare = new Map<Square, Action>();
+    for (const piece of Object.values(this.view?.pieces ?? {})) {
+      if (piece.square === first) continue;
+      bySquare.set(piece.square, { type: 'playCard', cardInstanceId: fromHand ?? cardId, target: first, target2: piece.square });
+    }
+    const targets = { bySquare, anywhere: null };
+    this.selection = { square: first, targets, swapFrom: first, swapCardId: cardId, swapColor: color, swapFromHand: fromHand };
+    this.drawHighlights(targets, first);
+  }
+
   private tryActOnSquare(square: Square): boolean {
     const sel = this.selection;
     if (!sel) return false;
     if (this.arena) {
       if (square === sel.square) return false;
+      if (sel.swapFrom !== undefined && sel.swapCardId && sel.targets.bySquare.has(square)) {
+        this.selection = null;
+        this.highlightLayer.removeChildren();
+        this.onArena({
+          type: 'dropCard',
+          cardId: sel.swapCardId,
+          color: sel.swapColor ?? 'white',
+          square: sel.swapFrom,
+          target2: square,
+          fromHand: sel.swapFromHand,
+        });
+        return true;
+      }
       const marked = sel.targets.bySquare.get(square);
       // Click-to-activate (grant / ability) is fine; click-to-walk is not.
       if (marked?.type !== 'useAbility') return false;

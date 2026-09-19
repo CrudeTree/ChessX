@@ -4,7 +4,7 @@
 import { getCardDef, hasCard } from './cards/registry.js';
 import type { CardInstance, SummonCardDef } from './cards/types.js';
 import { canHaveDefense, getPieceDef, hasPieceDef } from './pieces.js';
-import { applyEffect, applySandboxAbility, beginSummon, evaluateVitalLoss, IllegalActionError, offerOnSummonGrant, resolveSummon, tickStorms } from './rules.js';
+import { applyCastlePush, applyEffect, applySandboxAbility, applySpawnPawn, applySwap, beginSummon, castlePushSquares, emptyBackRankSquares, evaluateVitalLoss, IllegalActionError, offerOnSummonGrant, resolveSummon, tickStorms } from './rules.js';
 import {
   addPiece,
   cloneState,
@@ -18,7 +18,7 @@ import { fileOf, inBounds, opposite, rankOf, type Color, type Square } from './t
 
 export type ArenaOp =
   | { type: 'giveCard'; color: Color; cardId: string }
-  | { type: 'dropCard'; cardId: string; color: Color; square: Square; fromHand?: string }
+  | { type: 'dropCard'; cardId: string; color: Color; square: Square; fromHand?: string; target2?: Square }
   | { type: 'spawnPiece'; kind: string; color: Color; square: Square }
   | { type: 'relocate'; from: Square; to: Square }
   | { type: 'removePiece'; square: Square }
@@ -103,7 +103,7 @@ function tickOppositeSummons(state: GameState, mover: Color): void {
   tickStorms(state, victim);
 }
 
-function playSandboxCard(state: GameState, cardId: string, color: Color, square: Square, inst: CardInstance): void {
+function playSandboxCard(state: GameState, cardId: string, color: Color, square: Square, inst: CardInstance, target2?: Square): void {
   const card = getCardDef(cardId);
   const occupant = pieceAt(state, square);
   if (card.type === 'summon') {
@@ -114,6 +114,25 @@ function playSandboxCard(state: GameState, cardId: string, color: Color, square:
       return;
     }
     beginSummon(state, card as SummonCardDef, inst, occupant);
+    return;
+  }
+  if (card.effects.some((e) => e.kind === 'swap')) {
+    const other = target2 === undefined ? undefined : pieceAt(state, target2);
+    if (!occupant || !other || occupant.id === other.id) return;
+    state.events.push({ type: 'cardPlayed', color, cardId: card.id, target: square, target2 });
+    applySwap(state, occupant, other);
+    return;
+  }
+  if (card.effects.some((e) => e.kind === 'spawnPawn')) {
+    if (occupant || !emptyBackRankSquares(state, color).includes(square)) return;
+    state.events.push({ type: 'cardPlayed', color, cardId: card.id, target: square });
+    applySpawnPawn(state, color, square);
+    return;
+  }
+  if (card.effects.some((e) => e.kind === 'castlePush')) {
+    if (!occupant || !castlePushSquares(state, color).includes(square)) return;
+    state.events.push({ type: 'cardPlayed', color, cardId: card.id, target: square });
+    applyCastlePush(state, occupant);
     return;
   }
   if (card.target !== 'none' && !occupant) {
@@ -148,7 +167,7 @@ export function applyArenaOp(state: GameState, op: ArenaOp): GameState {
         ? takeHandCard(next, op.color, op.fromHand)
         : { instanceId: `a${next.nextId++}`, cardId: op.cardId };
       if (inst.cardId !== op.cardId) throw new IllegalActionError('That card does not match the hand copy.');
-      playSandboxCard(next, op.cardId, op.color, op.square, inst);
+      playSandboxCard(next, op.cardId, op.color, op.square, inst, op.target2);
       break;
     }
     case 'spawnPiece': {

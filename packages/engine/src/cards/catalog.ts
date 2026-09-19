@@ -343,6 +343,40 @@ export const CATALOG: CardDef[] = [
     text: 'Needs two Rooks and a King. Your Rooks become Regents that move like Kings. Your King becomes a Sovereign that moves like a Queen. You are no longer in check. If both Regents are captured, you lose.',
     effects: [{ kind: 'schism' }],
   },
+  {
+    id: 'transpose',
+    type: 'spell',
+    cost: 150,
+    name: 'Transpose',
+    glyph: '🔀',
+    art: '/art/transpose.png',
+    target: 'anyPiece',
+    allowKing: true,
+    text: 'Swap the positions of two pieces.',
+    effects: [{ kind: 'swap' }],
+  },
+  {
+    id: 'muster',
+    type: 'spell',
+    cost: 150,
+    name: 'Muster',
+    glyph: '♟',
+    art: '/art/muster.png',
+    target: 'none',
+    text: 'Put a Pawn on an empty square of your back rank.',
+    effects: [{ kind: 'spawnPawn' }],
+  },
+  {
+    id: 'fissure',
+    type: 'spell',
+    cost: 150,
+    name: 'Fissure',
+    glyph: '⚔️',
+    art: '/art/fissure.png',
+    target: 'none',
+    text: 'If the opponent has castled, push a pawn next to their King one square forward.',
+    effects: [{ kind: 'castlePush' }],
+  },
 ];
 
 registerCards(CATALOG);
@@ -366,6 +400,7 @@ export const REWARD_CARDS: string[] = [
   'ziglet', 'greedpot', 'thunderhead',
   'thornback_boar', 'frost_owl', 'iron_golem', 'shadow_panther', 'ancient_treant', 'storm_drake',
   'battle_trance', 'leyburst', 'disarray', 'schism',
+  'transpose', 'muster', 'fissure',
 ];
 
 /** The deck every new player starts with: 3 copies of each starter card. */

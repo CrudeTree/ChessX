@@ -80,10 +80,15 @@ export function describeEvents(view: PlayerView, names: Record<'white' | 'black'
         break;
       case 'cardPlayed': {
         const card = getCardDef(e.cardId);
-        const where = e.target !== undefined ? ` on ${squareName(e.target)}` : '';
+        const where = e.target !== undefined && e.target2 !== undefined
+          ? ` on ${squareName(e.target)} and ${squareName(e.target2)}`
+          : e.target !== undefined ? ` on ${squareName(e.target)}` : '';
         lines.push({ text: `${names[e.color]} plays ${card.name}${where}`, color: e.color });
         break;
       }
+      case 'spawned':
+        lines.push({ text: `A ${getPieceDef(e.kind).name} appears on ${squareName(e.square)}.`, color: e.owner, important: true });
+        break;
       case 'summoned':
         lines.push({ text: `${getCardDef(e.cardId).name} rises on ${squareName(e.square)}!`, color: e.color, important: true });
         break;

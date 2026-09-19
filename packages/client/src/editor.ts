@@ -79,6 +79,9 @@ function defaultEffect(kind: Effect['kind']): Effect {
     case 'freeStance':
     case 'scrambleBackRank':
     case 'schism':
+    case 'swap':
+    case 'spawnPawn':
+    case 'castlePush':
       return { kind };
     case 'gainMana':
       return { kind, amount: 60 };
@@ -1220,6 +1223,9 @@ export class BalanceEditor {
       ['gainMana', 'Gain mana'],
       ['scrambleBackRank', "Rearrange the opponent's back rank"],
       ['schism', 'Rooks become Regents, King becomes Sovereign'],
+      ['swap', 'Swap two pieces'],
+      ['spawnPawn', 'Spawn a pawn on your back rank'],
+      ['castlePush', 'Push a pawn next to a castled King'],
     ];
     card.effects.forEach((e, i) => {
       const row = document.createElement('div');

@@ -134,7 +134,7 @@ export type PromotionKind = 'queen' | 'rook' | 'bishop' | 'knight';
 
 export type Action =
   | { type: 'move'; from: Square; to: Square; promotion?: PromotionKind }
-  | { type: 'playCard'; cardInstanceId: string; target?: Square }
+  | { type: 'playCard'; cardInstanceId: string; target?: Square; target2?: Square }
   | { type: 'setStance'; square: Square; stance: Stance }
   /** Use a creature's board ability on `to` (an adjacent piece). */
   | { type: 'useAbility'; from: Square; to: Square; index?: number }
@@ -168,7 +168,8 @@ export type GameEvent =
   | { type: 'kingCaptured'; owner: Color; square: Square }
   | { type: 'promoted'; pieceId: string; square: Square; to: string }
   | { type: 'transformed'; pieceId: string; square: Square; from: string; to: string }
-  | { type: 'cardPlayed'; color: Color; cardId: string; target?: Square }
+  | { type: 'cardPlayed'; color: Color; cardId: string; target?: Square; target2?: Square }
+  | { type: 'spawned'; pieceId: string; square: Square; kind: string; owner: Color }
   | { type: 'summonStarted'; color: Color; cardId: string; square: Square; turns: number }
   | { type: 'summonTick'; square: Square; turnsRemaining: number }
   | { type: 'summoned'; color: Color; cardId: string; pieceId: string; square: Square }
