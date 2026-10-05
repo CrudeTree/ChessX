@@ -77,7 +77,9 @@ describe('challenges', () => {
     const c = social.pendingChallenge(challengeId);
     game.join(bob.id, progression.deckForPlay(bob.id, 1));
     social.resolveChallenge(c.id, 'accepted');
-    expect(game.state).not.toBeNull();
+    expect(game.started).toBe(true);
+    expect(game.rules).toBe(2);
+    expect(game.record?.state.phase).toBe('setup');
     expect(game.isParticipant(bob.id)).toBe(true);
     expect(social.social(bob).incomingChallenges).toHaveLength(0);
     expect(() => social.pendingChallenge(challengeId)).toThrow(SocialError);

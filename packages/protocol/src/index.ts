@@ -1,6 +1,6 @@
-import type { Action, ArenaOp, Balance, Color, GameStatus, Piece, PlayerView } from '@chessx/engine';
+import type { Action, ArenaOp, Balance, Color, GameStatus, Piece, PlayerView, v2 } from '@chessx/engine';
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 /** 3 days per player, ticking only while it is their turn. */
 export const TURN_CLOCK_MS = 3 * 24 * 60 * 60 * 1000;
@@ -165,6 +165,8 @@ export interface Clocks {
 export interface GameSummary {
   id: string;
   code: string;
+  /** Rules version: 1 = the original 8x8 game (kept for games already in progress), 2 = the 6x8 mana/sealing game. */
+  rules: 1 | 2;
   solo: boolean;
   yourColor: Color;
   yourTurn: boolean;
@@ -176,7 +178,10 @@ export interface GameSummary {
   status: GameStatus;
   turn: Color;
   clocks: Clocks;
-  /** Compact board for thumbnails. */
+  /**
+   * Compact board for thumbnails. Square indexes follow the game's own board: rank * 8 + file for
+   * rules 1, rank * 6 + file for rules 2 (where seals appear as pieces of kind `seal`).
+   */
   pieces: Pick<Piece, 'kind' | 'owner' | 'square'>[];
   updatedAt: number;
   createdAt: number;
@@ -226,6 +231,8 @@ export type ClientMessage =
   /** Decline (as the invitee) or cancel (as the challenger). */
   | { type: 'declineChallenge'; challengeId: string }
   | { type: 'action'; action: Action }
+  /** An action in a rules-2 game. Resigning is allowed at any time. */
+  | { type: 'actionV2'; action: v2.Action | { type: 'resign' } }
   | { type: 'chat'; text: string }
   /** Detach this tab from its game (the game persists). */
   | { type: 'leave' };
@@ -239,9 +246,11 @@ export type ServerMessage =
   | { type: 'user'; user: UserInfo }
   | { type: 'games'; games: GameSummary[] }
   /** This tab is now attached to a game. */
-  | { type: 'seated'; gameId: string; code: string; color: Color; room: RoomInfo; solo: boolean; arena?: boolean }
+  | { type: 'seated'; gameId: string; code: string; color: Color; room: RoomInfo; solo: boolean; arena?: boolean; rules: 1 | 2 }
   | { type: 'room'; room: RoomInfo }
   | { type: 'state'; view: PlayerView; clocks: Clocks }
+  /** The same, for a rules-2 game. */
+  | { type: 'stateV2'; view: v2.PlayerView; clocks: Clocks }
   /** One or more chat lines (the full history when opening a game). */
   | { type: 'chat'; messages: ChatMessage[] }
   /** A game you were in just finished and you earned something. */

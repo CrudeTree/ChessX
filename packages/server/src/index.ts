@@ -72,8 +72,8 @@ games.onChanged = (game) => {
 
 // A two-player game reached a result: XP for both, cards where earned, and tell them.
 games.onFinished = (game) => {
-  const status = game.state?.status;
-  if (!status || status.kind === 'playing') return;
+  const status = game.status();
+  if (status.kind === 'playing') return;
   const winner = 'winner' in status ? status.winner : null;
   const checkmate = status.kind === 'checkmate' || status.kind === 'kingCaptured' || status.kind === 'regentsFallen';
   for (const uid of game.participants()) {
@@ -82,9 +82,13 @@ games.onFinished = (game) => {
     for (const t of socketsByUser.get(uid) ?? []) t.send({ type: 'rewards', report });
     const opp = game.participants().find((x) => x !== uid);
     const how = status.kind === 'timeout' ? 'on time' : status.kind === 'resigned' ? 'by resignation' : 'by checkmate';
+    const oppName = opp ? nameOf(opp) : 'your opponent';
     void notifier.push(uid, {
-      title: won ? 'You won!' : 'Game over',
-      body: `${won ? 'You beat' : 'You lost to'} ${opp ? nameOf(opp) : 'your opponent'} ${how}.${report.cards.length ? ' A new card is waiting for you.' : ''}`,
+      title: status.kind === 'stalemate' ? 'Draw' : won ? 'You won!' : 'Game over',
+      body:
+        status.kind === 'stalemate'
+          ? `Your game with ${oppName} ended in stalemate.`
+          : `${won ? 'You beat' : 'You lost to'} ${oppName} ${how}.${report.cards.length ? ' A new card is waiting for you.' : ''}`,
       url: `/?game=${game.id}`,
       tag: `game-${game.id}`,
     });
@@ -429,8 +433,8 @@ function handleMessage(t: SocketTransport, msg: ClientMessage): void {
       return;
     case 'createGame':
     case 'createSolo': {
-      const deck = progression.deckForPlay(t.userId, msg.deckSlot);
-      const game = games.create(t.userId, msg.type !== 'createGame', deck);
+      // New games use the v2 rules and the starter deck; the chosen deck slot only mattered to the original rules.
+      const game = games.create(t.userId, msg.type !== 'createGame', []);
       open(t, game);
       console.log(`[game ${game.row.code}] ${msg.type === 'createSolo' ? 'practice' : 'created'} by ${t.userId}`);
       return;
@@ -448,8 +452,7 @@ function handleMessage(t: SocketTransport, msg: ClientMessage): void {
         open(t, game); // re-opening your own game by code is fine
         return;
       }
-      const deck = progression.deckForPlay(t.userId, msg.deckSlot);
-      game.join(t.userId, deck);
+      game.join(t.userId, game.rules === 2 ? [] : progression.deckForPlay(t.userId, msg.deckSlot));
       open(t, game);
       console.log(`[game ${game.row.code}] ${t.userId} joined`);
       return;
@@ -465,7 +468,7 @@ function handleMessage(t: SocketTransport, msg: ClientMessage): void {
       const game = games.get(msg.gameId);
       if (!game) return t.error('That game is no longer available.');
       if (!game.isParticipant(t.userId)) return t.error('That game is not yours.');
-      if (game.state) return t.error('The game has already started — use Resign instead.');
+      if (game.started) return t.error('The game has already started — use Resign instead.');
       const c = db.pendingChallengeForGame(game.id);
       games.discardUnstarted(game.id);
       if (c) {
@@ -480,6 +483,10 @@ function handleMessage(t: SocketTransport, msg: ClientMessage): void {
     case 'action':
       if (!t.game) return t.error('You are not in a game.');
       t.game.act(t, msg.action);
+      return;
+    case 'actionV2':
+      if (!t.game) return t.error('You are not in a game.');
+      t.game.actV2(t, msg.action);
       return;
     case 'arenaSetup':
       if (!t.game) return t.error('You are not in a game.');
@@ -524,8 +531,7 @@ function handleMessage(t: SocketTransport, msg: ClientMessage): void {
       const me = db.userById(t.userId)!;
       const friend = db.userById(msg.friendId);
       if (!friend || !social.areFriends(me.id, friend.id)) return t.error('You can only challenge friends.');
-      const deck = progression.deckForPlay(me.id, msg.deckSlot);
-      const game = games.create(me.id, false, deck);
+      const game = games.create(me.id, false, []);
       social.createChallenge(me.id, friend.id, game.id);
       open(t, game);
       pushSocial(me.id, friend.id);
@@ -539,13 +545,12 @@ function handleMessage(t: SocketTransport, msg: ClientMessage): void {
       const c = social.pendingChallenge(msg.challengeId);
       if (c.to_user !== t.userId) return t.error('That challenge is not for you.');
       const game = games.get(c.game_id);
-      if (!game || game.state) {
+      if (!game || game.started) {
         social.resolveChallenge(c.id, 'declined');
         pushSocial(t.userId, c.from_user);
         return t.error('That game is no longer available.');
       }
-      const deck = progression.deckForPlay(t.userId, msg.deckSlot);
-      game.join(t.userId, deck);
+      game.join(t.userId, game.rules === 2 ? [] : progression.deckForPlay(t.userId, msg.deckSlot));
       social.resolveChallenge(c.id, 'accepted');
       open(t, game);
       pushSocial(t.userId, c.from_user);

@@ -12,7 +12,7 @@ const { DatabaseSync } = process.getBuiltinModule('node:sqlite') as typeof impor
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { ChatMessage } from '@chessx/protocol';
-import { pruneUnknownCards, upgradeState, type Color, type GameState } from '@chessx/engine';
+import { pruneUnknownCards, upgradeState, type Color, type GameState, type v2 } from '@chessx/engine';
 
 export interface UserRow {
   id: string;
@@ -67,9 +67,11 @@ export interface GameRow {
   id: string;
   code: string;
   solo: number;
+  /** 1 = original 8x8 rules (games saved before v2), 2 = v2 rules. Fixed for the life of a game. */
+  rules_version: number;
   white_user_id: string | null;
   black_user_id: string | null;
-  /** Serialised engine GameState, null until both seats are filled. */
+  /** Serialised engine state (a v1 GameState or a v2 GameRecord, per `rules_version`), null until both seats are filled. */
   state_json: string | null;
   status_kind: string;
   turn: Color;
@@ -186,6 +188,8 @@ export class Db {
     this.addColumn('games', 'white_deck_json', 'TEXT');
     this.addColumn('games', 'black_deck_json', 'TEXT');
     this.addColumn('games', 'rewarded', 'INTEGER NOT NULL DEFAULT 0');
+    // Every game saved before the v2 rules existed keeps playing under the original rules.
+    this.addColumn('games', 'rules_version', 'INTEGER NOT NULL DEFAULT 1');
     this.addColumn('users', 'friend_code', 'TEXT');
     this.addColumn('users', 'last_seen_at', 'INTEGER');
     this.db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_friend_code ON users(friend_code)');
@@ -484,13 +488,13 @@ export class Db {
       .prepare(
         `INSERT INTO games (id, code, solo, white_user_id, black_user_id, state_json, status_kind, turn,
            clock_white_ms, clock_black_ms, turn_started_at, chat_json, white_deck_json, black_deck_json, rewarded,
-           created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           created_at, updated_at, rules_version)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         g.id, g.code, g.solo, g.white_user_id, g.black_user_id, g.state_json, g.status_kind, g.turn,
         g.clock_white_ms, g.clock_black_ms, g.turn_started_at, g.chat_json, g.white_deck_json, g.black_deck_json, g.rewarded,
-        g.created_at, g.updated_at,
+        g.created_at, g.updated_at, g.rules_version,
       );
   }
 
@@ -536,9 +540,14 @@ export class Db {
 // Helpers for the JSON columns.
 /** Games saved before newer fields (e.g. mana) existed are upgraded on load; cards the admin has since deleted are dropped. */
 export const parseState = (row: GameRow): GameState | null => {
-  if (!row.state_json) return null;
+  if (!row.state_json || row.rules_version === 2) return null;
   const state = upgradeState(JSON.parse(row.state_json) as GameState);
   pruneUnknownCards(state);
   return state;
+};
+/** A v2 game's saved state, or null for a v1 game / a game that has not started. */
+export const parseRecord = (row: GameRow): v2.GameRecord | null => {
+  if (!row.state_json || row.rules_version !== 2) return null;
+  return JSON.parse(row.state_json) as v2.GameRecord;
 };
 export const parseChat = (row: GameRow): ChatMessage[] => JSON.parse(row.chat_json) as ChatMessage[];

@@ -13,15 +13,17 @@ import {
   pruneUnknownCards,
   rebasePieces,
   starterDeck,
+  v2,
   viewFor,
   type Action,
   type ArenaOp,
   type Color,
   type GameState,
+  type GameStatus,
 } from '@chessx/engine';
 import { TURN_CLOCK_MS, type ChatMessage, type Clocks, type GameSummary, type RoomInfo, type ServerMessage } from '@chessx/protocol';
 import { randomBytes } from 'node:crypto';
-import { newId, parseChat, parseState, type Db, type GameRow } from './db.js';
+import { newId, parseChat, parseRecord, parseState, type Db, type GameRow } from './db.js';
 
 export interface Transport {
   readonly userId: string;
@@ -34,6 +36,12 @@ const CHAT_MAX_LEN = 240;
 const CHAT_MIN_INTERVAL_MS = 400;
 
 export class GameError extends Error {}
+
+/** A fresh rules-2 game. Every game uses the starter deck for now: v2 deck building waits for the real cards. */
+function newRecord(): v2.GameRecord {
+  const seed = randomBytes(4).readInt32LE();
+  return { state: v2.newGame({ seed, decks: { white: v2.starterDeck(), black: v2.starterDeck() } }), seq: 1, events: [] };
+}
 
 function randomCode(len = 5): string {
   const bytes = randomBytes(len);
@@ -50,7 +58,10 @@ const TURN_GRACE_BASE_MS = 1000;
 const TURN_GRACE_MAX_MS = 15_000;
 
 export class LiveGame {
+  /** State of a rules-1 game (the original 8x8 rules). Null for rules-2 games and before a game starts. */
   state: GameState | null;
+  /** State of a rules-2 game. Null for rules-1 games and before a game starts. */
+  record: v2.GameRecord | null;
   chat: ChatMessage[];
   private watchers = new Set<Transport>();
   private lastChatAt = new Map<string, number>();
@@ -76,7 +87,28 @@ export class LiveGame {
     private userName: (id: string) => string,
   ) {
     this.state = parseState(row);
+    this.record = parseRecord(row);
     this.chat = parseChat(row);
+  }
+
+  /** Which rules this game is played under. Fixed when the game is created. */
+  get rules(): 1 | 2 {
+    return this.row.rules_version === 2 ? 2 : 1;
+  }
+
+  /** Both seats are filled and the game has begun. */
+  get started(): boolean {
+    return !!(this.state || this.record);
+  }
+
+  /** The side to move (the side deploying, during v2 setup). */
+  private turnColor(): Color {
+    return this.record?.state.active ?? this.state?.turn ?? 'white';
+  }
+
+  /** Where the game stands, under either set of rules. */
+  status(): GameStatus {
+    return this.record?.state.status ?? this.state?.status ?? { kind: 'playing' };
   }
 
   participants(): string[] {
@@ -105,7 +137,7 @@ export class LiveGame {
 
   /** Which colour this user plays. In a practice game, whichever side is to move. */
   colorOf(userId: string): Color | null {
-    if (this.solo) return this.isParticipant(userId) ? (this.state?.turn ?? 'white') : null;
+    if (this.solo) return this.isParticipant(userId) ? this.turnColor() : null;
     if (this.row.white_user_id === userId) return 'white';
     if (this.row.black_user_id === userId) return 'black';
     return null;
@@ -122,12 +154,12 @@ export class LiveGame {
 
   /** Clocks only run in a started, unfinished, two-player game. */
   private clockRunning(): boolean {
-    return !!this.state && this.state.status.kind === 'playing' && !this.solo && this.row.turn_started_at !== null;
+    return this.started && this.status().kind === 'playing' && !this.solo && this.row.turn_started_at !== null;
   }
 
   clocks(now = Date.now()): Clocks {
     const running = this.clockRunning();
-    const turn = this.state?.turn ?? 'white';
+    const turn = this.turnColor();
     const elapsed = running ? Math.max(0, now - this.row.turn_started_at!) : 0;
     return {
       white: this.row.clock_white_ms - (turn === 'white' ? elapsed : 0),
@@ -144,9 +176,9 @@ export class LiveGame {
    * for the opponent to watch the replay of what just happened.
    */
   private settleClock(now: number, graceMs = 0): void {
-    if (!this.clockRunning() || !this.state) return;
+    if (!this.clockRunning()) return;
     const elapsed = Math.max(0, now - this.row.turn_started_at!);
-    if (this.state.turn === 'white') this.row.clock_white_ms -= elapsed;
+    if (this.turnColor() === 'white') this.row.clock_white_ms -= elapsed;
     else this.row.clock_black_ms -= elapsed;
     this.row.turn_started_at = now + graceMs;
   }
@@ -157,16 +189,22 @@ export class LiveGame {
 
   /** If the side to move has run out of time, end the game. Returns true if it did. */
   checkTimeout(now = Date.now()): boolean {
-    if (!this.clockRunning() || !this.state) return false;
+    if (!this.clockRunning()) return false;
+    const mover = this.turnColor();
     const c = this.clocks(now);
-    const remaining = c[this.state.turn];
+    const remaining = c[mover];
     if (remaining > 0) return false;
     this.settleClock(now);
-    if (this.state.turn === 'white') this.row.clock_white_ms = 0;
+    if (mover === 'white') this.row.clock_white_ms = 0;
     else this.row.clock_black_ms = 0;
-    this.state.status = { kind: 'timeout', winner: opposite(this.state.turn) };
-    this.state.events = [{ type: 'gameOver', status: this.state.status }];
-    this.state.seq++;
+    const status: GameStatus = { kind: 'timeout', winner: opposite(mover) };
+    if (this.record) {
+      this.record = { state: { ...this.record.state, status }, seq: this.record.seq + 1, events: [{ type: 'gameOver', status }] };
+    } else if (this.state) {
+      this.state.status = status;
+      this.state.events = [{ type: 'gameOver', status }];
+      this.state.seq++;
+    }
     this.save(now);
     this.broadcastState();
     this.finished();
@@ -175,7 +213,7 @@ export class LiveGame {
 
   /** Called whenever the status leaves 'playing'. Rewards are granted exactly once per game. */
   private finished(): void {
-    if (this.solo || this.row.rewarded || !this.state || this.state.status.kind === 'playing') return;
+    if (this.solo || this.row.rewarded || !this.started || this.status().kind === 'playing') return;
     this.row.rewarded = 1;
     this.save(Date.now(), false);
     this.onFinished(this);
@@ -185,7 +223,7 @@ export class LiveGame {
 
   /** Second player takes the open seat with their deck; the game starts. */
   join(userId: string, deck: string[]): Color {
-    if (this.state) throw new GameError('That game already has two players.');
+    if (this.started) throw new GameError('That game already has two players.');
     if (this.isParticipant(userId)) throw new GameError("That's your own game — send the code to a friend.");
     const color: Color = this.row.white_user_id ? 'black' : 'white';
     if (color === 'white') {
@@ -200,9 +238,13 @@ export class LiveGame {
   }
 
   private start(): void {
-    const white = this.row.white_deck_json ? (JSON.parse(this.row.white_deck_json) as string[]) : starterDeck();
-    const black = this.row.black_deck_json ? (JSON.parse(this.row.black_deck_json) as string[]) : starterDeck();
-    this.state = createGame({ decks: { white, black } });
+    if (this.rules === 2) {
+      this.record = newRecord();
+    } else {
+      const white = this.row.white_deck_json ? (JSON.parse(this.row.white_deck_json) as string[]) : starterDeck();
+      const black = this.row.black_deck_json ? (JSON.parse(this.row.black_deck_json) as string[]) : starterDeck();
+      this.state = createGame({ decks: { white, black } });
+    }
     this.row.turn_started_at = Date.now();
     this.save();
     this.broadcastRoom();
@@ -225,7 +267,7 @@ export class LiveGame {
     this.watchers.add(t);
     this.checkTimeout();
     const color = this.colorOf(t.userId)!;
-    t.send({ type: 'seated', gameId: this.id, code: this.row.code, color: this.seatOf(t.userId) ?? color, room: this.info(), solo: this.solo, arena: this.arena });
+    t.send({ type: 'seated', gameId: this.id, code: this.row.code, color: this.seatOf(t.userId) ?? color, room: this.info(), solo: this.solo, arena: this.arena, rules: this.rules });
     this.broadcastRoom();
     this.sendState(t);
     t.send({ type: 'chat', messages: this.chat });
@@ -239,7 +281,54 @@ export class LiveGame {
 
   // ---------------------------------------------------------------- actions
 
+  /** An action in a rules-2 game (or a resignation, which is always allowed). */
+  actV2(t: Transport, action: v2.Action | { type: 'resign' }): void {
+    const record = this.record;
+    if (!record) throw new GameError(this.rules === 2 ? 'Waiting for an opponent to join.' : 'That game is played under the original rules.');
+    if (this.checkTimeout()) return;
+    const color = this.colorOf(t.userId);
+    if (!color) throw new GameError('You are not a player in this game.');
+    const now = Date.now();
+    const current = this.record!;
+
+    if (action.type === 'resign') {
+      if (current.state.status.kind !== 'playing') return;
+      this.settleClock(now);
+      const status: GameStatus = { kind: 'resigned', winner: opposite(this.solo ? current.state.active : color) };
+      this.record = { state: { ...current.state, status }, seq: current.seq + 1, events: [{ type: 'gameOver', status }] };
+      this.save(now);
+      this.broadcastState();
+      this.finished();
+      return;
+    }
+
+    if (current.state.status.kind !== 'playing') throw new GameError('The game is over.');
+    if (current.state.active !== color) throw new GameError('It is not your turn.');
+    const before = current.state.active;
+    let result: v2.ApplyResult;
+    try {
+      result = v2.applyLegalAction(current.state, action);
+    } catch {
+      throw new GameError('That is not a legal action.');
+    }
+    const next = result.state;
+    if (action.type === 'spell') this.cardsThisTurn++;
+    if (next.active !== before || next.status.kind !== 'playing') {
+      this.settleClock(now, next.active !== before ? this.replayGrace() : 0);
+      this.cardsThisTurn = 0;
+    }
+    this.record = { state: next, seq: current.seq + 1, events: result.events };
+    this.save(now);
+    this.broadcastState();
+    this.finished();
+    if (!this.solo && next.status.kind === 'playing' && next.active !== before) {
+      const nextUser = next.active === 'white' ? this.row.white_user_id : this.row.black_user_id;
+      if (nextUser) this.onYourTurn(this, nextUser);
+    }
+  }
+
   act(t: Transport, action: Action): void {
+    if (this.rules === 2) throw new GameError('That game is played under the new rules.');
     if (!this.state) throw new GameError('Waiting for an opponent to join.');
     if (this.checkTimeout()) return;
     const color = this.colorOf(t.userId);
@@ -322,22 +411,30 @@ export class LiveGame {
   summaryFor(userId: string, now = Date.now()): GameSummary {
     const seat = this.seatOf(userId) ?? 'white';
     const oppId = seat === 'white' ? this.row.black_user_id : this.row.white_user_id;
-    const status = this.state?.status ?? { kind: 'playing' as const };
-    const turn = this.state?.turn ?? 'white';
-    const invite = this.state ? undefined : this.db.pendingChallengeForGame(this.id);
+    const status = this.status();
+    const turn = this.turnColor();
+    const invite = this.started ? undefined : this.db.pendingChallengeForGame(this.id);
     return {
       id: this.id,
       code: this.row.code,
+      rules: this.rules,
       solo: this.solo,
       yourColor: seat,
-      yourTurn: !!this.state && status.kind === 'playing' && (this.solo || turn === seat),
+      yourTurn: this.started && status.kind === 'playing' && (this.solo || turn === seat),
       opponentName: this.solo ? null : oppId ? this.userName(oppId) : null,
-      waitingForOpponent: !this.state,
+      waitingForOpponent: !this.started,
       invitedName: invite ? this.userName(invite.to_user) : null,
       status,
       turn,
       clocks: this.clocks(now),
-      pieces: this.state ? Object.values(this.state.pieces).map((p) => ({ kind: p.kind, owner: p.owner, square: p.square })) : [],
+      pieces: this.record
+        ? [
+            ...this.record.state.pieces.map((p) => ({ kind: p.def.kind, owner: p.owner, square: p.square })),
+            ...this.record.state.seals.map((s) => ({ kind: 'seal', owner: s.owner, square: s.square })),
+          ]
+        : this.state
+          ? Object.values(this.state.pieces).map((p) => ({ kind: p.kind, owner: p.owner, square: p.square }))
+          : [],
       updatedAt: this.row.updated_at,
       createdAt: this.row.created_at,
     };
@@ -346,9 +443,9 @@ export class LiveGame {
   // -------------------------------------------------------------- internals
 
   private save(now = Date.now(), notify = true): void {
-    this.row.state_json = this.state ? JSON.stringify(this.state) : null;
-    this.row.status_kind = this.state ? this.state.status.kind : 'waiting';
-    this.row.turn = this.state?.turn ?? 'white';
+    this.row.state_json = this.record ? JSON.stringify(this.record) : this.state ? JSON.stringify(this.state) : null;
+    this.row.status_kind = this.started ? this.status().kind : 'waiting';
+    this.row.turn = this.turnColor();
     this.row.chat_json = JSON.stringify(this.chat);
     this.row.updated_at = now;
     // Practice games live in memory only: nothing is written and the home page is not told.
@@ -383,6 +480,12 @@ export class LiveGame {
   }
 
   private sendState(t: Transport): void {
+    if (this.record) {
+      // Practice follows the side to move (the view's own hotseat mode); otherwise your seat.
+      const seat = this.seatOf(t.userId) ?? 'white';
+      t.send({ type: 'stateV2', view: v2.viewFor(this.record, seat, { hotseat: this.solo }), clocks: this.clocks() });
+      return;
+    }
     if (!this.state) return;
     // Practice follows the side to move; arena stays white-at-bottom; otherwise your seat.
     const color = this.arena ? 'white' : this.solo ? this.state.turn : this.seatOf(t.userId)!;
@@ -446,9 +549,13 @@ export class GameManager {
     const now = Date.now();
     const creatorIsWhite = solo || Math.random() < 0.5;
     const deckJson = JSON.stringify(deck);
+    // Everything new is played under the v2 rules; only the testing arena (a card sandbox for the
+    // original cards) and games already in the database use the original ones.
+    const rules = opts?.arena ? 1 : 2;
     const row: GameRow = {
       id: newId(),
       code,
+      rules_version: rules,
       solo: solo ? 1 : 0,
       white_user_id: solo || creatorIsWhite ? userId : null,
       black_user_id: solo || !creatorIsWhite ? userId : null,
@@ -470,9 +577,8 @@ export class GameManager {
       // never saved, never listed, no rewards, gone when the player leaves.
       const game = this.track(new LiveGame(row, this.db, this.userName));
       game.arena = !!opts?.arena;
-      game.state = game.arena
-        ? createArenaGame()
-        : createGame({ decks: { white: deck, black: deck.slice() } });
+      if (game.arena) game.state = createArenaGame();
+      else game.record = newRecord();
       row.turn_started_at = now;
       row.status_kind = 'playing';
       return game;
@@ -522,7 +628,7 @@ export class GameManager {
   /** Remove a game nobody has started playing (declined/cancelled challenge). Anyone viewing it is sent home. */
   discardUnstarted(gameId: string): void {
     const g = this.get(gameId);
-    if (!g || g.state) return;
+    if (!g || g.started) return;
     for (const t of g.watchersList()) {
       g.detach(t);
       t.send({ type: 'left' });
