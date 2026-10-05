@@ -165,7 +165,7 @@ export interface Clocks {
 export interface GameSummary {
   id: string;
   code: string;
-  /** Rules version: 1 = the original 8x8 game (kept for games already in progress), 2 = the 6x8 mana/sealing game. */
+  /** Rules version: 1 = the original 8x8 game (kept for games already in progress), 2 = the mana/sealing game (also 8x8, but with its own square numbering and rules). */
   rules: 1 | 2;
   solo: boolean;
   yourColor: Color;

@@ -1,15 +1,15 @@
-// ChessX v2 rules: 6x8 board, Kings only at the start, mana-based summoning and sealing.
+// ChessX v2 rules: 8x8 board, Kings only at the start, mana-based summoning and sealing.
 // Ported from the standalone `chessx-rules/` reference engine. Everything here is namespaced
 // under `v2` when imported from `@chessx/engine`, so the original (v1) engine is untouched.
 
 export type Color = 'white' | 'black';
 export const opposite = (c: Color): Color => (c === 'white' ? 'black' : 'white');
 
-export const FILES = 6;
+export const FILES = 8;
 export const RANKS = 8;
-export const FILE_NAMES = 'abcdef';
+export const FILE_NAMES = 'abcdefgh';
 
-/** Square index = rank * FILES + file. a1 = 0, f1 = 5, a8 = 42, f8 = 47. */
+/** Square index = rank * FILES + file. a1 = 0, h1 = 7, a8 = 56, h8 = 63. */
 export type Square = number;
 export const sq = (file: number, rank: number): Square => rank * FILES + file;
 export const fileOf = (s: Square): number => s % FILES;

@@ -1,4 +1,4 @@
-// The rules-2 game screen: a plain-DOM board (6x8), your hand, mana, seals, and the turn controls.
+// The rules-2 game screen: a plain-DOM board (8x8), your hand, mana, seals, and the turn controls.
 // The original (rules 1) game keeps its own Pixi renderer in ../game/GameView.ts.
 
 import { v2 } from '@chessx/engine';

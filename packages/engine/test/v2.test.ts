@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  FILES,
   KING,
   STARTER_CATALOG,
   applyLegalAction,
@@ -65,14 +66,16 @@ function find(state: GameState, predicate: (a: Action) => boolean): Action {
 }
 
 describe('setup', () => {
-  it('uses a 6x8 board with Kings on d1 and d8, 7 cards each, and 2 mana', () => {
+  it('uses an 8x8 board with Kings on d1 and d8, 7 cards each, and 2 mana', () => {
     const state = game();
     expect(state.pieces.map((p) => p.square).sort()).toEqual([S('d1'), S('d8')].sort());
     expect(state.pieces.every((p) => p.def === KING)).toBe(true);
     expect(state.hand.white).toHaveLength(7);
     expect(state.hand.black).toHaveLength(7);
     expect(state.mana).toEqual({ white: 2, black: 2 });
-    expect(() => S('g1')).toThrow();
+    expect(FILES).toBe(8);
+    expect(S('h8')).toBe(63);
+    expect(() => S('i1')).toThrow();
     expect(() => S('a9')).toThrow();
   });
 
@@ -107,7 +110,8 @@ describe('setup', () => {
     const deploys = legalActions(state).filter((a) => a.type === 'deploy');
     expect(deploys.every((a) => a.type === 'deploy' && a.cardUid === initiate)).toBe(true);
     expect(deploys.some((a) => a.type === 'deploy' && a.cardUid === tower)).toBe(false);
-    expect(deploys.every((a) => a.type === 'deploy' && a.to < 6)).toBe(true);
+    expect(deploys.every((a) => a.type === 'deploy' && a.to < FILES)).toBe(true);
+    expect(deploys).toHaveLength(FILES - 1);
     expect(deploys.some((a) => a.type === 'deploy' && a.to === S('d1'))).toBe(false);
   });
 
@@ -153,7 +157,7 @@ describe('summoning', () => {
     const hopper = give(state, 'white', 'hopper');
     const tower = give(state, 'white', 'tower');
     const summons = legalActions(state).filter((a) => a.type === 'summon');
-    expect(summons.every((a) => a.type === 'summon' && a.cardUid === hopper && a.to < 6 && a.to !== S('d1'))).toBe(true);
+    expect(summons.every((a) => a.type === 'summon' && a.cardUid === hopper && a.to < FILES && a.to !== S('d1'))).toBe(true);
     expect(summons.some((a) => a.type === 'summon' && a.cardUid === tower)).toBe(false);
     const next = act(state, summons[0]!);
     expect(next.mana.white).toBe(0);

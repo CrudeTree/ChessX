@@ -57,7 +57,7 @@ export function drawThumbnail(canvas: HTMLCanvasElement, game: GameSummary, size
   }
 }
 
-/** The 6x8 board, centred in the same square canvas so the home page cards line up. */
+/** The 8x8 board, centred in the same square canvas so the home page cards line up. */
 function drawV2(ctx: CanvasRenderingContext2D, game: GameSummary, size: number): void {
   const sq = size / v2.RANKS;
   const x0 = (size - sq * v2.FILES) / 2;

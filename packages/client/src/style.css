@@ -3228,7 +3228,7 @@ button,
 }
 
 .g2-player {
-  width: min(100%, calc((100vh - 420px) * 0.75 + 4px));
+  width: min(100%, calc(max(300px, 100vh - 420px) + 6px));
   min-width: 300px;
   display: flex;
   flex-wrap: wrap;
@@ -3303,13 +3303,13 @@ button,
   font-weight: 700;
 }
 
-/* The board: 6 files x 8 ranks. */
+/* The board: 8 files x 8 ranks. */
 .g2-board {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(8, 1fr);
   grid-template-rows: repeat(8, 1fr);
   height: max(300px, calc(100vh - 420px));
-  aspect-ratio: 6 / 8;
+  aspect-ratio: 1 / 1;
   max-width: 100%;
   border: 3px solid #2b2420;
   border-radius: 6px;

@@ -62,7 +62,7 @@ let you: Color | null = null;
 let room: RoomInfo | null = null;
 let solo = false;
 let arena = false;
-/** Rules of the open game: 1 = the original 8x8 game (Pixi board), 2 = the 6x8 mana/sealing game. */
+/** Rules of the open game: 1 = the original 8x8 game (Pixi board), 2 = the mana/sealing game (also 8x8). */
 let rules: 1 | 2 = 1;
 let currentGameId: string | null = null;
 let currentView: PlayerView | null = null;
@@ -634,7 +634,7 @@ function resignOrCancel(): void {
   else net.send({ type: 'action', action: { type: 'resign' } });
 }
 
-// The v2-rules game screen (6x8 board, hand, mana, seals). Rules-1 games use the Pixi board above.
+// The v2-rules game screen (8x8 board, hand, mana, seals). Rules-1 games use the Pixi board above.
 const screen2 = new GameScreen(game2Screen, {
   act: (action) => net.send({ type: 'actionV2', action }),
   resign: () => resignOrCancel(),
