@@ -23,6 +23,7 @@ import { InspectPanel } from './inspect.js';
 import { describeEvents } from './log.js';
 import { ApiError, authApi, balanceApi, Net, openGameId, profileApi, rememberOpenGame } from './net.js';
 import { colorName, drawThumbnail } from './thumbnail.js';
+import { GameScreen } from './v2/GameScreen.js';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -32,17 +33,22 @@ const homeScreen = $('home');
 const binderScreen = $('binder');
 const editorScreen = $('editor');
 const gameScreen = $('game');
+const game2Screen = $('game2');
 const chatEl = $('chat');
 
-type Screen = 'auth' | 'home' | 'binder' | 'editor' | 'game';
+type Screen = 'auth' | 'home' | 'binder' | 'editor' | 'game' | 'game2';
 function show(screen: Screen): void {
   authScreen.classList.toggle('hidden', screen !== 'auth');
   homeScreen.classList.toggle('hidden', screen !== 'home');
   binderScreen.classList.toggle('hidden', screen !== 'binder');
   editorScreen.classList.toggle('hidden', screen !== 'editor');
   gameScreen.classList.toggle('hidden', screen !== 'game');
-  chatEl.classList.toggle('hidden', screen !== 'game' || arena);
+  game2Screen.classList.toggle('hidden', screen !== 'game2');
+  chatEl.classList.toggle('hidden', (screen !== 'game' && screen !== 'game2') || arena);
 }
+
+/** True while a game or its screen is up, whichever rules it uses. */
+const inGameScreen = (): boolean => !gameScreen.classList.contains('hidden') || !game2Screen.classList.contains('hidden');
 
 // ---------------------------------------------------------------------------
 // State
@@ -56,6 +62,8 @@ let you: Color | null = null;
 let room: RoomInfo | null = null;
 let solo = false;
 let arena = false;
+/** Rules of the open game: 1 = the original 8x8 game (Pixi board), 2 = the 6x8 mana/sealing game. */
+let rules: 1 | 2 = 1;
 let currentGameId: string | null = null;
 let currentView: PlayerView | null = null;
 let currentClocks: Clocks | null = null;
@@ -258,13 +266,13 @@ function setProfile(p: Profile): void {
   deckSelect.value = [...deckSelect.options].some((o) => o.value === prev && !o.disabled) ? prev : String(firstOk?.slot ?? 1);
 }
 
-function chosenDeckSlot(): number | null {
+/**
+ * New games use the v2 rules, which play the starter deck for now, so any slot will do (the server
+ * ignores it). The picker stays wired up for games under the original rules.
+ */
+function chosenDeckSlot(): number {
   const opt = deckSelect.selectedOptions[0];
-  if (!opt || opt.disabled) {
-    homeError.textContent = 'Pick a deck with at least 25 cards first (build one in the Binder).';
-    return null;
-  }
-  return Number(opt.value);
+  return opt && !opt.disabled ? Number(opt.value) : 1;
 }
 
 const binder = new Binder(() => goBack());
@@ -433,12 +441,10 @@ $('logout').onclick = async () => {
 const homeError = $('home-error');
 
 $('new-game').onclick = () => {
-  const deckSlot = chosenDeckSlot();
-  if (deckSlot !== null) net.send({ type: 'createGame', deckSlot });
+  net.send({ type: 'createGame', deckSlot: chosenDeckSlot() });
 };
 $('practice').onclick = () => {
-  const deckSlot = chosenDeckSlot();
-  if (deckSlot !== null) net.send({ type: 'createSolo', deckSlot });
+  net.send({ type: 'createSolo', deckSlot: chosenDeckSlot() });
 };
 $('arena-start').onclick = () => {
   net.send({ type: 'createArena' });
@@ -450,10 +456,8 @@ $<HTMLFormElement>('join-form').onsubmit = (e) => {
     homeError.textContent = 'Enter the 5-letter invite code.';
     return;
   }
-  const deckSlot = chosenDeckSlot();
-  if (deckSlot === null) return;
   homeError.textContent = '';
-  net.send({ type: 'joinGame', code, deckSlot });
+  net.send({ type: 'joinGame', code, deckSlot: chosenDeckSlot() });
   $<HTMLInputElement>('join-code').value = '';
 };
 
@@ -616,15 +620,33 @@ const trackMove = $('track-move');
 
 endTurnBtn.onclick = () => net.send({ type: 'action', action: { type: 'endTurn' } });
 
-$('resign').onclick = () => {
+$('resign').onclick = () => resignOrCancel();
+
+function resignOrCancel(): void {
   const { opp } = panelColors();
   if (room && currentGameId && !solo && !room.players[opp]) {
     // Nobody has joined: withdraw the invite instead of resigning. The server sends us home.
     cancelInvite({ id: currentGameId, invitedName: games.find((g) => g.id === currentGameId)?.invitedName });
     return;
   }
-  if (confirm('Resign this game?')) net.send({ type: 'action', action: { type: 'resign' } });
-};
+  if (!confirm('Resign this game?')) return;
+  if (rules === 2) net.send({ type: 'actionV2', action: { type: 'resign' } });
+  else net.send({ type: 'action', action: { type: 'resign' } });
+}
+
+// The v2-rules game screen (6x8 board, hand, mana, seals). Rules-1 games use the Pixi board above.
+const screen2 = new GameScreen(game2Screen, {
+  act: (action) => net.send({ type: 'actionV2', action }),
+  resign: () => resignOrCancel(),
+  leave: () => goBack(),
+  names: () => names(),
+  clock: (color) => {
+    const c = arena || solo ? null : currentClocks;
+    if (!c) return null;
+    const ms = remaining(c, color);
+    return { text: fmtClock(ms), running: c.running && c.turn === color, low: ms < 6 * 3600_000 };
+  },
+});
 
 $('leave').onclick = () => goBack();
 $('m-back').onclick = () => goBack();
@@ -634,6 +656,8 @@ function leaveGameUi(): void {
   room = null;
   solo = false;
   arena = false;
+  rules = 1;
+  screen2.reset();
   gameView.arena = false;
   arenaPalette.setActive(false);
   document.querySelector<HTMLElement>('#mtabs [data-sheet="chat"]')?.classList.remove('hidden');
@@ -649,6 +673,16 @@ function leaveGameUi(): void {
   logEl.innerHTML = '';
   $('chat-log').innerHTML = '';
   if (viewReady) gameView.reset();
+}
+
+/**
+ * The chat box is one element shared by both game screens: park it where the open game's layout wants it.
+ * Rules 1 on desktop keeps it under the card panel (once the board has started); on a phone it floats over the page.
+ */
+function placeChat(forRules: 1 | 2): void {
+  if (forRules === 2) screen2.chatSlot.appendChild(chatEl);
+  else if (!MOBILE && gameInit) $('inspect').appendChild(chatEl);
+  else document.body.insertBefore(chatEl, $('toast'));
 }
 
 function goHome(): void {
@@ -847,6 +881,7 @@ function renderClocks(): void {
   }
 }
 setInterval(() => {
+  if (currentClocks && !game2Screen.classList.contains('hidden')) screen2.tick();
   if (currentClocks && !gameScreen.classList.contains('hidden')) {
     renderClocks();
     renderMobileBar(currentView);
@@ -1145,9 +1180,18 @@ net.onMessage = async (msg: ServerMessage) => {
       room = msg.room;
       solo = msg.solo;
       arena = !!msg.arena;
+      rules = msg.rules;
       currentGameId = msg.gameId;
       rememberOpenGame(msg.gameId);
       if (!applyingRoute) pushRoute({ screen: 'game', id: msg.gameId });
+      placeChat(rules);
+      if (rules === 2) {
+        // New rules: the plain-DOM board. The state follows in a `stateV2` message.
+        screen2.open({ code: msg.code, solo, you: msg.color });
+        screen2.setRoom(msg.room);
+        show('game2');
+        return;
+      }
       gameView.hotseat = solo;
       gameView.arena = arena;
       fillArenaCatalog();
@@ -1166,9 +1210,22 @@ net.onMessage = async (msg: ServerMessage) => {
       return;
     case 'room':
       room = msg.room;
+      if (rules === 2) {
+        screen2.setRoom(msg.room);
+        return;
+      }
       renderRoom();
       renderMobileBar(currentView);
       return;
+    case 'stateV2': {
+      if (rules !== 2) return; // a late message from a game we have already left
+      currentClocks = msg.clocks;
+      screen2.sync(msg.view);
+      const myTurn = screen2.myTurn;
+      if (myTurn && !wasMyTurn && msg.view.seq > 1) attention('Your move');
+      wasMyTurn = myTurn;
+      return;
+    }
     case 'state':
       try {
         await showGame(); // waits for the renderer if it is still starting up
@@ -1184,7 +1241,7 @@ net.onMessage = async (msg: ServerMessage) => {
       return;
     case 'rewards':
       // Let the game-over banner land first, then celebrate.
-      setTimeout(() => showRewards(msg.report), gameScreen.classList.contains('hidden') ? 0 : 1200);
+      setTimeout(() => showRewards(msg.report), inGameScreen() ? 1200 : 0);
       return;
     case 'error': {
       const gameGone = /not yours|No game|no longer available/i.test(msg.message);
@@ -1196,7 +1253,7 @@ net.onMessage = async (msg: ServerMessage) => {
           history.replaceState({ screen: 'home' } satisfies Route, '', '/');
           net.send({ type: 'listGames' });
         }
-      } else if (gameGone && currentGameId && !gameScreen.classList.contains('hidden')) {
+      } else if (gameGone && currentGameId && inGameScreen()) {
         // We were in a game that no longer exists (a practice game after a server restart, a
         // cancelled invite...). Don't leave a dead board on screen: back to the list, with a note.
         const wasPractice = solo;

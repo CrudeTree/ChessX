@@ -62,7 +62,8 @@
       <header class="home-header">
         <h1>Chess<span>X</span></h1>
         <div class="home-actions">
-          <label class="deck-pick">
+          <!-- Decks only apply to games under the original rules; new games use the starter deck for now. -->
+          <label class="deck-pick hidden">
             Deck
             <select id="deck-select"></select>
           </label>
@@ -270,6 +271,9 @@
       </div>
       <div id="sheet-backdrop" class="sheet-backdrop hidden"></div>
     </div>
+
+    <!-- The game, v2 rules: built by src/v2/GameScreen.ts -->
+    <div id="game2" class="screen hidden"></div>
 
     <div id="arena" class="arena hidden">
       <div class="arena-head">

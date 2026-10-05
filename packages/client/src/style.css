@@ -3197,3 +3197,506 @@ button,
     display: none;
   }
 }
+
+
+/* ============================================================ Game, v2 rules */
+#game2 {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 16px;
+  padding: 12px;
+  overflow: auto;
+}
+
+.g2-main {
+  flex: 1;
+  min-width: 0;
+  max-width: 760px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.g2-boardwrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.g2-player {
+  width: min(100%, calc((100vh - 420px) * 0.75 + 4px));
+  min-width: 300px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px 14px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px solid #2f2f44;
+}
+
+.g2-player.turn {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(212, 162, 76, 0.22);
+}
+
+.g2-who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.g2-who .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #555;
+  border: 1px solid #888;
+}
+
+.g2-player.white .dot {
+  background: #f2f2f2;
+}
+
+.g2-player.black .dot {
+  background: #111;
+}
+
+.g2-player.offline .pname::after {
+  content: ' (disconnected)';
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 12px;
+}
+
+.g2-who .clock {
+  margin-left: 6px;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.g2-who .clock.running {
+  color: var(--text);
+}
+
+.g2-who .clock.low {
+  color: var(--danger);
+}
+
+.g2-stats {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.g2-stats .g2-mana {
+  color: var(--mana);
+  font-weight: 700;
+}
+
+/* The board: 6 files x 8 ranks. */
+.g2-board {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  grid-template-rows: repeat(8, 1fr);
+  height: max(300px, calc(100vh - 420px));
+  aspect-ratio: 6 / 8;
+  max-width: 100%;
+  border: 3px solid #2b2420;
+  border-radius: 6px;
+  overflow: hidden;
+  user-select: none;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+.g2-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+  cursor: pointer;
+}
+
+.g2-cell.light {
+  background: #d6c9a8;
+}
+
+.g2-cell.dark {
+  background: #7a5f45;
+}
+
+.g2-cell.last::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 224, 102, 0.32);
+}
+
+.g2-cell.selected {
+  box-shadow: inset 0 0 0 3px var(--accent);
+}
+
+.g2-cell.check {
+  box-shadow: inset 0 0 0 3px var(--danger), inset 0 0 18px rgba(217, 83, 79, 0.8);
+}
+
+.g2-cell.target::after {
+  content: '';
+  position: absolute;
+  width: 28%;
+  height: 28%;
+  border-radius: 50%;
+  background: rgba(79, 201, 120, 0.85);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+}
+
+.g2-cell.target.capture::after {
+  width: 86%;
+  height: 86%;
+  background: transparent;
+  border: 4px solid rgba(217, 83, 79, 0.9);
+  box-shadow: none;
+}
+
+.g2-coord {
+  position: absolute;
+  font-size: 10px;
+  font-weight: 700;
+  opacity: 0.6;
+  pointer-events: none;
+  color: #2b2420;
+}
+
+.g2-cell.dark .g2-coord {
+  color: #e9dfc7;
+}
+
+.g2-coord.rank {
+  top: 2px;
+  left: 3px;
+}
+
+.g2-coord.file {
+  bottom: 1px;
+  right: 3px;
+}
+
+.g2-piece {
+  width: 78%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(18px, 4.2vh, 40px);
+  line-height: 1;
+  font-family: 'Segoe UI Symbol', 'DejaVu Sans', sans-serif;
+  border: 2px solid;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+.g2-piece.white {
+  background: #f7f3ea;
+  color: #2b2420;
+  border-color: #2b2420;
+}
+
+.g2-piece.black {
+  background: #1c1b24;
+  color: #f2eee6;
+  border-color: #d8d2e6;
+}
+
+/* Summoning sickness: cannot capture or give check yet. */
+.g2-piece.sick {
+  opacity: 0.62;
+  border-style: dashed;
+}
+
+.g2-seal {
+  width: 82%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  border: 3px dashed;
+  background: rgba(20, 20, 30, 0.55);
+  pointer-events: none;
+  text-align: center;
+  line-height: 1.05;
+}
+
+.g2-seal.white {
+  border-color: #f7f3ea;
+  color: #f7f3ea;
+}
+
+.g2-seal.black {
+  border-color: #1c1b24;
+  color: #f2eee6;
+  background: rgba(20, 20, 30, 0.85);
+}
+
+.g2-seal-timer {
+  font-size: clamp(13px, 2.8vh, 22px);
+  font-weight: 800;
+}
+
+.g2-seal-name {
+  font-size: clamp(8px, 1.4vh, 11px);
+  max-width: 90%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Hand */
+.g2-hand {
+  width: 100%;
+}
+
+.g2-handlabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.g2-handrow {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 2px 8px;
+  scrollbar-width: thin;
+}
+
+.g2-card {
+  position: relative;
+  flex: 0 0 auto;
+  width: 118px;
+  min-height: 132px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 8px 8px 8px;
+  text-align: left;
+  font-weight: 400;
+  border-radius: 10px;
+  border: 2px solid #3a3a52;
+  background: var(--panel-2);
+  opacity: 0.55;
+}
+
+.g2-card.piece {
+  background: linear-gradient(180deg, #2b2a40, #222234);
+}
+
+.g2-card.spell {
+  background: linear-gradient(180deg, #33264a, #241d36);
+}
+
+.g2-card.playable {
+  opacity: 1;
+  border-color: #6a6a92;
+}
+
+.g2-card.playable:hover {
+  border-color: var(--accent);
+}
+
+.g2-card.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(212, 162, 76, 0.3);
+  transform: translateY(-4px);
+}
+
+.g2-cost {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--mana);
+  color: #06233a;
+  font-weight: 800;
+  font-size: 14px;
+  border: 2px solid #12121a;
+}
+
+.g2-cardname {
+  font-size: 14px;
+  font-weight: 700;
+  padding-right: 14px;
+}
+
+.g2-cardtype {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+
+.g2-cardtext {
+  font-size: 11px;
+  color: #cfcce0;
+  line-height: 1.25;
+}
+
+.g2-cardseal {
+  margin-top: auto;
+  font-size: 10px;
+  color: #b9a5ff;
+}
+
+.g2-actions:empty {
+  display: none;
+}
+
+.g2-choose {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px solid #3a3a52;
+}
+
+.g2-choose button {
+  padding: 7px 12px;
+  font-size: 13px;
+}
+
+.g2-choose button.primary {
+  width: auto;
+}
+
+/* Side column */
+.g2-side {
+  width: 300px;
+  flex: 0 0 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.g2-statusblock {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.g2-end {
+  font-size: 16px;
+  padding: 12px;
+}
+
+.g2-end.ready {
+  animation: g2pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes g2pulse {
+  50% {
+    box-shadow: 0 0 0 4px rgba(212, 162, 76, 0.28);
+  }
+}
+
+.g2-log {
+  flex: 1;
+  min-height: 80px;
+  max-height: 34vh;
+  overflow-y: auto;
+  font-size: 12.5px;
+  line-height: 1.45;
+  scrollbar-width: thin;
+}
+
+.g2-log .entry {
+  padding: 1px 0;
+  color: #cfcce0;
+}
+
+.g2-log .entry.white {
+  border-left: 3px solid #f2f2f2;
+  padding-left: 6px;
+}
+
+.g2-log .entry.black {
+  border-left: 3px solid #555;
+  padding-left: 6px;
+}
+
+.g2-log .entry.important {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* The shared chat box lives in the side column on this screen. */
+.g2-chat-slot #chat {
+  position: static;
+  width: 100%;
+}
+
+@media (max-width: 899px) {
+  #game2 {
+    flex-direction: column;
+    align-items: stretch;
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .g2-main {
+    max-width: none;
+  }
+
+  .g2-board {
+    height: auto;
+    width: min(100%, 440px);
+  }
+
+  .g2-player {
+    width: min(100%, 440px);
+    min-width: 0;
+  }
+
+  .g2-piece {
+    font-size: clamp(16px, 7vw, 34px);
+  }
+
+  .g2-side {
+    width: auto;
+    flex: none;
+    overflow: visible;
+  }
+
+  .g2-log {
+    max-height: 200px;
+  }
+}
