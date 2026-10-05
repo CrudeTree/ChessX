@@ -1,0 +1,38 @@
+# ChessX v2 rules engine
+
+A standalone, pure-TypeScript implementation of the new ChessX foundation rules (see `docs/chessx-rules.md`). It has no UI, no server and no dependencies beyond TypeScript and vitest. It is the reference being ported into the real ChessX `packages/engine`.
+
+```
+cd chessx-rules
+npm install
+npm test          # 20 rule tests
+npm run typecheck
+```
+
+## What is implemented
+
+- 6x8 board (6 files, 8 ranks). Kings start on d1 and d8. Nothing else on the board at the start.
+- Deck, discard, hand of 7, one draw per turn.
+- Mana: starts at 2, +1 at the start of each of your turns, no cap.
+- Setup: players alternate deploying 3 zero-cost pieces on their back row. White deploys first. Setup pieces can act immediately.
+- Each turn: one action (move, summon, or seal) and one spell. No passing.
+- Summon: pay the card's cost, place on your back row. Summoned pieces cannot move or give check until your next turn.
+- Seal: turn one of your own non-King pieces into a seal. The piece is consumed, the action and mana cost are paid, and the seal hatches after the timer printed on the card. A seal blocks lines like any piece and can be captured. Capturing a seal sends the card to its owner's discard and stops the hatch.
+- Pure chess capture: no attack or defense stats, one piece per square.
+- Check, checkmate and stalemate. Seals and sick pieces do not count as pieces that can act.
+- Spells: Draw (Insight) and Dispel (destroy a seal) as starter examples.
+- Deterministic seeded RNG, so games are replayable. State is plain JSON.
+
+API: `newGame`, `legalActions`, `applyLegalAction`, `isInCheck`. See `src/index.ts`.
+
+## Placeholder content
+
+`src/catalog.ts` contains five pieces and two spells with made-up costs and timers. They only exist so the rules can be tested. Real cards should replace them.
+
+## Assumptions to confirm
+
+1. A hatching seal does nothing if its square is held by an enemy piece (per the rulings, no hatching onto an enemy-occupied seal square).
+2. Checkmate or stalemate is evaluated at the start of the player's turn, after the mana and draw.
+3. A turn with no legal main action but a legal spell is still stalemate.
+4. Empty deck: no draw, no penalty.
+5. White's first turn after setup has 3 mana, as it gets the normal +1.
