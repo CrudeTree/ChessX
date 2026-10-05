@@ -5,6 +5,8 @@ alwaysApply: true
 
 # Push and restart after completed work
 
+**Exception: scheduled or automated agents.** If you are running as an automation (for example the ChessX Town builder), or you were told to work on an `agent/*` branch, this rule does NOT apply. Push only your own `agent/*` branch, open a pull request, and stop. Never run `deploy.sh`, never ssh to the droplet, never push to or merge into `main` or the base branch. Only the owner deploys.
+
 When a task is finished (feature, fix, or other code change the user asked for):
 
 1. Commit any uncommitted work if it is not already committed (only the files for that task).
