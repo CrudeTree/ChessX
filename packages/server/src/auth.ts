@@ -19,6 +19,18 @@ export interface AuthConfig {
   google?: { clientId: string; clientSecret: string };
   facebook?: { appId: string; appSecret: string };
   secureCookies: boolean;
+  /**
+   * Optional. When set (e.g. "playchessx.com"), the session cookie is also sent to every
+   * subdomain (town.playchessx.com), so those sites can ask ChessX who you are.
+   * Unset = host-only cookie, exactly as before.
+   */
+  cookieDomain?: string;
+}
+
+/** Accepts "playchessx.com" or ".playchessx.com"; anything that isn't a plain hostname is ignored. */
+export function parseCookieDomain(raw: string | undefined): string | undefined {
+  const d = (raw ?? '').trim().toLowerCase().replace(/^\./, '');
+  return /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(d) ? d : undefined;
 }
 
 export function configFromEnv(env: NodeJS.ProcessEnv): AuthConfig {
@@ -28,6 +40,7 @@ export function configFromEnv(env: NodeJS.ProcessEnv): AuthConfig {
     google: env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET ? { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET } : undefined,
     facebook: env.FACEBOOK_APP_ID && env.FACEBOOK_APP_SECRET ? { appId: env.FACEBOOK_APP_ID, appSecret: env.FACEBOOK_APP_SECRET } : undefined,
     secureCookies: publicUrl.startsWith('https://'),
+    cookieDomain: parseCookieDomain(env.COOKIE_DOMAIN),
   };
 }
 
@@ -72,7 +85,7 @@ export function parseCookies(header: string | undefined): Record<string, string>
   return out;
 }
 
-function setCookie(res: ServerResponse, name: string, value: string, opts: { maxAgeSec: number; secure: boolean }): void {
+function setCookie(res: ServerResponse, name: string, value: string, opts: { maxAgeSec: number; secure: boolean; domain?: string }): void {
   const parts = [
     `${name}=${encodeURIComponent(value)}`,
     'Path=/',
@@ -80,6 +93,7 @@ function setCookie(res: ServerResponse, name: string, value: string, opts: { max
     'SameSite=Lax',
     `Max-Age=${opts.maxAgeSec}`,
   ];
+  if (opts.domain) parts.push(`Domain=${opts.domain}`);
   if (opts.secure) parts.push('Secure');
   const existing = res.getHeader('Set-Cookie');
   const list = Array.isArray(existing) ? existing : existing ? [String(existing)] : [];
@@ -104,13 +118,16 @@ export class Auth {
 
   signIn(res: ServerResponse, user: UserRow): void {
     const token = this.db.createSession(user.id, SESSION_TTL_MS);
-    setCookie(res, SESSION_COOKIE, token, { maxAgeSec: SESSION_TTL_MS / 1000, secure: this.config.secureCookies });
+    setCookie(res, SESSION_COOKIE, token, { maxAgeSec: SESSION_TTL_MS / 1000, secure: this.config.secureCookies, domain: this.config.cookieDomain });
+    // A host-only cookie from before COOKIE_DOMAIN was set would shadow the new one; drop it.
+    if (this.config.cookieDomain) setCookie(res, SESSION_COOKIE, '', { maxAgeSec: 0, secure: this.config.secureCookies });
   }
 
   signOut(req: IncomingMessage, res: ServerResponse): void {
     const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
     if (token) this.db.deleteSession(token);
     setCookie(res, SESSION_COOKIE, '', { maxAgeSec: 0, secure: this.config.secureCookies });
+    if (this.config.cookieDomain) setCookie(res, SESSION_COOKIE, '', { maxAgeSec: 0, secure: this.config.secureCookies, domain: this.config.cookieDomain });
   }
 
   // ----------------------------------------------------------- email/password
