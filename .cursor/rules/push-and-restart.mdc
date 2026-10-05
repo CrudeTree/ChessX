@@ -5,14 +5,15 @@ alwaysApply: true
 
 # Push and restart after completed work
 
-**Exception: scheduled or automated agents.** If you are running as an automation (for example the ChessX Town builder), or you were told to work on an `agent/*` branch, this rule does NOT apply. Push only your own `agent/*` branch, open a pull request, and stop. Never run `deploy.sh`, never ssh to the droplet, never push to or merge into `main` or the base branch. Only the owner deploys.
-
 When a task is finished (feature, fix, or other code change the user asked for):
 
 1. Commit any uncommitted work if it is not already committed (only the files for that task).
-2. Push the current branch to `origin` (`git push -u origin HEAD` if it has no upstream).
+2. Push the current branch to `origin` (`git push -u origin HEAD` if it has no upstream). Town builders working from an approved queue push to `main` after tests pass, so the live site can pick the change up.
 3. Restart production on the DigitalOcean droplet:
    `ssh -i $HOME/.ssh/aibot_do_ed25519 root@159.223.115.153 "/opt/chessx/deploy/deploy.sh"`
+   Cloud builders that cannot ssh still push to `main`; the droplet pulls `main` on its own and rebuilds. If you can ssh, run the deploy script so it does not wait for the next pull.
 4. Report the commit, that the push landed, and that the container is up.
+
+The ChessX Town builder is allowed — and expected — to do this for items the owner approved. Do not wait for the owner to merge or deploy.
 
 Do this without being asked again. Skip only if there is nothing to ship (no code changes).

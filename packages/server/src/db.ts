@@ -67,7 +67,7 @@ export interface GameRow {
   id: string;
   code: string;
   solo: number;
-  /** 1 = original 8x8 rules (games saved before v2), 2 = v2 rules. Fixed for the life of a game. */
+  /** 1 = deprecated original rules (in-progress games and the card-editor arena), 2 = live v2 rules. Fixed for the life of a game. */
   rules_version: number;
   white_user_id: string | null;
   black_user_id: string | null;

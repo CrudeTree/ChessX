@@ -4,6 +4,9 @@
 #   First time:  git clone https://github.com/CrudeTree/ChessX.git /opt/chessx
 #                cp /opt/chessx/deploy/.env.example /opt/chessx/deploy/.env && nano /opt/chessx/deploy/.env
 #   Every time:  /opt/chessx/deploy/deploy.sh
+#
+# The droplet also pulls main on a 10-minute cron and runs this script when HEAD moved,
+# so a push to main by the town builders reaches the live site without a manual restart.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

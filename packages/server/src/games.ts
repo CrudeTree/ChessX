@@ -549,8 +549,8 @@ export class GameManager {
     const now = Date.now();
     const creatorIsWhite = solo || Math.random() < 0.5;
     const deckJson = JSON.stringify(deck);
-    // Everything new is played under the v2 rules; only the testing arena (a card sandbox for the
-    // original cards) and games already in the database use the original ones.
+    // Live play is v2. v1 is deprecated: only the card-editor arena and games already saved
+    // under the original rules still use it.
     const rules = opts?.arena ? 1 : 2;
     const row: GameRow = {
       id: newId(),

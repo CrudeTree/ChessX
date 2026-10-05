@@ -86,7 +86,9 @@ The server is authoritative: the client only ever offers the player actions from
 
 ## Rules as implemented
 
-**Board and pieces.** Standard chess setup. Castling, en passant and promotion (to queen by default) all work. Standard pieces never start with Defense.
+Live play is **v2**: 8x8 board, Kings only at the start, mana, summoning, and sealing. See `chessx-rules/docs/chessx-rules.md`. The original (v1) engine is deprecated and kept only so games already in progress and the card-editor arena still load.
+
+**v1 (deprecated).** Standard chess setup. Castling, en passant and promotion (to queen by default) all work. Standard pieces never start with Defense.
 
 **A turn** is cards and stance changes, then one move that ends the turn:
 

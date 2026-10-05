@@ -1,4 +1,4 @@
-// ChessX v2 rules: 8x8 board, Kings only at the start, mana-based summoning and sealing.
+// ChessX v2 rules (the live game): 8x8 board, Kings only at the start, mana-based summoning and sealing.
 // Ported from the standalone `chessx-rules/` reference engine. Everything here is namespaced
 // under `v2` when imported from `@chessx/engine`, so the original (v1) engine is untouched.
 
