@@ -38,6 +38,19 @@ export const glyphFor = (kind: string, name: string): string => GLYPHS[kind] ?? 
 
 type Mode = 'deploy' | 'summon' | 'seal' | 'spell';
 
+/** A card being dragged from the hand. `ghost` is null until the pointer has moved past the threshold. */
+interface CardDrag {
+  uid: string;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  ghost: HTMLElement | null;
+  hover: v2.Square | null;
+}
+
+/** Pixels the pointer must travel before a press on a card becomes a drag rather than a click. */
+const DRAG_THRESHOLD = 6;
+
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''): HTMLElementTagNameMap[K] => {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -56,6 +69,8 @@ export class GameScreen {
   private selectedSquare: v2.Square | null = null;
   private selectedCard: string | null = null;
   private mode: Mode | null = null;
+  private drag: CardDrag | null = null;
+  private suppressClick = false;
 
   private readonly memory: PieceMemory = new Map();
   private lastSeq = -1;
@@ -125,6 +140,7 @@ export class GameScreen {
   }
 
   reset(): void {
+    this.cancelDrag();
     this.view = null;
     this.room = null;
     this.selectedSquare = null;
@@ -154,7 +170,10 @@ export class GameScreen {
     this.view = view;
     for (const p of view.pieces) this.memory.set(p.id, { name: p.name, owner: p.owner });
     // A move or card choice only makes sense against the position it was made in.
-    if (!first && view.seq !== this.lastSeq) this.clearSelection();
+    if (!first && view.seq !== this.lastSeq) {
+      this.clearSelection();
+      this.cancelDrag();
+    }
     if (this.selectedCard && !view.hand?.some((c) => c.uid === this.selectedCard)) this.clearSelection();
     this.appendLog(view);
     this.render();
@@ -270,22 +289,162 @@ export class GameScreen {
   private cardTile(uid: string, cardId: string, view: v2.PlayerView): HTMLElement {
     const card = view.cards[cardId];
     const options = this.optionsFor(uid);
-    const tile = el('button', `g2-card ${card?.type ?? ''}${options.length ? ' playable' : ''}${this.selectedCard === uid ? ' selected' : ''}`);
+    const liftable = this.canLift(view, cardId);
+    const lifted = this.drag?.ghost && this.drag.uid === uid;
+    const tile = el(
+      'button',
+      `g2-card ${card?.type ?? ''}${options.length ? ' playable' : ''}${this.selectedCard === uid ? ' selected' : ''}${liftable ? ' draggable' : ''}${lifted ? ' lifted' : ''}`,
+    );
     tile.type = 'button';
-    tile.disabled = !options.length;
+    tile.dataset.uid = uid;
+    tile.disabled = !options.length && !liftable;
+    if (liftable) tile.addEventListener('pointerdown', (e) => this.pressCard(e, uid, tile));
     tile.append(el('span', 'g2-cost', String(card?.cost ?? '?')), el('span', 'g2-cardname', card?.name ?? cardId));
     tile.append(el('span', 'g2-cardtype', card?.type === 'spell' ? 'Spell' : 'Piece'));
     tile.append(el('span', 'g2-cardtext', card?.text ?? ''));
     if (card?.type === 'piece') tile.append(el('span', 'g2-cardseal', `Seal: hatches in ${card.sealTimer} turn${card.sealTimer === 1 ? '' : 's'}`));
     tile.title = `${card?.name}: ${card?.text}`;
-    tile.onclick = () => this.selectCard(uid);
+    tile.onclick = () => {
+      if (this.suppressClick) {
+        this.suppressClick = false;
+        return;
+      }
+      if (options.length) this.selectCard(uid);
+    };
     return tile;
+  }
+
+  // ---------------------------------------------------------------------- drag
+
+  /** Piece cards can be picked up on your own turn, even when no drop is legal (they then snap back). */
+  private canLift(view: v2.PlayerView, cardId: string): boolean {
+    return view.cards[cardId]?.type === 'piece' && view.status.kind === 'playing' && (this.solo || view.active === view.you);
+  }
+
+  /** Squares a held card can be dropped on: a free back-row square summons (or deploys), an own piece seals. */
+  private dropTargets(uid: string): Map<v2.Square, Action> {
+    const out = new Map<v2.Square, Action>();
+    for (const a of this.legal()) {
+      if (!('cardUid' in a) || a.cardUid !== uid) continue;
+      if (a.type === 'deploy' || a.type === 'summon') out.set(a.to, a);
+      else if (a.type === 'seal') out.set(a.target, a);
+    }
+    return out;
+  }
+
+  private pressCard(e: PointerEvent, uid: string, tile: HTMLElement): void {
+    if (e.button !== 0 || this.drag) return;
+    // Stops the browser starting a text selection; the click still fires.
+    if (e.pointerType === 'mouse') e.preventDefault();
+    this.drag = {
+      uid,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      ghost: null,
+      hover: null,
+    };
+    window.addEventListener('pointermove', this.onDragMove);
+    window.addEventListener('pointerup', this.onDragEnd);
+    window.addEventListener('pointercancel', this.onDragEnd);
+  }
+
+  private readonly onDragMove = (e: PointerEvent): void => {
+    const drag = this.drag;
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    if (!drag.ghost) {
+      if (Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) < DRAG_THRESHOLD) return;
+      const tile = this.tileFor(drag.uid);
+      if (!tile) return this.cancelDrag();
+      const ghost = tile.cloneNode(true) as HTMLElement;
+      ghost.classList.remove('selected', 'lifted');
+      ghost.classList.add('g2-drag-ghost');
+      if (!this.dropTargets(drag.uid).size) ghost.classList.add('nowhere');
+      ghost.style.width = `${tile.offsetWidth}px`;
+      document.body.appendChild(ghost);
+      drag.ghost = ghost;
+      this.clearSelection();
+      this.render();
+    }
+    e.preventDefault();
+    // The card hangs above the pointer so the square it would land on stays visible.
+    drag.ghost.style.left = `${e.clientX - drag.ghost.offsetWidth / 2}px`;
+    drag.ghost.style.top = `${e.clientY - drag.ghost.offsetHeight - 6}px`;
+    const square = this.squareAt(e.clientX, e.clientY);
+    const hover = square !== null && this.dropTargets(drag.uid).has(square) ? square : null;
+    if (hover !== drag.hover) {
+      if (drag.hover !== null) this.cells[drag.hover]?.classList.remove('drop-hover');
+      if (hover !== null) this.cells[hover]?.classList.add('drop-hover');
+      drag.hover = hover;
+    }
+  };
+
+  private readonly onDragEnd = (e: PointerEvent): void => {
+    const drag = this.drag;
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    this.removeDragListeners();
+    const ghost = drag.ghost;
+    if (!ghost) {
+      this.drag = null;
+      return;
+    }
+    // The click that follows a drag must not also select the card.
+    this.suppressClick = true;
+    setTimeout(() => (this.suppressClick = false), 0);
+    const square = e.type === 'pointerup' ? this.squareAt(e.clientX, e.clientY) : null;
+    const action = square !== null ? this.dropTargets(drag.uid).get(square) : undefined;
+    this.drag = null;
+    if (action) {
+      ghost.remove();
+      this.hooks.act(action);
+      this.clearSelection();
+      this.render();
+      return;
+    }
+    this.render();
+    this.snapBack(ghost, drag.uid);
+  };
+
+  /** Slide an illegally dropped card back to its place in the hand. */
+  private snapBack(ghost: HTMLElement, uid: string): void {
+    const home = this.tileFor(uid)?.getBoundingClientRect();
+    if (!home) return ghost.remove();
+    ghost.classList.add('returning');
+    ghost.style.left = `${home.left}px`;
+    ghost.style.top = `${home.top}px`;
+    setTimeout(() => ghost.remove(), 220);
+  }
+
+  private cancelDrag(): void {
+    if (!this.drag) return;
+    this.removeDragListeners();
+    this.drag.ghost?.remove();
+    this.drag = null;
+    if (this.view) this.render();
+  }
+
+  private removeDragListeners(): void {
+    window.removeEventListener('pointermove', this.onDragMove);
+    window.removeEventListener('pointerup', this.onDragEnd);
+    window.removeEventListener('pointercancel', this.onDragEnd);
+  }
+
+  private tileFor(uid: string): HTMLElement | null {
+    return this.handEl.querySelector<HTMLElement>(`[data-uid="${CSS.escape(uid)}"]`);
+  }
+
+  private squareAt(x: number, y: number): v2.Square | null {
+    const cell = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-sq]');
+    return cell && this.boardEl.contains(cell) ? Number(cell.dataset.sq) : null;
   }
 
   private renderHand(view: v2.PlayerView): void {
     this.handEl.innerHTML = '';
     const label = el('div', 'g2-handlabel');
     label.textContent = this.solo ? `${this.name(view.you)}'s hand` : 'Your hand';
+    if (view.hand?.some((c) => this.canLift(view, c.cardId))) {
+      label.append(el('span', 'g2-handtip', ' · drag a piece card to your back row to summon it, or onto one of your pieces to seal'));
+    }
     this.handEl.appendChild(label);
     const row = el('div', 'g2-handrow');
     for (const c of view.hand ?? []) row.appendChild(this.cardTile(c.uid, c.cardId, view));
@@ -345,7 +504,9 @@ export class GameScreen {
   private render(): void {
     const view = this.view;
     if (!view) return;
-    const targets = this.targets();
+    const held = this.drag?.ghost ? this.drag : null;
+    const targets = held ? new Map<v2.Square, Action>() : this.targets();
+    const drops = held ? this.dropTargets(held.uid) : new Map<v2.Square, Action>();
     const lastMove = view.events.find((e): e is Extract<v2.GameEvent, { type: 'moved' }> => e.type === 'moved');
 
     for (let square = 0; square < v2.FILES * v2.RANKS; square++) {
@@ -354,6 +515,9 @@ export class GameScreen {
       const seal = view.seals.find((s) => s.square === square);
       const classes = ['g2-cell', (v2.fileOf(square) + v2.rankOf(square)) % 2 === 0 ? 'dark' : 'light'];
       if (targets.has(square)) classes.push(piece || seal ? 'target capture' : 'target');
+      const drop = drops.get(square);
+      if (drop) classes.push(drop.type === 'seal' ? 'drop drop-seal' : 'drop');
+      if (held && held.hover === square) classes.push('drop-hover');
       if (this.selectedSquare === square) classes.push('selected');
       if (lastMove && (lastMove.from === square || lastMove.to === square)) classes.push('last');
       if (piece?.king && piece.owner === view.active && view.inCheck) classes.push('check');

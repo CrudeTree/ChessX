@@ -3528,6 +3528,57 @@ button,
   transform: translateY(-4px);
 }
 
+/* Drag a card onto the board. pan-x keeps the hand scrollable sideways on touch screens. */
+.g2-card.draggable {
+  cursor: grab;
+  touch-action: pan-x;
+  user-select: none;
+}
+
+.g2-card.lifted {
+  opacity: 0.25;
+}
+
+.g2-drag-ghost {
+  position: fixed;
+  z-index: 1000;
+  margin: 0;
+  pointer-events: none;
+  cursor: grabbing;
+  opacity: 0.95;
+  border-color: var(--accent);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
+  transform-origin: 50% 100%;
+  transform: rotate(-3deg) scale(0.8);
+}
+
+.g2-drag-ghost.nowhere {
+  border-color: var(--danger);
+}
+
+.g2-drag-ghost.returning {
+  transition: left 0.2s ease, top 0.2s ease, opacity 0.2s ease;
+  opacity: 0.4;
+  transform: none;
+}
+
+.g2-cell.drop {
+  box-shadow: inset 0 0 0 3px rgba(79, 201, 120, 0.9), inset 0 0 16px rgba(79, 201, 120, 0.55);
+}
+
+.g2-cell.drop-seal {
+  box-shadow: inset 0 0 0 3px rgba(185, 165, 255, 0.95), inset 0 0 16px rgba(185, 165, 255, 0.6);
+}
+
+.g2-cell.drop.drop-hover {
+  box-shadow: inset 0 0 0 5px #fff, inset 0 0 22px rgba(255, 255, 255, 0.7);
+}
+
+.g2-handtip {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
 .g2-cost {
   position: absolute;
   top: -8px;
