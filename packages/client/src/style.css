@@ -3574,6 +3574,46 @@ button,
   box-shadow: inset 0 0 0 5px #fff, inset 0 0 22px rgba(255, 255, 255, 0.7);
 }
 
+/* A seal drop stays purple under the pointer, so it never looks like a summon. */
+.g2-cell.drop-seal.drop-hover {
+  box-shadow: inset 0 0 0 5px #b9a5ff, inset 0 0 26px rgba(150, 120, 255, 0.85);
+  background-color: rgba(120, 90, 220, 0.35);
+}
+
+.g2-cell.target.seal::after {
+  width: 86%;
+  height: 86%;
+  background: transparent;
+  border: 4px solid rgba(185, 165, 255, 0.95);
+  box-shadow: none;
+}
+
+.g2-droptag {
+  position: fixed;
+  z-index: 1001;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #2a2146;
+  border: 1px solid #b9a5ff;
+  color: #ece6ff;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+}
+
+.g2-dropnote {
+  margin: 0 0 4px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: #2a2146;
+  border: 1px solid #b9a5ff;
+  color: #ece6ff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .g2-handtip {
   text-transform: none;
   letter-spacing: 0;
