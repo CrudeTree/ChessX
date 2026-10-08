@@ -38,12 +38,16 @@ export const glyphFor = (kind: string, name: string): string => GLYPHS[kind] ?? 
 
 type Mode = 'deploy' | 'summon' | 'seal' | 'spell';
 
-/** A card being dragged from the hand. `ghost` is null until the pointer has moved past the threshold. */
+/**
+ * A press on a card in the hand. `ghost` is null until the pointer has moved past the threshold.
+ * A mostly sideways mouse drag scrolls the hand instead (`scrollFrom`); touch swipes scroll natively.
+ */
 interface CardDrag {
   uid: string;
   pointerId: number;
   startX: number;
   startY: number;
+  scrollFrom: number | null;
   ghost: HTMLElement | null;
   hover: v2.Square | null;
 }
@@ -336,11 +340,15 @@ export class GameScreen {
     if (e.button !== 0 || this.drag) return;
     // Stops the browser starting a text selection; the click still fires.
     if (e.pointerType === 'mouse') e.preventDefault();
+    // Touch pointers are captured by the pressed tile, which is rebuilt when the drag starts;
+    // released, the later events reach the window listeners.
+    if (tile.hasPointerCapture(e.pointerId)) tile.releasePointerCapture(e.pointerId);
     this.drag = {
       uid,
       pointerId: e.pointerId,
       startX: e.clientX,
       startY: e.clientY,
+      scrollFrom: null,
       ghost: null,
       hover: null,
     };
@@ -352,8 +360,25 @@ export class GameScreen {
   private readonly onDragMove = (e: PointerEvent): void => {
     const drag = this.drag;
     if (!drag || e.pointerId !== drag.pointerId) return;
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+    const row = this.handEl.querySelector<HTMLElement>('.g2-handrow');
+    if (drag.scrollFrom !== null) {
+      if (row) row.scrollLeft = drag.scrollFrom - dx;
+      return;
+    }
     if (!drag.ghost) {
-      if (Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) < DRAG_THRESHOLD) return;
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+      // Only a pull up towards the board picks the card up; a sideways swipe scrolls the hand.
+      if (-dy < Math.abs(dx)) {
+        if (e.pointerType === 'mouse' && row) {
+          drag.scrollFrom = row.scrollLeft;
+          return;
+        }
+        this.removeDragListeners();
+        this.drag = null;
+        return;
+      }
       const tile = this.tileFor(drag.uid);
       if (!tile) return this.cancelDrag();
       const ghost = tile.cloneNode(true) as HTMLElement;
@@ -384,13 +409,15 @@ export class GameScreen {
     if (!drag || e.pointerId !== drag.pointerId) return;
     this.removeDragListeners();
     const ghost = drag.ghost;
+    if (ghost || drag.scrollFrom !== null) {
+      // The click that follows a drag must not also select the card.
+      this.suppressClick = true;
+      setTimeout(() => (this.suppressClick = false), 0);
+    }
     if (!ghost) {
       this.drag = null;
       return;
     }
-    // The click that follows a drag must not also select the card.
-    this.suppressClick = true;
-    setTimeout(() => (this.suppressClick = false), 0);
     const square = e.type === 'pointerup' ? this.squareAt(e.clientX, e.clientY) : null;
     const action = square !== null ? this.dropTargets(drag.uid).get(square) : undefined;
     this.drag = null;
@@ -439,17 +466,19 @@ export class GameScreen {
   }
 
   private renderHand(view: v2.PlayerView): void {
+    const scroll = this.handEl.querySelector('.g2-handrow')?.scrollLeft ?? 0;
     this.handEl.innerHTML = '';
     const label = el('div', 'g2-handlabel');
     label.textContent = this.solo ? `${this.name(view.you)}'s hand` : 'Your hand';
     if (view.hand?.some((c) => this.canLift(view, c.cardId))) {
-      label.append(el('span', 'g2-handtip', ' · drag a piece card to your back row to summon it, or onto one of your pieces to seal'));
+      label.append(el('span', 'g2-handtip', ' · drag a piece card up to your back row to summon it, or onto one of your pieces to seal'));
     }
     this.handEl.appendChild(label);
     const row = el('div', 'g2-handrow');
     for (const c of view.hand ?? []) row.appendChild(this.cardTile(c.uid, c.cardId, view));
     if (!view.hand?.length) row.appendChild(el('span', 'hint', 'No cards in hand.'));
     this.handEl.appendChild(row);
+    row.scrollLeft = scroll;
   }
 
   private renderActions(view: v2.PlayerView): void {

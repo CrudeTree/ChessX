@@ -3528,7 +3528,7 @@ button,
   transform: translateY(-4px);
 }
 
-/* Drag a card onto the board. pan-x keeps the hand scrollable sideways on touch screens. */
+/* Drag a card up onto the board. pan-x leaves sideways swipes to the browser, which scrolls the hand. */
 .g2-card.draggable {
   cursor: grab;
   touch-action: pan-x;
