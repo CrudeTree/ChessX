@@ -183,10 +183,13 @@ function reaches(state: GameState, piece: Piece): Reach[] {
   return out;
 }
 
-/** True if `by` has an active piece that could capture on `square`. Pieces with summoning sickness do not count. */
+/**
+ * True if any piece of `by` reaches `square` with a capturing move. Pieces with summoning
+ * sickness count too: they cannot capture yet, but they still attack, so they give check.
+ */
 export function isAttacked(state: GameState, square: Square, by: Color): boolean {
   for (const piece of state.pieces) {
-    if (piece.owner !== by || !isActive(state, piece)) continue;
+    if (piece.owner !== by) continue;
     for (const reach of reaches(state, piece)) {
       if (reach.to === square && reach.mode !== 'move') return true;
     }

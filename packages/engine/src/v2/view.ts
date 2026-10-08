@@ -41,7 +41,7 @@ export interface ViewPiece {
   cardId: string | null;
   square: Square;
   king: boolean;
-  /** False while the piece has summoning sickness: it cannot capture or give check yet. */
+  /** False while the piece has summoning sickness: it cannot capture yet (it still gives check). */
   active: boolean;
 }
 

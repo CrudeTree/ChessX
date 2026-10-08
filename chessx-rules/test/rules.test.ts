@@ -157,21 +157,29 @@ describe('summoning', () => {
     expect(next.mana.white).toBe(0);
   });
 
-  it('a summoned piece cannot capture or give check until its owner\'s next turn', () => {
+  it('a summoned piece cannot capture until its owner\'s next turn', () => {
+    const state = bare(10);
+    state.hand.white = [];
+    piece(state, 'white', 'tower', 'a1', 2);
+    piece(state, 'black', 'initiate', 'a4');
+    expect(legalActions(state).some((a) => a.type === 'move' && a.from === S('a1') && a.to === S('a4'))).toBe(false);
+    state.turns.white = 2;
+    expect(legalActions(state).some((a) => a.type === 'move' && a.from === S('a1') && a.to === S('a4'))).toBe(true);
+  });
+
+  it('a summoned piece gives check at once and fences the King, though it cannot capture yet', () => {
     let state = bare(10);
-    state.pieces = state.pieces.filter((p) => !p.def.king || p.owner !== 'black');
-    state.pieces.push({ id: 'bk', owner: 'black', def: KING, cardId: null, square: S('d8'), activeFromTurn: 0 });
+    state.pieces.find((p) => p.owner === 'black' && p.def.king)!.square = S('a8');
     const tower = give(state, 'white', 'tower');
-    const summon = find(state, (a) => a.type === 'summon' && a.cardUid === tower && a.to === S('a1'));
-    state = act(state, summon);
-    const summoned = pieceAt(state, S('a1'))!;
-    expect(summoned.activeFromTurn).toBe(2);
+    state = act(state, find(state, (a) => a.type === 'summon' && a.cardUid === tower && a.to === S('a1')));
+    expect(pieceAt(state, S('a1'))!.activeFromTurn).toBe(2);
+    expect(isInCheck(state, 'black')).toBe(true);
     state = act(state, { type: 'endTurn' });
     expect(state.active).toBe('black');
-    state.pieces.find((p) => p.owner === 'black' && p.def.king)!.square = S('a8');
-    expect(isInCheck(state, 'black')).toBe(false);
-    state.turns.white = 2;
     expect(isInCheck(state, 'black')).toBe(true);
+    const kingSteps = legalActions(state).filter((a) => a.type === 'move' && a.from === S('a8'));
+    expect(kingSteps.some((a) => a.type === 'move' && a.to === S('a7'))).toBe(false);
+    expect(kingSteps.some((a) => a.type === 'move' && a.to === S('b8'))).toBe(true);
   });
 });
 

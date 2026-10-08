@@ -555,7 +555,7 @@ export class GameScreen {
       for (const child of [...cell.children]) if (!child.classList.contains('g2-coord')) child.remove();
       if (piece) {
         const tok = el('div', `g2-piece ${piece.owner}${piece.active ? '' : ' sick'}`, glyphFor(piece.kind, piece.name));
-        tok.title = `${piece.name}${piece.active ? '' : ' (summoning sickness: cannot capture or give check yet)'}`;
+        tok.title = `${piece.name}${piece.active ? '' : ' (summoning sickness: cannot capture yet, but still gives check)'}`;
         cell.appendChild(tok);
       } else if (seal) {
         const tok = el('div', `g2-seal ${seal.owner}`);

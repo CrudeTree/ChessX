@@ -81,7 +81,7 @@ export interface Piece {
   cardId: string | null;
   square: Square;
   /**
-   * Owner turn number from which this piece may capture and give check. A piece that
+   * Owner turn number from which this piece may capture (it gives check from the start). A piece that
    * appears on owner turn N has activeFromTurn N + 1. Pieces deployed in setup use 0.
    */
   activeFromTurn: number;

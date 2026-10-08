@@ -3420,7 +3420,7 @@ button,
   border-color: #d8d2e6;
 }
 
-/* Summoning sickness: cannot capture or give check yet. */
+/* Summoning sickness: cannot capture yet (still gives check). */
 .g2-piece.sick {
   opacity: 0.62;
   border-style: dashed;

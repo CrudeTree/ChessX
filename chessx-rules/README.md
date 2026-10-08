@@ -16,7 +16,7 @@ npm run typecheck
 - Mana: starts at 2, +1 at the start of each of your turns, no cap.
 - Setup: players alternate deploying 3 zero-cost pieces on their back row. White deploys first. Setup pieces can act immediately.
 - Each turn: one action (move, summon, or seal) and one spell. No passing.
-- Summon: pay the card's cost, place on your back row. Summoned pieces cannot move or give check until your next turn.
+- Summon: pay the card's cost, place on your back row. Summoned pieces cannot capture until your next turn, but they still give check at once.
 - Seal: turn one of your own non-King pieces into a seal. The piece is consumed, the action and mana cost are paid, and the seal hatches after the timer printed on the card. A seal blocks lines like any piece and can be captured. Capturing a seal sends the card to its owner's discard and stops the hatch.
 - Pure chess capture: no attack or defense stats, one piece per square.
 - Check, checkmate and stalemate. Seals and sick pieces do not count as pieces that can act.
