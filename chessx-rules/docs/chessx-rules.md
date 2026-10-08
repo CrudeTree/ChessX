@@ -4,7 +4,7 @@ Source: Djabooty, 2026-10-05. This is the rules baseline to design, playtest, an
 
 ## Game layout
 
-- **Board:** 6x8 grid. Rank 1 is Player One's back row, rank 8 is Player Two's.
+- **Board:** 8x8 grid (files a to h, ranks 1 to 8). Rank 1 is Player One's back row, rank 8 is Player Two's.
 - **Setup:** Kings on d1 and d8. Players draw 7 cards. Players take turns deploying 3 zero-cost pieces to their back row. Each player starts with 2 mana.
 - **Resources:** One action per turn. Gain 1 mana per turn (no cap). Draw 1 card per turn.
 - **Turn sequence:** Gain mana, draw a card, take one action (move a piece, summon a piece to the back row, or seal a piece onto another), play one spell.
@@ -19,7 +19,6 @@ Source: Djabooty, 2026-10-05. This is the rules baseline to design, playtest, an
 - **Traditional starting pieces.** No starting pawns, rooks, knights, bishops, or queens. Each player starts with only a King and summons the whole army.
 - **Mana cap.** Mana can be banked without limit.
 - **Tribute cost.** Summoning costs mana. Tributing a piece is no longer a cost. It is now the placement choice for the seal mechanic.
-- **8x8 board.** The board is 6x8 so the first clash comes sooner.
 - **Pieces sharing a square.** One piece per square, always.
 
 ## Rulings (decided by Djabooty, 2026-10-05)
@@ -37,6 +36,8 @@ Source: Djabooty, 2026-10-05. This is the rules baseline to design, playtest, an
 - **Stalemate test:** A seal is a piece for blocking squares and for being captured, but it has no legal move and does not count as a piece that can act. If a player's only pieces are the King and one or more seals, and the King has no legal move (and cannot summon or seal), that player is in stalemate.
 - **Hatching timing:** A piece cannot hatch onto a square an enemy has moved onto. The seal must survive until the start of its owner's turn, when the timer resolves. If an enemy captures the seal's square first, the seal and its card are lost. The piece only hatches if the seal's square is still under its owner's control at that moment.
 - **Timer timing:** A seal's timer counts down at the start of each of its owner's turns, and the piece hatches when it reaches 0. A timer of 1 hatches at the start of the owner's next turn, so the opponent gets exactly one move in between.
+- **Empty deck (how v2 plays today):** When a deck runs out, the draw is skipped. There is no deck-out loss; checkmate stays the only win.
+- **No promotion (how v2 plays today):** A piece that reaches the far rank stays as it is. It can still be sealed like any other piece.
 
 ## Open questions
 
