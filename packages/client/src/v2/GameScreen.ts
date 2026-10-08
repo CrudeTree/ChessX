@@ -33,6 +33,7 @@ const GLYPHS: Record<string, string> = {
   hopper: '♞',
   cathedral_runner: '♝',
   dawn_paladin: '☀\uFE0E',
+  duskfang: '☾\uFE0E',
   tower: '♜',
 };
 export const glyphFor = (kind: string, name: string): string => GLYPHS[kind] ?? (name[0] ?? '?').toUpperCase();

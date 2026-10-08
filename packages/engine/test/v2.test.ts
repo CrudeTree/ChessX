@@ -208,6 +208,25 @@ describe('Dawn Paladin', () => {
   });
 });
 
+describe('Duskfang', () => {
+  it('costs 2, seals on a 3-turn timer, steps one square diagonally and captures only with a knight leap', () => {
+    const card = STARTER_CATALOG.duskfang!;
+    expect(card).toMatchObject({ type: 'piece', cost: 2, sealTimer: 3 });
+    expect(starterDeck()).not.toContain('duskfang');
+    const state = bare(0);
+    piece(state, 'white', 'duskfang', 'c4');
+    piece(state, 'white', 'initiate', 'b5');
+    piece(state, 'black', 'initiate', 'd5');
+    piece(state, 'black', 'initiate', 'b6');
+    const to = legalActions(state)
+      .filter((a): a is Extract<Action, { type: 'move' }> => a.type === 'move' && a.from === S('c4'))
+      .map((a) => a.to)
+      .sort((x, y) => x - y);
+    const expected = ['b3', 'd3', 'b6'].map(S).sort((x, y) => x - y);
+    expect(to).toEqual(expected);
+  });
+});
+
 describe('sealing', () => {
   it('seals only own non-King pieces, consumes the piece, and costs mana and the action', () => {
     const state = bare(5);
