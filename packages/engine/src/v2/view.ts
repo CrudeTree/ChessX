@@ -31,6 +31,8 @@ export interface ViewCard {
   sealTimer?: number;
   /** Pieces: how it moves, in words. Spells: what it does. */
   text: string;
+  /** Pieces: the move rules behind `text`, so the client can draw them. */
+  rules?: ReadonlyArray<MoveRule>;
 }
 
 export interface ViewPiece {
@@ -114,7 +116,7 @@ export function describeMovement(def: PieceDef): string {
 
 function viewCard(card: Card): ViewCard {
   return card.type === 'piece'
-    ? { id: card.id, type: 'piece', name: card.name, cost: card.cost, sealTimer: card.sealTimer, text: describeMovement(card.piece) }
+    ? { id: card.id, type: 'piece', name: card.name, cost: card.cost, sealTimer: card.sealTimer, text: describeMovement(card.piece), rules: card.piece.rules }
     : { id: card.id, type: 'spell', name: card.name, cost: card.cost, text: card.text };
 }
 

@@ -58,6 +58,16 @@ interface CardDrag {
 /** Pixels the pointer must travel before a press on a card becomes a drag rather than a click. */
 const DRAG_THRESHOLD = 6;
 
+/** A piece or seal on the board whose card is shown in the inspect panel. Follows the thing as it moves. */
+interface Inspected {
+  kind: 'piece' | 'seal';
+  id: string;
+}
+
+/** The inspect panel's mini board is MINI x MINI with the piece in the middle. */
+const MINI = 7;
+const MID = 3;
+
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''): HTMLElementTagNameMap[K] => {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -78,6 +88,9 @@ export class GameScreen {
   private mode: Mode | null = null;
   private drag: CardDrag | null = null;
   private suppressClick = false;
+  private inspected: Inspected | null = null;
+  /** Hand card under the mouse; it is shown in the inspect panel until the mouse leaves. */
+  private hoverCard: string | null = null;
 
   private readonly memory: PieceMemory = new Map();
   private lastSeq = -1;
@@ -98,6 +111,10 @@ export class GameScreen {
   private readonly meEl = el('div', 'g2-player');
   private readonly oppHandEl = el('div', 'g2-oppcards');
   private readonly resignBtn = el('button', 'danger', 'Resign');
+  private readonly inspectEl = el('div', 'g2-inspect hidden');
+  private readonly sideEl = el('aside', 'g2-side');
+  /** Phones stack the side column under the board, so the inspect panel sits under the hand there instead. */
+  private readonly narrow = window.matchMedia('(max-width: 899px)');
   /** Chat is moved in here so it sits with the rest of the screen. */
   readonly chatSlot = el('div', 'g2-chat-slot');
   private readonly cells: HTMLElement[] = [];
@@ -111,7 +128,7 @@ export class GameScreen {
     boardWrap.append(this.oppEl, this.boardEl, this.meEl);
     main.append(boardWrap, this.handEl, this.actionsEl);
 
-    const side = el('aside', 'g2-side');
+    const side = this.sideEl;
     const codeBlock = el('div', 'side-block');
     codeBlock.append(el('div', 'label', 'Invite code'), this.codeEl, this.hintEl);
     const statusBlock = el('div', 'side-block g2-statusblock');
@@ -126,6 +143,8 @@ export class GameScreen {
     side.append(codeBlock, statusBlock, logBlock, buttons, this.chatSlot);
 
     root.append(main, side);
+    this.placeInspect();
+    this.narrow.addEventListener('change', () => this.placeInspect());
 
     this.endBtn.onclick = () => this.hooks.act({ type: 'endTurn' });
     this.buildBoard();
@@ -156,6 +175,9 @@ export class GameScreen {
     this.selectedSquare = null;
     this.selectedCard = null;
     this.mode = null;
+    this.inspected = null;
+    this.hoverCard = null;
+    this.inspectEl.classList.add('hidden');
     this.memory.clear();
     this.lastSeq = -1;
     this.logEl.innerHTML = '';
@@ -238,11 +260,18 @@ export class GameScreen {
 
   private onSquare(square: v2.Square): void {
     const view = this.view;
-    if (!view || view.status.kind !== 'playing') return;
-    const target = this.targets().get(square);
+    if (!view) return;
+    const playing = view.status.kind === 'playing';
+    const target = playing ? this.targets().get(square) : undefined;
     if (target) {
       this.hooks.act(target);
       this.clearSelection();
+      this.inspected = null;
+      this.render();
+      return;
+    }
+    this.toggleInspect(view, square);
+    if (!playing) {
       this.render();
       return;
     }
@@ -262,6 +291,146 @@ export class GameScreen {
     this.selectedSquare = null;
     this.selectedCard = null;
     this.mode = null;
+  }
+
+  /** A tap on a piece or seal opens its card; tapping the same one again, or an empty square, closes it. */
+  private toggleInspect(view: v2.PlayerView, square: v2.Square): void {
+    const piece = view.pieces.find((p) => p.square === square);
+    const seal = piece ? undefined : view.seals.find((s) => s.square === square);
+    const next: Inspected | null = piece ? { kind: 'piece', id: piece.id } : seal ? { kind: 'seal', id: seal.id } : null;
+    const same = next && this.inspected?.kind === next.kind && this.inspected.id === next.id;
+    this.inspected = same ? null : next;
+  }
+
+  // ------------------------------------------------------------------- inspect
+
+  private placeInspect(): void {
+    if (this.narrow.matches) this.handEl.after(this.inspectEl);
+    else this.sideEl.prepend(this.inspectEl);
+  }
+
+  private inspectedSquare(view: v2.PlayerView): v2.Square | null {
+    const it = this.inspected;
+    if (!it) return null;
+    const found = it.kind === 'piece' ? view.pieces.find((p) => p.id === it.id) : view.seals.find((s) => s.id === it.id);
+    return found ? found.square : null;
+  }
+
+  private renderInspect(view: v2.PlayerView): void {
+    const box = this.inspectEl;
+    box.innerHTML = '';
+    const handCard = this.hoverCard ? view.hand?.find((c) => c.uid === this.hoverCard) : undefined;
+    if (this.hoverCard && !handCard) this.hoverCard = null;
+    const it = this.inspected;
+    const piece = it?.kind === 'piece' ? view.pieces.find((p) => p.id === it.id) : undefined;
+    const seal = it?.kind === 'seal' ? view.seals.find((s) => s.id === it.id) : undefined;
+    if (it && !piece && !seal) this.inspected = null;
+
+    let card: v2.ViewCard | undefined;
+    let owner: Color = view.you;
+    let name: string;
+    let kind: string;
+    let rules: ReadonlyArray<v2.MoveRule> | undefined;
+    const notes: string[] = [];
+    if (handCard) {
+      card = view.cards[handCard.cardId];
+      name = card?.name ?? handCard.cardId;
+      kind = handCard.cardId;
+      notes.push('In your hand.');
+    } else if (piece) {
+      card = piece.cardId ? view.cards[piece.cardId] : undefined;
+      owner = piece.owner;
+      name = piece.name;
+      kind = piece.kind;
+      if (piece.king) {
+        rules = v2.KING.rules;
+        notes.push('No card: the King cannot be summoned or sealed.');
+      }
+      if (!piece.active) notes.push('Summoning sickness: cannot capture yet, but still gives check.');
+    } else if (seal) {
+      card = view.cards[seal.cardId];
+      owner = seal.owner;
+      name = card?.name ?? seal.cardId;
+      kind = seal.cardId;
+      const whose = this.solo ? `${this.ownerLabel(owner, view)}'s` : owner === view.you ? 'your' : "your opponent's";
+      const when = seal.timer <= 1 ? `at the start of ${whose} next turn` : `in ${seal.timer} of ${whose} turns`;
+      notes.push(`Sealed. Hatches into this piece ${when}.`);
+    } else {
+      box.className = 'g2-inspect empty';
+      box.textContent = 'Tap any piece or seal to see how it moves.';
+      return;
+    }
+    rules ??= card?.rules;
+    box.className = 'g2-inspect';
+
+    const head = el('div', 'g2-inspect-head');
+    if (card?.type !== 'spell') head.append(el('span', `g2-inspect-glyph ${owner}`, glyphFor(kind, name)));
+    head.append(el('b', 'g2-inspect-name', seal ? `Seal: ${name}` : name));
+    const close = el('button', 'g2-inspect-close', '×');
+    close.type = 'button';
+    close.title = 'Close';
+    close.onclick = () => {
+      this.inspected = null;
+      this.hoverCard = null;
+      this.render();
+    };
+    head.append(close);
+    box.append(head);
+
+    const facts: string[] = [];
+    if (!handCard) facts.push(this.ownerLabel(owner, view));
+    if (card) facts.push(`${card.cost} mana`);
+    if (card?.type === 'piece') facts.push(`seal timer ${card.sealTimer}`);
+    if (card?.type === 'spell') facts.push('spell');
+    box.append(el('div', 'g2-inspect-facts', facts.join(' · ')));
+
+    const body = el('div', 'g2-inspect-body');
+    if (rules) body.append(this.miniBoard(rules, owner, kind, name));
+    const text = el('div', 'g2-inspect-text');
+    text.append(el('div', '', card?.text ?? (piece?.king ? v2.describeMovement(v2.KING) : '')));
+    for (const n of notes) text.append(el('div', 'g2-inspect-note', n));
+    if (rules) text.append(el('div', 'g2-inspect-legend', 'Green dot: moves there. Red ring: captures there.'));
+    body.append(text);
+    box.append(body);
+  }
+
+  private ownerLabel(owner: Color, view: v2.PlayerView): string {
+    const side = owner === 'white' ? 'White' : 'Black';
+    if (this.solo) return side;
+    return `${side} (${owner === view.you ? 'yours' : 'opponent'})`;
+  }
+
+  /** The piece's moves from the middle of an empty board, facing the way it faces on your screen. */
+  private miniBoard(rules: ReadonlyArray<v2.MoveRule>, owner: Color, kind: string, name: string): HTMLElement {
+    const flip = this.seat === 'black' ? -1 : 1;
+    const marks = new Map<number, { move: boolean; capture: boolean }>();
+    for (const r of rules) {
+      const towardEnemy = r.relative && owner === 'black' ? -1 : 1;
+      for (const [df, dr] of r.dirs) {
+        const sx = df * flip;
+        const sy = dr * towardEnemy * flip;
+        for (let k = 1; k <= (r.leap ? 1 : r.range); k++) {
+          const x = MID + sx * k;
+          const y = MID + sy * k;
+          if (x < 0 || x >= MINI || y < 0 || y >= MINI) break;
+          const m = marks.get(y * MINI + x) ?? { move: false, capture: false };
+          if (r.mode !== 'capture') m.move = true;
+          if (r.mode !== 'move') m.capture = true;
+          marks.set(y * MINI + x, m);
+        }
+      }
+    }
+    const grid = el('div', 'g2-mini');
+    for (let row = 0; row < MINI; row++) {
+      const y = MINI - 1 - row;
+      for (let x = 0; x < MINI; x++) {
+        const m = marks.get(y * MINI + x);
+        const cell = el('div', `g2-mini-cell ${(x + y) % 2 === 0 ? 'dark' : 'light'}${m?.move ? ' mv' : ''}${m?.capture ? ' cap' : ''}`);
+        if (x === MID && y === MID) cell.append(el('span', `g2-mini-piece ${owner}`, glyphFor(kind, name)));
+        grid.append(cell);
+      }
+    }
+    return grid;
   }
 
   // ---------------------------------------------------------------------- hand
@@ -314,6 +483,16 @@ export class GameScreen {
     tile.append(el('span', 'g2-cardtext', card?.text ?? ''));
     if (card?.type === 'piece') tile.append(el('span', 'g2-cardseal', `Seal: hatches in ${card.sealTimer} turn${card.sealTimer === 1 ? '' : 's'}`));
     tile.title = `${card?.name}: ${card?.text}`;
+    tile.addEventListener('pointerenter', (e) => {
+      if (e.pointerType !== 'mouse' || this.drag || this.hoverCard === uid) return;
+      this.hoverCard = uid;
+      this.renderInspect(view);
+    });
+    tile.addEventListener('pointerleave', () => {
+      if (this.hoverCard !== uid) return;
+      this.hoverCard = null;
+      if (this.view) this.renderInspect(this.view);
+    });
     tile.onclick = () => {
       if (this.suppressClick) {
         this.suppressClick = false;
@@ -395,6 +574,7 @@ export class GameScreen {
       ghost.style.width = `${tile.offsetWidth}px`;
       document.body.appendChild(ghost);
       drag.ghost = ghost;
+      this.hoverCard = null;
       this.clearSelection();
       this.render();
     }
@@ -577,6 +757,7 @@ export class GameScreen {
     const targets = held ? new Map<v2.Square, Action>() : this.targets();
     const drops = held ? this.dropTargets(held.uid) : new Map<v2.Square, Action>();
     const lastMove = view.events.find((e): e is Extract<v2.GameEvent, { type: 'moved' }> => e.type === 'moved');
+    const inspectedAt = this.inspectedSquare(view);
 
     for (let square = 0; square < v2.FILES * v2.RANKS; square++) {
       const cell = this.cells[square]!;
@@ -592,6 +773,7 @@ export class GameScreen {
       if (warning) cell.title = warning;
       else cell.removeAttribute('title');
       if (this.selectedSquare === square) classes.push('selected');
+      if (inspectedAt === square) classes.push('inspected');
       if (lastMove && (lastMove.from === square || lastMove.to === square)) classes.push('last');
       if (piece?.king && piece.owner === view.active && view.inCheck) classes.push('check');
       cell.className = classes.join(' ');
@@ -611,6 +793,7 @@ export class GameScreen {
     }
 
     this.renderHand(view);
+    this.renderInspect(view);
     this.renderActions(view);
     this.renderPlayers();
     this.renderStatus(view);

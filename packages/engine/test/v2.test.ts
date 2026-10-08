@@ -458,6 +458,13 @@ describe('port additions', () => {
     expect(cards.dispel!.type).toBe('spell');
   });
 
+  it('sends piece move rules so the client can draw them', () => {
+    const cards = viewFor({ state: bare(), seq: 0, events: [] }, 'white').cards;
+    expect(cards.duskfang!.rules).toEqual(STARTER_CATALOG.duskfang!.type === 'piece' ? STARTER_CATALOG.duskfang!.piece.rules : null);
+    expect(JSON.parse(JSON.stringify(cards.squire!.rules))[1].mode).toBe('capture');
+    expect(cards.insight!.rules).toBeUndefined();
+  });
+
   it('resigned and timeout results end the game with no legal actions', () => {
     const state = bare(5);
     state.status = { kind: 'timeout', winner: 'black' };
