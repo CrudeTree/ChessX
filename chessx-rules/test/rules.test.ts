@@ -187,7 +187,7 @@ describe('Dawn Paladin', () => {
   it('costs 4, seals on a 3-turn timer, and leaps like a knight or steps one square straight', () => {
     const card = STARTER_CATALOG.dawn_paladin!;
     expect(card).toMatchObject({ type: 'piece', cost: 4, sealTimer: 3 });
-    expect(starterDeck().filter((id) => id === 'dawn_paladin')).toHaveLength(2);
+    expect(starterDeck().filter((id) => id === 'dawn_paladin')).toHaveLength(4);
     const state = bare(0);
     piece(state, 'white', 'dawn_paladin', 'c4');
     piece(state, 'white', 'initiate', 'c5');
@@ -297,6 +297,25 @@ describe('spells', () => {
     state = act(state, { type: 'spell', cardUid: dispel, target: S('c6') });
     expect(sealAt(state, S('c6'))).toBeUndefined();
     expect(state.discard.black.map((c) => c.cardId)).toContain('tower');
+  });
+
+  it('Dispel costs 3 mana, so 2 mana cannot cast it', () => {
+    expect(STARTER_CATALOG.dispel).toMatchObject({ type: 'spell', cost: 3 });
+    const state = bare(2);
+    state.seals.push({ id: 's1', owner: 'black', square: S('c6'), card: STARTER_CATALOG.tower as never, timer: 3 });
+    const dispel = give(state, 'white', 'dispel');
+    expect(legalActions(state).some((a) => a.type === 'spell' && a.cardUid === dispel)).toBe(false);
+    state.mana.white = 3;
+    expect(legalActions(state).some((a) => a.type === 'spell' && a.cardUid === dispel)).toBe(true);
+  });
+});
+
+describe('starter deck', () => {
+  it('is the agreed 24-card list', () => {
+    const counts: Record<string, number> = {};
+    for (const id of starterDeck()) counts[id] = (counts[id] ?? 0) + 1;
+    expect(counts).toEqual({ initiate: 4, squire: 5, hopper: 3, cathedral_runner: 2, tower: 2, dawn_paladin: 4, insight: 2, dispel: 2 });
+    expect(starterDeck()).toHaveLength(24);
   });
 });
 
