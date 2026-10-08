@@ -86,7 +86,7 @@ The server is authoritative: the client only ever offers the player actions from
 
 ## Rules as implemented
 
-Live play is **v2**: 8x8 board, Kings only at the start, mana, summoning, and sealing. See `chessx-rules/docs/chessx-rules.md`. The original (v1) engine is deprecated and kept only so games already in progress and the card-editor arena still load.
+Live play is **v2**: 8x8 board, a King and 3 Initiates each at the start, mana, summoning, and sealing. See `chessx-rules/docs/chessx-rules.md`. The original (v1) engine is deprecated and kept only so games already in progress and the card-editor arena still load.
 
 **v1 (deprecated).** Standard chess setup. Castling, en passant and promotion (to queen by default) all work. Standard pieces never start with Defense.
 

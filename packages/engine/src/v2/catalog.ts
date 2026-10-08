@@ -75,8 +75,8 @@ export const STARTER_CATALOG: Record<string, Card> = {
   dispel: { type: 'spell', id: 'dispel', name: 'Dispel', cost: 3, effect: { kind: 'destroySeal' }, text: 'Destroy a seal. Both the seal and its card go to the discard pile.' },
 };
 
-/** A 24-card starter deck: 4 Initiates, 5 Squires, 3 Hoppers, 2 Runners, 2 Towers, 4 Dawn Paladins, 2 Insight, 2 Dispel. */
+/** A 24-card starter deck: 2 Initiates, 7 Squires, 3 Hoppers, 2 Runners, 2 Towers, 4 Dawn Paladins, 2 Insight, 2 Dispel. */
 export function starterDeck(): string[] {
-  const counts: Record<string, number> = { initiate: 4, squire: 5, hopper: 3, cathedral_runner: 2, tower: 2, dawn_paladin: 4, insight: 2, dispel: 2 };
+  const counts: Record<string, number> = { initiate: 2, squire: 7, hopper: 3, cathedral_runner: 2, tower: 2, dawn_paladin: 4, insight: 2, dispel: 2 };
   return Object.entries(counts).flatMap(([id, n]) => Array.from({ length: n }, () => id));
 }

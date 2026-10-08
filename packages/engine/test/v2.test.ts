@@ -59,6 +59,16 @@ function bare(mana = 3): GameState {
   return state;
 }
 
+/** The deploy phase new games had before the 2026-10-08 ruling, as a saved game would hold it. */
+function legacySetup(state: GameState): GameState {
+  state.phase = 'setup';
+  state.pieces = state.pieces.filter((p) => p.def.king);
+  state.turns = { white: 0, black: 0 };
+  state.mana = { white: 2, black: 2 };
+  state.active = 'white';
+  return state;
+}
+
 function find(state: GameState, predicate: (a: Action) => boolean): Action {
   const found = legalActions(state).find(predicate);
   if (!found) throw new Error('action not legal');
@@ -66,21 +76,38 @@ function find(state: GameState, predicate: (a: Action) => boolean): Action {
 }
 
 describe('setup', () => {
-  it('uses an 8x8 board with Kings on d1 and d8, 7 cards each, and 2 mana', () => {
+  it('uses an 8x8 board with Kings on d1 and d8, 3 Initiates in front of each King, 7 cards each, and White to move', () => {
     const state = game();
-    expect(state.pieces.map((p) => p.square).sort()).toEqual([S('d1'), S('d8')].sort());
-    expect(state.pieces.every((p) => p.def === KING)).toBe(true);
-    expect(state.hand.white).toHaveLength(7);
+    const at = (color: Color) => state.pieces.filter((p) => p.owner === color).map((p) => `${p.def.name}@${p.square}`).sort();
+    expect(at('white')).toEqual([`King@${S('d1')}`, `Initiate@${S('c2')}`, `Initiate@${S('d2')}`, `Initiate@${S('e2')}`].sort());
+    expect(at('black')).toEqual([`King@${S('d8')}`, `Initiate@${S('c7')}`, `Initiate@${S('d7')}`, `Initiate@${S('e7')}`].sort());
+    expect(state.pieces.filter((p) => p.def.king).every((p) => p.def === KING)).toBe(true);
+    expect(state.phase).toBe('play');
+    expect(state.active).toBe('white');
+    expect(state.turns).toEqual({ white: 1, black: 0 });
+    // 7-card hands, then White's turn 1 draws one more and adds the normal +1 to the starting 2 mana.
+    expect(state.hand.white).toHaveLength(8);
     expect(state.hand.black).toHaveLength(7);
-    expect(state.mana).toEqual({ white: 2, black: 2 });
+    expect(state.mana).toEqual({ white: 3, black: 2 });
     expect(FILES).toBe(8);
     expect(S('h8')).toBe(63);
     expect(() => S('i1')).toThrow();
     expect(() => S('a9')).toThrow();
   });
 
-  it('alternates deployment of 3 zero-cost pieces starting with White, then White moves with +1 mana', () => {
-    let state = game();
+  it('starting Initiates come from outside the deck and can capture on turn 1', () => {
+    const state = game();
+    for (const color of ['white', 'black'] as Color[]) {
+      expect(state.hand[color].length + state.deck[color].length).toBe(starterDeck().length);
+    }
+    const starters = state.pieces.filter((p) => !p.def.king);
+    expect(starters.every((p) => p.activeFromTurn === 0)).toBe(true);
+    expect(legalActions(state).some((a) => a.type === 'deploy')).toBe(false);
+    expect(legalActions(state).some((a) => a.type === 'move' && a.from === S('d2') && a.to === S('d3'))).toBe(true);
+  });
+
+  it('a game saved mid-setup under the old rule still alternates deployments, then White moves with +1 mana', () => {
+    let state = legacySetup(game());
     state.hand.white = [];
     state.hand.black = [];
     for (let i = 0; i < 4; i++) {
@@ -102,8 +129,8 @@ describe('setup', () => {
     expect(state.pieces.filter((p) => !p.def.king && p.owner === 'white')).toHaveLength(3);
   });
 
-  it('only allows zero-cost pieces, only on the owner\'s back row', () => {
-    const state = game();
+  it('old-rule setup only allows zero-cost pieces, only on the owner\'s back row', () => {
+    const state = legacySetup(game());
     state.hand.white = [];
     const tower = give(state, 'white', 'tower');
     const initiate = give(state, 'white', 'initiate');
@@ -339,7 +366,7 @@ describe('starter deck', () => {
   it('is the agreed 24-card list', () => {
     const counts: Record<string, number> = {};
     for (const id of starterDeck()) counts[id] = (counts[id] ?? 0) + 1;
-    expect(counts).toEqual({ initiate: 4, squire: 5, hopper: 3, cathedral_runner: 2, tower: 2, dawn_paladin: 4, insight: 2, dispel: 2 });
+    expect(counts).toEqual({ initiate: 2, squire: 7, hopper: 3, cathedral_runner: 2, tower: 2, dawn_paladin: 4, insight: 2, dispel: 2 });
     expect(starterDeck()).toHaveLength(24);
   });
 });
@@ -395,12 +422,13 @@ describe('full games', () => {
     }
   });
 
-  it('every opening hand has 7 cards and enough zero-cost pieces to finish setup', () => {
+  it('every game starts straight in play with full hands and both starting rows', () => {
     for (let seed = 1; seed <= 30; seed++) {
       const state = game(seed);
-      expect(state.hand.white).toHaveLength(7);
+      expect(state.hand.white).toHaveLength(8);
       expect(state.hand.black).toHaveLength(7);
-      expect(state.phase).toBe('setup');
+      expect(state.phase).toBe('play');
+      expect(state.pieces).toHaveLength(8);
     }
   });
 });

@@ -11,10 +11,10 @@ npm run typecheck
 
 ## What is implemented
 
-- 6x8 board (6 files, 8 ranks). Kings start on d1 and d8. Nothing else on the board at the start.
+- 6x8 board (6 files, 8 ranks). Kings start on d1 and d8, each with 3 Initiates in front.
 - Deck, discard, hand of 7, one draw per turn.
 - Mana: starts at 2, +1 at the start of each of your turns, no cap.
-- Setup: players alternate deploying 3 zero-cost pieces on their back row. White deploys first. Setup pieces can act immediately.
+- Setup: each side starts with 3 Initiates from outside the deck in front of its King (c2, d2, e2 / c7, d7, e7). They can act immediately. White moves first.
 - Each turn: one action (move, summon, or seal) and one spell. No passing.
 - Summon: pay the card's cost, place on your back row. Summoned pieces cannot capture until your next turn, but they still give check at once.
 - Seal: turn one of your own non-King pieces into a seal. The piece is consumed, the action and mana cost are paid, and the seal hatches after the timer printed on the card. A seal blocks lines like any piece and can be captured. Capturing a seal sends the card to its owner's discard and stops the hatch.
@@ -35,4 +35,4 @@ API: `newGame`, `legalActions`, `applyLegalAction`, `isInCheck`. See `src/index.
 2. Checkmate or stalemate is evaluated at the start of the player's turn, after the mana and draw.
 3. A turn with no legal main action but a legal spell is still stalemate.
 4. Empty deck: no draw, no penalty.
-5. White's first turn after setup has 3 mana, as it gets the normal +1.
+5. White's first turn has 3 mana, as it gets the normal +1.
