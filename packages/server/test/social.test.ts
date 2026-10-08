@@ -79,7 +79,7 @@ describe('challenges', () => {
     social.resolveChallenge(c.id, 'accepted');
     expect(game.started).toBe(true);
     expect(game.rules).toBe(2);
-    expect(game.record?.state.phase).toBe('setup');
+    expect(game.record?.state.phase).toBe('play');
     expect(game.isParticipant(bob.id)).toBe(true);
     expect(social.social(bob).incomingChallenges).toHaveLength(0);
     expect(() => social.pendingChallenge(challengeId)).toThrow(SocialError);

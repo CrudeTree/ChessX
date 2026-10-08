@@ -23,6 +23,7 @@ import {
 
 export const HAND_SIZE = 7;
 export const START_MANA = 2;
+/** Deploy phase of games saved before the 2026-10-08 setup ruling; new games skip it. */
 export const SETUP_PIECES = 3;
 export const KING_FILE = 3;
 
@@ -82,39 +83,32 @@ function draw(state: GameState, color: Color, count: number, events: GameEvent[]
   if (drawn > 0) events.push({ type: 'drew', color, count: drawn });
 }
 
-function isFreePiece(state: GameState, instance: CardInstance): boolean {
-  const card = state.catalog[instance.cardId];
-  return card?.type === 'piece' && card.cost === 0;
-}
+/** Files of the starting Initiates, on the rank in front of the King: c, d and e. */
+export const START_FILES: readonly number[] = [2, 3, 4];
 
 /**
- * Draws 7 cards. Setup needs 3 zero-cost pieces, so if the hand holds fewer, zero-cost pieces are pulled
- * from the deck in place of the most expensive other cards (which go back and the deck is reshuffled).
- * This is an assumption the owner can change: the rules text does not say where setup pieces come from.
+ * Each side starts with 3 Initiates from outside the deck in front of the King (ruling by Djabooty,
+ * 2026-10-08). They count as already on the board before the game began, so they can capture on turn 1.
  */
-function openingHand(state: GameState, color: Color): void {
-  draw(state, color, HAND_SIZE, []);
-  let swapped = false;
-  while (state.hand[color].filter((c) => isFreePiece(state, c)).length < SETUP_PIECES) {
-    const incomingIndex = state.deck[color].findIndex((c) => isFreePiece(state, c));
-    if (incomingIndex < 0) break;
-    const outgoing = state.hand[color]
-      .map((c, index) => ({ c, index, cost: (state.catalog[c.cardId] as { cost: number }).cost }))
-      .filter(({ c }) => !isFreePiece(state, c))
-      .sort((a, b) => b.cost - a.cost)[0];
-    if (!outgoing) break;
-    const [incoming] = state.deck[color].splice(incomingIndex, 1);
-    const [leaving] = state.hand[color].splice(outgoing.index, 1, incoming!);
-    state.deck[color].push(leaving!);
-    swapped = true;
+function placeStartingPieces(state: GameState, color: Color): void {
+  const card = state.catalog.initiate;
+  if (card?.type !== 'piece') return;
+  for (const file of START_FILES) {
+    state.pieces.push({
+      id: newId(state, 'p'),
+      owner: color,
+      def: card.piece,
+      cardId: card.id,
+      square: sq(file, backRank(color) + forward(color)),
+      activeFromTurn: 0,
+    });
   }
-  if (swapped) state.deck[color] = shuffle(state, state.deck[color]);
 }
 
 export function newGame(options: NewGameOptions): GameState {
   const state: GameState = {
     catalog: options.catalog ?? STARTER_CATALOG,
-    phase: 'setup',
+    phase: 'play',
     active: 'white',
     turns: { white: 0, black: 0 },
     mana: { white: START_MANA, black: START_MANA },
@@ -144,9 +138,10 @@ export function newGame(options: NewGameOptions): GameState {
       square: sq(KING_FILE, backRank(color)),
       activeFromTurn: 0,
     });
-    openingHand(state, color);
+    placeStartingPieces(state, color);
+    draw(state, color, HAND_SIZE, []);
   }
-  settleSetup(state, [], false);
+  startTurn(state, 'white', []);
   return state;
 }
 

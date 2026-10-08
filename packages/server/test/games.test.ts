@@ -28,7 +28,7 @@ function pick(state: v2.GameState, want: (a: v2.Action) => boolean): v2.Action {
 }
 
 describe('rules 2 games', () => {
-  it('start in setup when the second player joins, and send the v2 view', () => {
+  it('start on White\'s turn 1 when the second player joins, and send the v2 view', () => {
     const { games, alice, bob } = setup();
     const game = games.create(alice.id, false, []);
     expect(game.rules).toBe(2);
@@ -39,19 +39,20 @@ describe('rules 2 games', () => {
     const tb = transport(bob.id);
     game.attach(tb);
 
-    expect(game.record?.state.phase).toBe('setup');
+    expect(game.record?.state.phase).toBe('play');
+    expect(game.record?.state.active).toBe('white');
     const seated = tb.messages.find((m) => m.type === 'seated');
     expect(seated).toMatchObject({ type: 'seated', rules: 2 });
     const stateMsg = tb.messages.find((m) => m.type === 'stateV2');
     expect(stateMsg?.type).toBe('stateV2');
     if (stateMsg?.type !== 'stateV2') throw new Error('unreachable');
-    // Bob sees his own hand and only a count for Alice's.
+    // Bob sees his own hand and only a count for Alice's (White has drawn for turn 1).
     expect(stateMsg.view.hand).toHaveLength(7);
-    expect(stateMsg.view.handCount.white).toBe(7);
+    expect(stateMsg.view.handCount.white).toBe(8);
     expect(game.summaryFor(alice.id)).toMatchObject({ rules: 2, waitingForOpponent: false });
   });
 
-  it('plays setup then a move, enforcing turn order and legality, and survives a reload from the database', () => {
+  it('plays a move, enforcing turn order and legality, and survives a reload from the database', () => {
     const { db, games, alice, bob } = setup();
     const game = games.create(alice.id, false, []);
     game.join(bob.id, []);
@@ -62,12 +63,8 @@ describe('rules 2 games', () => {
     game.attach(white);
     game.attach(black);
 
-    // White deploys first; Black may not.
-    expect(() => game.actV2(black, pick(game.record!.state, (a) => a.type === 'deploy'))).toThrow(GameError);
-    for (let i = 0; i < 6; i++) {
-      const mover = game.record!.state.active === 'white' ? white : black;
-      game.actV2(mover, pick(game.record!.state, (a) => a.type === 'deploy'));
-    }
+    // White moves first; Black may not.
+    expect(() => game.actV2(black, pick(game.record!.state, (a) => a.type === 'move'))).toThrow(GameError);
     expect(game.record!.state.phase).toBe('play');
     expect(game.record!.state.active).toBe('white');
     expect(() => game.actV2(white, { type: 'summon', cardUid: 'nope', to: 0 })).toThrow(GameError);
@@ -108,10 +105,11 @@ describe('rules 2 games', () => {
     const first = t.messages.find((m) => m.type === 'stateV2');
     if (first?.type !== 'stateV2') throw new Error('no state');
     expect(first.view.you).toBe('white');
-    game.actV2(t, pick(game.record!.state, (a) => a.type === 'deploy'));
+    game.actV2(t, pick(game.record!.state, (a) => a.type === 'move'));
+    game.actV2(t, { type: 'endTurn' });
     const latest = [...t.messages].reverse().find((m) => m.type === 'stateV2');
     if (latest?.type !== 'stateV2') throw new Error('no state');
-    expect(latest.view.you).toBe('black'); // Black is now deploying
+    expect(latest.view.you).toBe('black'); // Black is now to move
     expect(db.gameById(game.id)).toBeUndefined();
   });
 });
