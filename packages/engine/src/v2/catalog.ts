@@ -47,6 +47,12 @@ const DAWN_PALADIN: PieceDef = {
   rules: [rule({ dirs: KNIGHT, range: 1, leap: true }), rule({ dirs: ORTHO, range: 1 })],
 };
 
+const DUSKFANG: PieceDef = {
+  kind: 'duskfang',
+  name: 'Duskfang',
+  rules: [rule({ dirs: DIAG, range: 1, mode: 'move' }), rule({ dirs: KNIGHT, range: 1, leap: true, mode: 'capture' })],
+};
+
 const TOWER: PieceDef = {
   kind: 'tower',
   name: 'Tower',
@@ -63,6 +69,7 @@ export const STARTER_CATALOG: Record<string, Card> = {
   hopper: { type: 'piece', id: 'hopper', name: 'Hopper', cost: 3, sealTimer: 2, piece: HOPPER },
   cathedral_runner: { type: 'piece', id: 'cathedral_runner', name: 'Cathedral Runner', cost: 3, sealTimer: 2, piece: RUNNER },
   dawn_paladin: { type: 'piece', id: 'dawn_paladin', name: 'Dawn Paladin', cost: 4, sealTimer: 3, piece: DAWN_PALADIN },
+  duskfang: { type: 'piece', id: 'duskfang', name: 'Duskfang', cost: 2, sealTimer: 3, piece: DUSKFANG },
   tower: { type: 'piece', id: 'tower', name: 'Tower', cost: 5, sealTimer: 3, piece: TOWER },
   insight: { type: 'spell', id: 'insight', name: 'Insight', cost: 1, effect: { kind: 'draw', count: 2 }, text: 'Draw 2 cards.' },
   dispel: { type: 'spell', id: 'dispel', name: 'Dispel', cost: 3, effect: { kind: 'destroySeal' }, text: 'Destroy a seal. Both the seal and its card go to the discard pile.' },
