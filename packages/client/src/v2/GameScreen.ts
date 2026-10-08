@@ -46,6 +46,7 @@ type Mode = 'deploy' | 'summon' | 'seal' | 'spell';
 interface CardDrag {
   uid: string;
   pointerId: number;
+  pointerType: string;
   startX: number;
   startY: number;
   scrollFrom: number | null;
@@ -89,6 +90,9 @@ export class GameScreen {
   private readonly endBtn = el('button', 'primary g2-end', 'End turn');
   private readonly codeEl = el('div', 'code', '-----');
   private readonly hintEl = el('div', 'hint');
+  /** Under a thumb the hovered square is hidden, so a touch drag repeats its seal warning here. */
+  private readonly dropNoteEl = el('div', 'g2-dropnote hidden');
+  private readonly dropTagEl = el('div', 'g2-droptag');
   private readonly oppEl = el('div', 'g2-player');
   private readonly meEl = el('div', 'g2-player');
   private readonly oppHandEl = el('div', 'g2-oppcards');
@@ -347,6 +351,7 @@ export class GameScreen {
     this.drag = {
       uid,
       pointerId: e.pointerId,
+      pointerType: e.pointerType,
       startX: e.clientX,
       startY: e.clientY,
       scrollFrom: null,
@@ -402,13 +407,45 @@ export class GameScreen {
       if (drag.hover !== null) this.cells[drag.hover]?.classList.remove('drop-hover');
       if (hover !== null) this.cells[hover]?.classList.add('drop-hover');
       drag.hover = hover;
+      this.showSealWarning(drag);
     }
   };
+
+  /** "seals Squire, gone for good" when the held card hovers one of your pieces; nothing for a summon. */
+  private sealWarning(action: Action | undefined): string | null {
+    if (action?.type !== 'seal') return null;
+    const target = this.view?.pieces.find((p) => p.square === action.target);
+    return `seals ${target?.name ?? 'this piece'}, gone for good`;
+  }
+
+  private showSealWarning(drag: CardDrag): void {
+    const text = drag.hover === null ? null : this.sealWarning(this.dropTargets(drag.uid).get(drag.hover));
+    const mouse = drag.pointerType === 'mouse';
+    this.dropNoteEl.textContent = text ?? '';
+    this.dropNoteEl.classList.toggle('hidden', !text || mouse);
+    const cell = drag.hover === null ? undefined : this.cells[drag.hover];
+    if (!text || !mouse || !cell) return this.dropTagEl.remove();
+    // Below the square: the held card hangs above the pointer and would cover a tag placed there.
+    this.dropTagEl.textContent = text;
+    document.body.appendChild(this.dropTagEl);
+    const box = cell.getBoundingClientRect();
+    const half = this.dropTagEl.offsetWidth / 2;
+    const x = Math.min(Math.max(box.left + box.width / 2, half + 4), window.innerWidth - half - 4);
+    const y = Math.min(box.bottom + 4, window.innerHeight - this.dropTagEl.offsetHeight - 4);
+    this.dropTagEl.style.left = `${x - half}px`;
+    this.dropTagEl.style.top = `${y}px`;
+  }
+
+  private hideSealWarning(): void {
+    this.dropNoteEl.classList.add('hidden');
+    this.dropTagEl.remove();
+  }
 
   private readonly onDragEnd = (e: PointerEvent): void => {
     const drag = this.drag;
     if (!drag || e.pointerId !== drag.pointerId) return;
     this.removeDragListeners();
+    this.hideSealWarning();
     const ghost = drag.ghost;
     if (ghost || drag.scrollFrom !== null) {
       // The click that follows a drag must not also select the card.
@@ -444,6 +481,7 @@ export class GameScreen {
   }
 
   private cancelDrag(): void {
+    this.hideSealWarning();
     if (!this.drag) return;
     this.removeDragListeners();
     this.drag.ghost?.remove();
@@ -474,7 +512,7 @@ export class GameScreen {
     if (view.hand?.some((c) => this.canLift(view, c.cardId))) {
       label.append(el('span', 'g2-handtip', ' · drag a piece card up to your back row to summon it, or onto one of your pieces to seal'));
     }
-    this.handEl.appendChild(label);
+    this.handEl.append(label, this.dropNoteEl);
     const row = el('div', 'g2-handrow');
     for (const c of view.hand ?? []) row.appendChild(this.cardTile(c.uid, c.cardId, view));
     if (!view.hand?.length) row.appendChild(el('span', 'hint', 'No cards in hand.'));
@@ -544,10 +582,14 @@ export class GameScreen {
       const piece = view.pieces.find((p) => p.square === square);
       const seal = view.seals.find((s) => s.square === square);
       const classes = ['g2-cell', (v2.fileOf(square) + v2.rankOf(square)) % 2 === 0 ? 'dark' : 'light'];
-      if (targets.has(square)) classes.push(piece || seal ? 'target capture' : 'target');
+      const target = targets.get(square);
+      if (target) classes.push(target.type === 'seal' ? 'target seal' : piece || seal ? 'target capture' : 'target');
       const drop = drops.get(square);
       if (drop) classes.push(drop.type === 'seal' ? 'drop drop-seal' : 'drop');
       if (held && held.hover === square) classes.push('drop-hover');
+      const warning = this.sealWarning(drop ?? target);
+      if (warning) cell.title = warning;
+      else cell.removeAttribute('title');
       if (this.selectedSquare === square) classes.push('selected');
       if (lastMove && (lastMove.from === square || lastMove.to === square)) classes.push('last');
       if (piece?.king && piece.owner === view.active && view.inCheck) classes.push('check');
