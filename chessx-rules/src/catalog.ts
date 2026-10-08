@@ -65,11 +65,11 @@ export const STARTER_CATALOG: Record<string, Card> = {
   dawn_paladin: { type: 'piece', id: 'dawn_paladin', name: 'Dawn Paladin', cost: 4, sealTimer: 3, piece: DAWN_PALADIN },
   tower: { type: 'piece', id: 'tower', name: 'Tower', cost: 5, sealTimer: 3, piece: TOWER },
   insight: { type: 'spell', id: 'insight', name: 'Insight', cost: 1, effect: { kind: 'draw', count: 2 }, text: 'Draw 2 cards.' },
-  dispel: { type: 'spell', id: 'dispel', name: 'Dispel', cost: 2, effect: { kind: 'destroySeal' }, text: 'Destroy a seal. Both the seal and its card go to the discard pile.' },
+  dispel: { type: 'spell', id: 'dispel', name: 'Dispel', cost: 3, effect: { kind: 'destroySeal' }, text: 'Destroy a seal. Both the seal and its card go to the discard pile.' },
 };
 
-/** A 26-card starter deck: 4 Initiates, 6 Squires, 3 Hoppers, 3 Runners, 2 Dawn Paladins, 2 Towers, 3 Insight, 3 Dispel. */
+/** A 24-card starter deck: 4 Initiates, 5 Squires, 3 Hoppers, 2 Runners, 2 Towers, 4 Dawn Paladins, 2 Insight, 2 Dispel. */
 export function starterDeck(): string[] {
-  const counts: Record<string, number> = { initiate: 4, squire: 6, hopper: 3, cathedral_runner: 3, dawn_paladin: 2, tower: 2, insight: 3, dispel: 3 };
+  const counts: Record<string, number> = { initiate: 4, squire: 5, hopper: 3, cathedral_runner: 2, tower: 2, dawn_paladin: 4, insight: 2, dispel: 2 };
   return Object.entries(counts).flatMap(([id, n]) => Array.from({ length: n }, () => id));
 }
