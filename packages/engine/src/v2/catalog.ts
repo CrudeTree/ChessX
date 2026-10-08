@@ -41,6 +41,12 @@ const RUNNER: PieceDef = {
   rules: [rule({ dirs: DIAG, range: 8 })],
 };
 
+const DAWN_PALADIN: PieceDef = {
+  kind: 'dawn_paladin',
+  name: 'Dawn Paladin',
+  rules: [rule({ dirs: KNIGHT, range: 1, leap: true }), rule({ dirs: ORTHO, range: 1 })],
+};
+
 const TOWER: PieceDef = {
   kind: 'tower',
   name: 'Tower',
@@ -56,13 +62,14 @@ export const STARTER_CATALOG: Record<string, Card> = {
   squire: { type: 'piece', id: 'squire', name: 'Squire', cost: 1, sealTimer: 1, piece: SQUIRE },
   hopper: { type: 'piece', id: 'hopper', name: 'Hopper', cost: 3, sealTimer: 2, piece: HOPPER },
   cathedral_runner: { type: 'piece', id: 'cathedral_runner', name: 'Cathedral Runner', cost: 3, sealTimer: 2, piece: RUNNER },
+  dawn_paladin: { type: 'piece', id: 'dawn_paladin', name: 'Dawn Paladin', cost: 4, sealTimer: 3, piece: DAWN_PALADIN },
   tower: { type: 'piece', id: 'tower', name: 'Tower', cost: 5, sealTimer: 3, piece: TOWER },
   insight: { type: 'spell', id: 'insight', name: 'Insight', cost: 1, effect: { kind: 'draw', count: 2 }, text: 'Draw 2 cards.' },
   dispel: { type: 'spell', id: 'dispel', name: 'Dispel', cost: 2, effect: { kind: 'destroySeal' }, text: 'Destroy a seal. Both the seal and its card go to the discard pile.' },
 };
 
-/** A 24-card starter deck: 4 Initiates, 6 Squires, 3 Hoppers, 3 Runners, 2 Towers, 3 Insight, 3 Dispel. */
+/** A 26-card starter deck: 4 Initiates, 6 Squires, 3 Hoppers, 3 Runners, 2 Dawn Paladins, 2 Towers, 3 Insight, 3 Dispel. */
 export function starterDeck(): string[] {
-  const counts: Record<string, number> = { initiate: 4, squire: 6, hopper: 3, cathedral_runner: 3, tower: 2, insight: 3, dispel: 3 };
+  const counts: Record<string, number> = { initiate: 4, squire: 6, hopper: 3, cathedral_runner: 3, dawn_paladin: 2, tower: 2, insight: 3, dispel: 3 };
   return Object.entries(counts).flatMap(([id, n]) => Array.from({ length: n }, () => id));
 }

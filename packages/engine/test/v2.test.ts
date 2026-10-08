@@ -189,6 +189,25 @@ describe('summoning', () => {
   });
 });
 
+describe('Dawn Paladin', () => {
+  it('costs 4, seals on a 3-turn timer, and leaps like a knight or steps one square straight', () => {
+    const card = STARTER_CATALOG.dawn_paladin!;
+    expect(card).toMatchObject({ type: 'piece', cost: 4, sealTimer: 3 });
+    expect(starterDeck().filter((id) => id === 'dawn_paladin')).toHaveLength(2);
+    const state = bare(0);
+    piece(state, 'white', 'dawn_paladin', 'c4');
+    piece(state, 'white', 'initiate', 'c5');
+    piece(state, 'black', 'initiate', 'b6');
+    piece(state, 'black', 'initiate', 'd4');
+    const to = legalActions(state)
+      .filter((a): a is Extract<Action, { type: 'move' }> => a.type === 'move' && a.from === S('c4'))
+      .map((a) => a.to)
+      .sort((x, y) => x - y);
+    const expected = ['a3', 'a5', 'b2', 'b6', 'd2', 'd6', 'e3', 'e5', 'b4', 'c3', 'd4'].map(S).sort((x, y) => x - y);
+    expect(to).toEqual(expected);
+  });
+});
+
 describe('sealing', () => {
   it('seals only own non-King pieces, consumes the piece, and costs mana and the action', () => {
     const state = bare(5);
