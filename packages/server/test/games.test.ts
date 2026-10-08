@@ -46,9 +46,11 @@ describe('rules 2 games', () => {
     const stateMsg = tb.messages.find((m) => m.type === 'stateV2');
     expect(stateMsg?.type).toBe('stateV2');
     if (stateMsg?.type !== 'stateV2') throw new Error('unreachable');
-    // Bob sees his own hand and only a count for Alice's (White has drawn for turn 1).
-    expect(stateMsg.view.hand).toHaveLength(7);
-    expect(stateMsg.view.handCount.white).toBe(8);
+    // Bob sees his own hand and only a count for Alice's. White has already drawn for turn 1.
+    const bobColor: Color = game.row.white_user_id === bob.id ? 'white' : 'black';
+    expect(stateMsg.view.you).toBe(bobColor);
+    expect(stateMsg.view.hand).toHaveLength(bobColor === 'white' ? 8 : 7);
+    expect(stateMsg.view.handCount).toEqual({ white: 8, black: 7 });
     expect(game.summaryFor(alice.id)).toMatchObject({ rules: 2, waitingForOpponent: false });
   });
 
