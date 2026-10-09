@@ -78,7 +78,7 @@ export const STARTER_CATALOG: Record<string, Card> = {
   duskfang: { type: 'piece', id: 'duskfang', name: 'Duskfang', cost: 2, sealTimer: 3, piece: DUSKFANG },
   wyrmling: { type: 'piece', id: 'wyrmling', name: 'Wyrmling', cost: 2, sealTimer: 1, piece: WYRMLING },
   tower: { type: 'piece', id: 'tower', name: 'Tower', cost: 5, sealTimer: 3, piece: TOWER },
-  insight: { type: 'spell', id: 'insight', name: 'Insight', cost: 1, effect: { kind: 'draw', count: 2 }, text: 'Draw 2 cards.' },
+  insight: { type: 'spell', id: 'insight', name: 'Insight', cost: 2, effect: { kind: 'draw', count: 2 }, text: 'Draw 2 cards.' },
   dispel: { type: 'spell', id: 'dispel', name: 'Dispel', cost: 3, effect: { kind: 'destroySeal' }, text: 'Destroy a seal. Both the seal and its card go to the discard pile.' },
 };
 
