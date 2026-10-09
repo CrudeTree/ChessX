@@ -220,7 +220,7 @@ describe('Dawn Paladin', () => {
   it('costs 4, seals on a 3-turn timer, and leaps like a knight or steps one square straight', () => {
     const card = STARTER_CATALOG.dawn_paladin!;
     expect(card).toMatchObject({ type: 'piece', cost: 4, sealTimer: 3 });
-    expect(starterDeck().filter((id) => id === 'dawn_paladin')).toHaveLength(4);
+    expect(starterDeck().filter((id) => id === 'dawn_paladin')).toHaveLength(3);
     const state = bare(0);
     piece(state, 'white', 'dawn_paladin', 'c4');
     piece(state, 'white', 'initiate', 'c5');
@@ -239,7 +239,7 @@ describe('Duskfang', () => {
   it('costs 2, seals on a 3-turn timer, steps one square diagonally and captures only with a knight leap', () => {
     const card = STARTER_CATALOG.duskfang!;
     expect(card).toMatchObject({ type: 'piece', cost: 2, sealTimer: 3 });
-    expect(starterDeck()).not.toContain('duskfang');
+    expect(starterDeck().filter((id) => id === 'duskfang')).toHaveLength(2);
     const state = bare(0);
     piece(state, 'white', 'duskfang', 'c4');
     piece(state, 'white', 'initiate', 'b5');
@@ -250,6 +250,25 @@ describe('Duskfang', () => {
       .map((a) => a.to)
       .sort((x, y) => x - y);
     const expected = ['b3', 'd3', 'b6'].map(S).sort((x, y) => x - y);
+    expect(to).toEqual(expected);
+  });
+});
+
+describe('Wyrmling', () => {
+  it('costs 2, seals on a 1-turn timer, and leaps exactly two squares straight to move or capture', () => {
+    const card = STARTER_CATALOG.wyrmling!;
+    expect(card).toMatchObject({ type: 'piece', cost: 2, sealTimer: 1 });
+    expect(starterDeck().filter((id) => id === 'wyrmling')).toHaveLength(2);
+    const state = bare(0);
+    piece(state, 'white', 'wyrmling', 'c4');
+    piece(state, 'white', 'initiate', 'e4');
+    piece(state, 'black', 'initiate', 'c5');
+    piece(state, 'black', 'initiate', 'c6');
+    const to = legalActions(state)
+      .filter((a): a is Extract<Action, { type: 'move' }> => a.type === 'move' && a.from === S('c4'))
+      .map((a) => a.to)
+      .sort((x, y) => x - y);
+    const expected = ['a4', 'c2', 'c6'].map(S).sort((x, y) => x - y);
     expect(to).toEqual(expected);
   });
 });
@@ -366,8 +385,23 @@ describe('starter deck', () => {
   it('is the agreed 24-card list', () => {
     const counts: Record<string, number> = {};
     for (const id of starterDeck()) counts[id] = (counts[id] ?? 0) + 1;
-    expect(counts).toEqual({ initiate: 2, squire: 7, hopper: 3, cathedral_runner: 2, tower: 2, dawn_paladin: 4, insight: 2, dispel: 2 });
+    expect(counts).toEqual({
+      initiate: 2,
+      squire: 5,
+      hopper: 2,
+      cathedral_runner: 2,
+      tower: 2,
+      dawn_paladin: 3,
+      insight: 2,
+      dispel: 2,
+      wyrmling: 2,
+      duskfang: 2,
+    });
     expect(starterDeck()).toHaveLength(24);
+  });
+
+  it('holds at most four cost-2 cards', () => {
+    expect(starterDeck().filter((id) => STARTER_CATALOG[id]!.cost === 2)).toHaveLength(4);
   });
 });
 
