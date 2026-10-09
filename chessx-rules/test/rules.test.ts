@@ -394,8 +394,20 @@ describe('starter deck', () => {
     expect(starterDeck()).toHaveLength(24);
   });
 
-  it('holds at most four cost-2 cards', () => {
-    expect(starterDeck().filter((id) => STARTER_CATALOG[id]!.cost === 2)).toHaveLength(4);
+  it('holds at most four cost-2 piece cards', () => {
+    expect(starterDeck().filter((id) => STARTER_CATALOG[id]!.type === 'piece' && STARTER_CATALOG[id]!.cost === 2)).toHaveLength(4);
+  });
+
+  it('prints Insight at 2 mana, so turn 1 is a Wyrmling seal or an Insight, never both (msg-028)', () => {
+    expect(STARTER_CATALOG.insight!.cost).toBe(2);
+    const state = bare(3);
+    piece(state, 'white', 'initiate', 'c2');
+    const wyrmling = give(state, 'white', 'wyrmling');
+    const insight = give(state, 'white', 'insight');
+    expect(legalActions(state).some((a) => a.type === 'spell' && a.cardUid === insight)).toBe(true);
+    const next = act(state, find(state, (a) => a.type === 'seal' && a.cardUid === wyrmling));
+    expect(next.mana.white).toBe(1);
+    expect(legalActions(next).some((a) => a.type === 'spell' && a.cardUid === insight)).toBe(false);
   });
 });
 
