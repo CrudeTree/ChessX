@@ -248,6 +248,33 @@ describe('Duskfang', () => {
   });
 });
 
+describe('Eclipse Knight', () => {
+  it('costs 4, seals on a 3-turn timer, and leaps like a knight or steps one square diagonally to move or capture', () => {
+    const card = STARTER_CATALOG.eclipse_knight!;
+    expect(card).toMatchObject({ type: 'piece', cost: 4, sealTimer: 3 });
+    expect(starterDeck()).not.toContain('eclipse_knight');
+    const state = bare(0);
+    piece(state, 'white', 'eclipse_knight', 'c4');
+    piece(state, 'white', 'initiate', 'b5');
+    piece(state, 'white', 'initiate', 'a3');
+    piece(state, 'black', 'initiate', 'd5');
+    piece(state, 'black', 'initiate', 'b6');
+    const to = legalActions(state)
+      .filter((a): a is Extract<Action, { type: 'move' }> => a.type === 'move' && a.from === S('c4'))
+      .map((a) => a.to)
+      .sort((x, y) => x - y);
+    const expected = ['a5', 'b2', 'b6', 'd2', 'd6', 'e3', 'e5', 'b3', 'd3', 'd5'].map(S).sort((x, y) => x - y);
+    expect(to).toEqual(expected);
+  });
+
+  it('checks a King on d8 from e6 with its knight leap', () => {
+    const state = bare(0);
+    state.pieces.find((p) => p.owner === 'black' && p.def.king)!.square = S('d8');
+    piece(state, 'white', 'eclipse_knight', 'e6');
+    expect(isInCheck(state, 'black')).toBe(true);
+  });
+});
+
 describe('Wyrmling', () => {
   it('costs 2, seals on a 1-turn timer, and leaps exactly two squares straight to move or capture', () => {
     const card = STARTER_CATALOG.wyrmling!;
