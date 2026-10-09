@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { Db, newId, type GameRow } from '../src/db.js';
-import { GameError, GameManager, type Transport } from '../src/games.js';
+import { GameError, GameManager, type LiveGame, type Transport } from '../src/games.js';
 
 function setup() {
   const db = new Db(':memory:');
@@ -25,6 +25,24 @@ function pick(state: v2.GameState, want: (a: v2.Action) => boolean): v2.Action {
   const found = v2.legalActions(state).find(want);
   if (!found) throw new Error('no such legal action');
   return found;
+}
+
+/** After the action, the turn closes by itself unless a spell is still playable; then pass it by hand. */
+function endIfOpen(game: LiveGame, t: Transport): void {
+  if (game.record!.state.active === 'white') game.actV2(t, { type: 'endTurn' });
+}
+
+/** A two-player game on White's turn 1 with White's hand replaced by `hand` and the given mana. */
+function seatedGame(hand: string[], mana = 3) {
+  const { games, alice, bob } = setup();
+  const game = games.create(alice.id, false, []);
+  game.join(bob.id, []);
+  const white = transport(game.row.white_user_id!);
+  game.attach(white);
+  const state = game.record!.state;
+  state.hand.white = hand.map((cardId, i) => ({ uid: `h${i}`, cardId }));
+  state.mana.white = mana;
+  return { game, white };
 }
 
 describe('rules 2 games', () => {
@@ -73,7 +91,7 @@ describe('rules 2 games', () => {
     expect(() => game.actV2(black, { type: 'endTurn' })).toThrow(GameError);
 
     game.actV2(white, pick(game.record!.state, (a) => a.type === 'move'));
-    game.actV2(white, { type: 'endTurn' });
+    endIfOpen(game, white);
     expect(game.record!.state.active).toBe('black');
 
     // A fresh manager (a server restart) loads the very same game from SQLite.
@@ -108,11 +126,53 @@ describe('rules 2 games', () => {
     if (first?.type !== 'stateV2') throw new Error('no state');
     expect(first.view.you).toBe('white');
     game.actV2(t, pick(game.record!.state, (a) => a.type === 'move'));
-    game.actV2(t, { type: 'endTurn' });
+    endIfOpen(game, t);
     const latest = [...t.messages].reverse().find((m) => m.type === 'stateV2');
     if (latest?.type !== 'stateV2') throw new Error('no state');
     expect(latest.view.you).toBe('black'); // Black is now to move
     expect(db.gameById(game.id)).toBeUndefined();
+  });
+});
+
+describe('closing the turn on its own (msg-029)', () => {
+  it('passes to the opponent after the action when no spell can be played', () => {
+    const { game, white } = seatedGame(['squire', 'tower']);
+    game.actV2(white, pick(game.record!.state, (a) => a.type === 'move'));
+    expect(game.record!.state.active).toBe('black');
+    expect(game.record!.events.map((e) => e.type)).toContain('turnStarted');
+  });
+
+  it('keeps the turn open while an affordable spell is in hand, then closes it once the spell is played', () => {
+    const { game, white } = seatedGame(['insight']);
+    game.actV2(white, pick(game.record!.state, (a) => a.type === 'move'));
+    expect(game.record!.state.active).toBe('white');
+    const open = v2.legalActions(game.record!.state).map((a) => a.type);
+    expect(open).toContain('spell');
+    expect(open).toContain('endTurn');
+    game.actV2(white, { type: 'spell', cardUid: 'h0' });
+    expect(game.record!.state.active).toBe('black');
+  });
+
+  it('a spell played before the action does not end the turn; the action then does', () => {
+    const { game, white } = seatedGame(['insight']);
+    game.actV2(white, { type: 'spell', cardUid: 'h0' });
+    expect(game.record!.state.active).toBe('white');
+    game.actV2(white, pick(game.record!.state, (a) => a.type === 'move'));
+    expect(game.record!.state.active).toBe('black');
+  });
+
+  it('a spell too dear to cast does not hold the turn open', () => {
+    const { game, white } = seatedGame(['insight'], 1);
+    game.actV2(white, pick(game.record!.state, (a) => a.type === 'move'));
+    expect(game.record!.state.active).toBe('black');
+  });
+
+  it('End turn still passes the spell by hand', () => {
+    const { game, white } = seatedGame(['insight']);
+    game.actV2(white, pick(game.record!.state, (a) => a.type === 'move'));
+    game.actV2(white, { type: 'endTurn' });
+    expect(game.record!.state.active).toBe('black');
+    expect(game.record!.state.hand.white.map((c) => c.cardId)).toContain('insight');
   });
 });
 

@@ -874,9 +874,13 @@ export class GameScreen {
       return;
     }
     const check = view.inCheck ? ' You are in CHECK — get your King out of it.' : '';
-    s.textContent = view.actionTaken
-      ? `${who}: action done.${view.spellPlayed ? '' : ' You may still play one spell.'} End the turn when ready.`
-      : `${who}: turn ${turn}, ${view.mana[view.active]} mana. Move, summon or seal${view.spellPlayed ? '' : ' (and play one spell)'}.${check}`;
+    const spellLeft = view.legalActions.some((a) => a.type === 'spell');
+    if (view.actionTaken) {
+      s.textContent = spellLeft ? `${who}: action done. Play a spell or End turn.` : `${who}: action done. End the turn when ready.`;
+      if (spellLeft) s.classList.add('choice');
+      return;
+    }
+    s.textContent = `${who}: turn ${turn}, ${view.mana[view.active]} mana. Move, summon or seal${view.spellPlayed ? '' : ' (and play one spell)'}. The turn ends on its own when nothing is left to do.${check}`;
   }
 
   private appendLog(view: v2.PlayerView): void {
