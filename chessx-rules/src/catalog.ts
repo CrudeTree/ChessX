@@ -53,6 +53,12 @@ const DUSKFANG: PieceDef = {
   rules: [rule({ dirs: DIAG, range: 1, mode: 'move' }), rule({ dirs: KNIGHT, range: 1, leap: true, mode: 'capture' })],
 };
 
+const WYRMLING: PieceDef = {
+  kind: 'wyrmling',
+  name: 'Wyrmling',
+  rules: [rule({ dirs: [[2, 0], [-2, 0], [0, 2], [0, -2]], range: 1, leap: true })],
+};
+
 const TOWER: PieceDef = {
   kind: 'tower',
   name: 'Tower',
@@ -70,13 +76,28 @@ export const STARTER_CATALOG: Record<string, Card> = {
   cathedral_runner: { type: 'piece', id: 'cathedral_runner', name: 'Cathedral Runner', cost: 3, sealTimer: 2, piece: RUNNER },
   dawn_paladin: { type: 'piece', id: 'dawn_paladin', name: 'Dawn Paladin', cost: 4, sealTimer: 3, piece: DAWN_PALADIN },
   duskfang: { type: 'piece', id: 'duskfang', name: 'Duskfang', cost: 2, sealTimer: 3, piece: DUSKFANG },
+  wyrmling: { type: 'piece', id: 'wyrmling', name: 'Wyrmling', cost: 2, sealTimer: 1, piece: WYRMLING },
   tower: { type: 'piece', id: 'tower', name: 'Tower', cost: 5, sealTimer: 3, piece: TOWER },
   insight: { type: 'spell', id: 'insight', name: 'Insight', cost: 1, effect: { kind: 'draw', count: 2 }, text: 'Draw 2 cards.' },
   dispel: { type: 'spell', id: 'dispel', name: 'Dispel', cost: 3, effect: { kind: 'destroySeal' }, text: 'Destroy a seal. Both the seal and its card go to the discard pile.' },
 };
 
-/** A 24-card starter deck: 2 Initiates, 7 Squires, 3 Hoppers, 2 Runners, 2 Towers, 4 Dawn Paladins, 2 Insight, 2 Dispel. */
+/**
+ * A 24-card starter deck: 2 Initiates, 5 Squires, 2 Hoppers, 2 Runners, 2 Towers, 3 Dawn Paladins, 2 Insight, 2 Dispel,
+ * 2 Wyrmlings, 2 Duskfangs. Four cost-2 cards at most (msg-026).
+ */
 export function starterDeck(): string[] {
-  const counts: Record<string, number> = { initiate: 2, squire: 7, hopper: 3, cathedral_runner: 2, tower: 2, dawn_paladin: 4, insight: 2, dispel: 2 };
+  const counts: Record<string, number> = {
+    initiate: 2,
+    squire: 5,
+    hopper: 2,
+    cathedral_runner: 2,
+    tower: 2,
+    dawn_paladin: 3,
+    insight: 2,
+    dispel: 2,
+    wyrmling: 2,
+    duskfang: 2,
+  };
   return Object.entries(counts).flatMap(([id, n]) => Array.from({ length: n }, () => id));
 }
