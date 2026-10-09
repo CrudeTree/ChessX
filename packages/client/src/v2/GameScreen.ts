@@ -59,9 +59,16 @@ interface CardDrag {
 /** Pixels the pointer must travel before a press on a card becomes a drag rather than a click. */
 const DRAG_THRESHOLD = 6;
 
-/** A piece or seal on the board whose card is shown in the inspect panel. Follows the thing as it moves. */
+/** A press on the board only counts as a tap if it stays within TAP_SLOP pixels; only a quick one opens a card. */
+const TAP_SLOP = 10;
+const TAP_MS = 450;
+
+/**
+ * Whose card the inspect panel over the board shows: a piece or seal (followed as it moves),
+ * or a card in your hand (tapped on a touch screen).
+ */
 interface Inspected {
-  kind: 'piece' | 'seal';
+  kind: 'piece' | 'seal' | 'card';
   id: string;
 }
 
@@ -92,6 +99,9 @@ export class GameScreen {
   private inspected: Inspected | null = null;
   /** Hand card under the mouse; it is shown in the inspect panel until the mouse leaves. */
   private hoverCard: string | null = null;
+  private boardPress: { x: number; y: number; at: number } | null = null;
+  /** Pointer type of the last press on a hand card: a mouse previews cards by hovering, a finger by tapping. */
+  private tilePointer = 'mouse';
 
   private readonly memory: PieceMemory = new Map();
   private lastSeq = -1;
@@ -114,7 +124,14 @@ export class GameScreen {
   private readonly resignBtn = el('button', 'danger', 'Resign');
   private readonly inspectEl = el('div', 'g2-inspect hidden');
   private readonly sideEl = el('aside', 'g2-side');
-  /** Phones stack the side column under the board, so the inspect panel sits under the hand there instead. */
+  private readonly codeBlock = el('div', 'side-block');
+  private readonly statusBlock = el('div', 'side-block g2-statusblock');
+  private readonly menuBtn = el('button', 'g2-menu', '☰');
+  private readonly sheetShade = el('div', 'g2-sheet-shade hidden');
+  /**
+   * Phones fit the whole game on one screen, so a pull on a card never fights a page scroll: the status and
+   * End turn sit under the hand, and the rest of the side column becomes a sheet behind the ☰ button.
+   */
   private readonly narrow = window.matchMedia('(max-width: 899px)');
   /** Chat is moved in here so it sits with the rest of the screen. */
   readonly chatSlot = el('div', 'g2-chat-slot');
@@ -126,14 +143,20 @@ export class GameScreen {
   ) {
     const main = el('div', 'g2-main');
     const boardWrap = el('div', 'g2-boardwrap');
-    boardWrap.append(this.oppEl, this.boardEl, this.meEl);
+    const boardBox = el('div', 'g2-boardbox');
+    boardBox.append(this.boardEl, this.inspectEl);
+    boardWrap.append(this.oppEl, boardBox, this.meEl);
     main.append(boardWrap, this.handEl, this.actionsEl);
 
     const side = this.sideEl;
-    const codeBlock = el('div', 'side-block');
-    codeBlock.append(el('div', 'label', 'Invite code'), this.codeEl, this.hintEl);
-    const statusBlock = el('div', 'side-block g2-statusblock');
-    statusBlock.append(this.statusEl, this.endBtn);
+    const sheetClose = el('button', 'g2-sheet-close', 'Close');
+    sheetClose.type = 'button';
+    sheetClose.onclick = () => this.toggleSheet(false);
+    this.codeBlock.append(el('div', 'label', 'Invite code'), this.codeEl, this.hintEl);
+    this.menuBtn.type = 'button';
+    this.menuBtn.title = 'Log, chat, invite code and resign';
+    this.menuBtn.onclick = () => this.toggleSheet();
+    this.statusBlock.append(this.statusEl, this.endBtn, this.menuBtn);
     const logBlock = el('div', 'side-block grow');
     logBlock.append(el('div', 'label', 'Log'), this.logEl);
     const buttons = el('div', 'side-block actions');
@@ -141,18 +164,51 @@ export class GameScreen {
     leave.onclick = () => this.hooks.leave();
     this.resignBtn.onclick = () => this.hooks.resign();
     buttons.append(this.resignBtn, leave);
-    side.append(codeBlock, statusBlock, logBlock, buttons, this.chatSlot);
+    side.append(sheetClose, this.codeBlock, this.statusBlock, logBlock, buttons, this.chatSlot);
+    this.sheetShade.onclick = () => this.toggleSheet(false);
 
-    root.append(main, side);
-    this.placeInspect();
-    this.narrow.addEventListener('change', () => this.placeInspect());
+    root.append(main, side, this.sheetShade);
+    this.placeStatus();
+    this.narrow.addEventListener('change', () => this.placeStatus());
 
     this.endBtn.onclick = () => this.hooks.act({ type: 'endTurn' });
     this.buildBoard();
-    this.boardEl.addEventListener('click', (e) => {
-      const cell = (e.target as HTMLElement).closest<HTMLElement>('[data-sq]');
-      if (cell) this.onSquare(Number(cell.dataset.sq));
+    boardBox.addEventListener('pointerdown', (e) => {
+      this.boardPress = { x: e.clientX, y: e.clientY, at: performance.now() };
     });
+    this.boardEl.addEventListener('click', (e) => {
+      const tap = this.boardTap(e);
+      const cell = (e.target as HTMLElement).closest<HTMLElement>('[data-sq]');
+      if (tap && cell) this.onSquare(Number(cell.dataset.sq), tap === 'quick');
+    });
+    this.inspectEl.addEventListener('click', (e) => {
+      if (!this.boardTap(e)) return;
+      this.inspected = null;
+      this.hoverCard = null;
+      this.render();
+    });
+  }
+
+  /** A press that wandered off is a drag, and a drag on the board does nothing; only a quick tap opens a card. */
+  private boardTap(e: MouseEvent): 'quick' | 'slow' | null {
+    const press = this.boardPress;
+    this.boardPress = null;
+    if (!press) return 'quick';
+    if (Math.hypot(e.clientX - press.x, e.clientY - press.y) > TAP_SLOP) return null;
+    return performance.now() - press.at < TAP_MS ? 'quick' : 'slow';
+  }
+
+  private placeStatus(): void {
+    if (this.narrow.matches) this.handEl.after(this.statusBlock);
+    else {
+      this.codeBlock.after(this.statusBlock);
+      this.toggleSheet(false);
+    }
+  }
+
+  private toggleSheet(open = !this.sideEl.classList.contains('open')): void {
+    this.sideEl.classList.toggle('open', open);
+    this.sheetShade.classList.toggle('hidden', !open);
   }
 
   // ------------------------------------------------------------------ lifecycle
@@ -187,6 +243,7 @@ export class GameScreen {
     this.statusEl.textContent = 'Setting up the board…';
     this.statusEl.className = 'status g2-status';
     this.endBtn.classList.add('hidden');
+    this.toggleSheet(false);
   }
 
   setRoom(room: RoomInfo): void {
@@ -259,7 +316,7 @@ export class GameScreen {
     return out;
   }
 
-  private onSquare(square: v2.Square): void {
+  private onSquare(square: v2.Square, quick = true): void {
     const view = this.view;
     if (!view) return;
     const playing = view.status.kind === 'playing';
@@ -271,7 +328,7 @@ export class GameScreen {
       this.render();
       return;
     }
-    this.toggleInspect(view, square);
+    if (quick) this.toggleInspect(view, square);
     if (!playing) {
       this.render();
       return;
@@ -305,14 +362,9 @@ export class GameScreen {
 
   // ------------------------------------------------------------------- inspect
 
-  private placeInspect(): void {
-    if (this.narrow.matches) this.handEl.after(this.inspectEl);
-    else this.sideEl.prepend(this.inspectEl);
-  }
-
   private inspectedSquare(view: v2.PlayerView): v2.Square | null {
     const it = this.inspected;
-    if (!it) return null;
+    if (!it || it.kind === 'card') return null;
     const found = it.kind === 'piece' ? view.pieces.find((p) => p.id === it.id) : view.seals.find((s) => s.id === it.id);
     return found ? found.square : null;
   }
@@ -320,12 +372,13 @@ export class GameScreen {
   private renderInspect(view: v2.PlayerView): void {
     const box = this.inspectEl;
     box.innerHTML = '';
-    const handCard = this.hoverCard ? view.hand?.find((c) => c.uid === this.hoverCard) : undefined;
-    if (this.hoverCard && !handCard) this.hoverCard = null;
+    if (this.hoverCard && !view.hand?.some((c) => c.uid === this.hoverCard)) this.hoverCard = null;
     const it = this.inspected;
-    const piece = it?.kind === 'piece' ? view.pieces.find((p) => p.id === it.id) : undefined;
-    const seal = it?.kind === 'seal' ? view.seals.find((s) => s.id === it.id) : undefined;
-    if (it && !piece && !seal) this.inspected = null;
+    const handUid = this.hoverCard ?? (it?.kind === 'card' ? it.id : null);
+    const handCard = handUid ? view.hand?.find((c) => c.uid === handUid) : undefined;
+    const piece = !handCard && it?.kind === 'piece' ? view.pieces.find((p) => p.id === it.id) : undefined;
+    const seal = !handCard && it?.kind === 'seal' ? view.seals.find((s) => s.id === it.id) : undefined;
+    if (it && !piece && !seal && !(it.kind === 'card' && handCard)) this.inspected = null;
 
     let card: v2.ViewCard | undefined;
     let owner: Color = view.you;
@@ -357,12 +410,15 @@ export class GameScreen {
       const when = seal.timer <= 1 ? `at the start of ${whose} next turn` : `in ${seal.timer} of ${whose} turns`;
       notes.push(`Sealed. Hatches into this piece ${when}.`);
     } else {
-      box.className = 'g2-inspect empty';
-      box.textContent = 'Tap any piece or seal to see how it moves.';
+      box.className = 'g2-inspect hidden';
       return;
     }
     rules ??= card?.rules;
-    box.className = 'g2-inspect';
+    // Over the half of the board away from the piece; a hand card goes up top, clear of your back row.
+    const at = piece ?? seal;
+    const atBottom = at !== undefined && this.screenRow(at.square) < v2.RANKS / 2;
+    box.className = `g2-inspect ${atBottom ? 'at-bottom' : 'at-top'}${this.drag?.ghost ? ' hidden' : ''}`;
+    box.title = 'Tap to close';
 
     const head = el('div', 'g2-inspect-head');
     if (card?.type !== 'spell') head.append(el('span', `g2-inspect-glyph ${owner}`, glyphFor(kind, name)));
@@ -370,11 +426,6 @@ export class GameScreen {
     const close = el('button', 'g2-inspect-close', '×');
     close.type = 'button';
     close.title = 'Close';
-    close.onclick = () => {
-      this.inspected = null;
-      this.hoverCard = null;
-      this.render();
-    };
     head.append(close);
     box.append(head);
 
@@ -393,6 +444,12 @@ export class GameScreen {
     if (rules) text.append(el('div', 'g2-inspect-legend', 'Green dot: moves there. Red ring: captures there.'));
     body.append(text);
     box.append(body);
+  }
+
+  /** 0 for the top row of the board as this player sees it. */
+  private screenRow(square: v2.Square): number {
+    const rank = v2.rankOf(square);
+    return this.seat === 'black' ? rank : v2.RANKS - 1 - rank;
   }
 
   private ownerLabel(owner: Color, view: v2.PlayerView): string {
@@ -455,15 +512,26 @@ export class GameScreen {
     this.selectedCard = uid;
     const options = this.optionsFor(uid);
     this.mode = options.length === 1 ? options[0]! : null;
-    // A spell that needs no target is played straight away.
-    if (this.mode === 'spell') {
-      const spell = this.legal().filter((a) => a.type === 'spell' && a.cardUid === uid);
-      if (spell.length === 1 && spell[0]!.type === 'spell' && spell[0]!.target === undefined) {
-        this.hooks.act(spell[0]!);
-        this.clearSelection();
-      }
+    // A click on a spell that needs no target plays it straight away. A tap only opens it, because a
+    // finger cannot hover to read a card first; it is then cast with the Cast button.
+    if (this.mode === 'spell' && this.untargetedSpell(uid)) {
+      if (this.tilePointer === 'mouse') this.castNow(uid);
+      else this.mode = null;
     }
     this.render();
+  }
+
+  private untargetedSpell(uid: string): Action | null {
+    const spell = this.legal().filter((a) => a.type === 'spell' && a.cardUid === uid);
+    return spell.length === 1 && spell[0]!.type === 'spell' && spell[0]!.target === undefined ? spell[0]! : null;
+  }
+
+  private castNow(uid: string): void {
+    const spell = this.untargetedSpell(uid);
+    if (!spell) return;
+    this.hooks.act(spell);
+    this.clearSelection();
+    if (this.inspected?.kind === 'card' && this.inspected.id === uid) this.inspected = null;
   }
 
   private cardTile(uid: string, cardId: string, view: v2.PlayerView): HTMLElement {
@@ -473,16 +541,23 @@ export class GameScreen {
     const lifted = this.drag?.ghost && this.drag.uid === uid;
     const tile = el(
       'button',
-      `g2-card ${card?.type ?? ''}${options.length ? ' playable' : ''}${this.selectedCard === uid ? ' selected' : ''}${liftable ? ' draggable' : ''}${lifted ? ' lifted' : ''}`,
+      `g2-card ${card?.type ?? ''}${options.length ? ' playable' : ''}${this.selectedCard === uid ? ' selected' : ''}${liftable ? ' draggable' : ''}${lifted ? ' lifted' : ''}${this.inspected?.kind === 'card' && this.inspected.id === uid ? ' inspected' : ''}`,
     );
     tile.type = 'button';
     tile.dataset.uid = uid;
-    tile.disabled = !options.length && !liftable;
-    if (liftable) tile.addEventListener('pointerdown', (e) => this.pressCard(e, uid, tile));
+    // Not `disabled`: a card you cannot play right now can still be tapped to read it.
+    if (!options.length && !liftable) tile.setAttribute('aria-disabled', 'true');
+    tile.addEventListener('pointerdown', (e) => {
+      this.tilePointer = e.pointerType;
+      if (liftable) this.pressCard(e, uid, tile);
+    });
     tile.append(el('span', 'g2-cost', String(card?.cost ?? '?')), el('span', 'g2-cardname', card?.name ?? cardId));
     tile.append(el('span', 'g2-cardtype', card?.type === 'spell' ? 'Spell' : 'Piece'));
     tile.append(el('span', 'g2-cardtext', card?.text ?? ''));
-    if (card?.type === 'piece') tile.append(el('span', 'g2-cardseal', `Seal: hatches in ${card.sealTimer} turn${card.sealTimer === 1 ? '' : 's'}`));
+    if (card?.type === 'piece') {
+      tile.append(el('span', 'g2-cardseal', `Seal: hatches in ${card.sealTimer} turn${card.sealTimer === 1 ? '' : 's'}`));
+      tile.append(el('span', 'g2-cardtimer', `⧗${card.sealTimer}`));
+    }
     tile.title = `${card?.name}: ${card?.text}`;
     tile.addEventListener('pointerenter', (e) => {
       if (e.pointerType !== 'mouse' || this.drag || this.hoverCard === uid) return;
@@ -499,7 +574,12 @@ export class GameScreen {
         this.suppressClick = false;
         return;
       }
+      if (this.tilePointer !== 'mouse') {
+        const open = this.inspected?.kind === 'card' && this.inspected.id === uid;
+        this.inspected = open ? null : { kind: 'card', id: uid };
+      }
       if (options.length) this.selectCard(uid);
+      else this.render();
     };
     return tile;
   }
@@ -576,6 +656,7 @@ export class GameScreen {
       document.body.appendChild(ghost);
       drag.ghost = ghost;
       this.hoverCard = null;
+      if (this.inspected?.kind === 'card') this.inspected = null;
       this.clearSelection();
       this.render();
     }
@@ -692,7 +773,7 @@ export class GameScreen {
     const label = el('div', 'g2-handlabel');
     label.textContent = this.solo ? `${this.name(view.you)}'s hand` : 'Your hand';
     if (view.hand?.some((c) => this.canLift(view, c.cardId))) {
-      label.append(el('span', 'g2-handtip', ' · drag a piece card up to your back row to summon it, or onto one of your pieces to seal'));
+      label.append(el('span', 'g2-handtip', ' · drag a piece card up to your back row to summon it, or onto your piece to seal · tap any card or piece to read it'));
     }
     this.handEl.append(label, this.dropNoteEl);
     const row = el('div', 'g2-handrow');
@@ -720,7 +801,8 @@ export class GameScreen {
     for (const m of options) {
       const b = el('button', this.mode === m ? 'primary' : '', labels[m]);
       b.onclick = () => {
-        this.mode = m;
+        if (m === 'spell' && this.untargetedSpell(uid)) this.castNow(uid);
+        else this.mode = m;
         this.render();
       };
       bar.appendChild(b);
@@ -880,7 +962,8 @@ export class GameScreen {
       if (spellLeft) s.classList.add('choice');
       return;
     }
-    s.textContent = `${who}: turn ${turn}, ${view.mana[view.active]} mana. Move, summon or seal${view.spellPlayed ? '' : ' (and play one spell)'}. The turn ends on its own when nothing is left to do.${check}`;
+    s.textContent = `${who}: turn ${turn}, ${view.mana[view.active]} mana. Move, summon or seal${view.spellPlayed ? '' : ' (and play one spell)'}.${check}`;
+    s.append(el('span', 'g2-status-more', ' The turn ends on its own when nothing is left to do.'));
   }
 
   private appendLog(view: v2.PlayerView): void {
