@@ -3859,6 +3859,11 @@ button,
   gap: 10px;
 }
 
+.g2-status.choice {
+  border-left-color: var(--accent);
+  font-weight: 700;
+}
+
 .g2-end {
   font-size: 16px;
   padding: 12px;
