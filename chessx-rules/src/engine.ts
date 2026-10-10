@@ -420,22 +420,28 @@ function spellActions(state: GameState): Action[] {
     for (const action of candidates) {
       const after = tryAction(state, action);
       if (isInCheck(after, color)) continue;
-      if (!state.actionTaken && mainActions(after).length === 0) continue;
+      // The action still has to follow the spell, so a spell that leaves none is not playable.
+      if (mainActions(after).length === 0) continue;
       out.push(action);
     }
   }
   return out;
 }
 
+/**
+ * A turn is: optionally one spell, then one action, and the action ends the turn (msg-034). There is no
+ * pass. `endTurn` is only legal in a game saved while an older rule kept the turn open after the action.
+ */
 export function legalActions(state: GameState): Action[] {
   if (state.status.kind !== 'playing') return [];
   if (state.phase === 'setup') return deployActions(state);
-  const out: Action[] = [];
-  if (!state.actionTaken) out.push(...mainActions(state));
+  if (state.actionTaken) return [{ type: 'endTurn' }];
+  const out = mainActions(state);
   if (!state.spellPlayed) out.push(...spellActions(state));
-  if (state.actionTaken) out.push({ type: 'endTurn' });
   return out;
 }
+
+const ENDS_TURN: ReadonlySet<Action['type']> = new Set(['move', 'summon', 'seal']);
 
 // ---------------------------------------------------------------------------
 // Turn flow
@@ -516,5 +522,6 @@ export function applyLegalAction(state: GameState, action: Action): ApplyResult 
   const events: GameEvent[] = [];
   applyAction(next, action, events);
   if (next.phase === 'setup' && action.type === 'deploy') settleSetup(next, events);
+  if (ENDS_TURN.has(action.type)) endTurn(next, events);
   return { state: next, events };
 }

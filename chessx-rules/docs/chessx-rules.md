@@ -7,7 +7,7 @@ Source: Djabooty, 2026-10-05. This is the rules baseline to design, playtest, an
 - **Board:** 8x8 grid (files a to h, ranks 1 to 8). Rank 1 is Player One's back row, rank 8 is Player Two's.
 - **Setup:** Kings on d1 and d8. Each side also starts with 3 Initiates from outside the deck, in front of its King (c2, d2, e2 for White; c7, d7, e7 for Black). Players draw 7 cards. Each player starts with 2 mana. White takes the first turn.
 - **Resources:** One action per turn. Gain 1 mana per turn (no cap). Draw 1 card per turn.
-- **Turn sequence:** Gain mana, draw a card, take one action (move a piece, summon a piece to the back row, or seal a piece onto another), play one spell.
+- **Turn sequence (changed by congress, msg-034, 2026-10-10):** Gain mana, draw a card, optionally play one spell, then take one action (move a piece, summon a piece to the back row, or seal a piece onto another). That action ends the turn. There is no End turn press and no pass, so a spell comes before the action or not at all. A spell that would leave no legal action to follow it cannot be played.
 - **Summoning:** Costs mana. Pieces have summoning sickness: no capture on the turn they appear. They still attack squares, so they give check at once.
 - **Sealing:** Costs mana and your action. Place a card face down on a piece to create a seal. Seals cannot move or capture and can be destroyed by an enemy. A seal's timer counts down on each of your turns. When it hits 0, the new piece hatches on that square.
 - **Winning:** Checkmate the enemy King. Normal chess check rules apply.
