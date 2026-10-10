@@ -290,7 +290,7 @@ describe('Duskfang', () => {
   it('costs 2, seals on a 3-turn timer, steps one square diagonally and captures only with a knight leap', () => {
     const card = STARTER_CATALOG.duskfang!;
     expect(card).toMatchObject({ type: 'piece', cost: 2, sealTimer: 3 });
-    expect(starterDeck().filter((id) => id === 'duskfang')).toHaveLength(2);
+    expect(starterDeck().filter((id) => id === 'duskfang')).toHaveLength(1);
     const state = bare(0);
     piece(state, 'white', 'duskfang', 'c4');
     piece(state, 'white', 'initiate', 'b5');
@@ -302,6 +302,41 @@ describe('Duskfang', () => {
       .sort((x, y) => x - y);
     const expected = ['b3', 'd3', 'b6'].map(S).sort((x, y) => x - y);
     expect(to).toEqual(expected);
+  });
+});
+
+describe('Dawnfang', () => {
+  it('costs 2, seals on a 2-turn timer, and leaps like a knight or steps one square diagonally to move or capture (msg-037)', () => {
+    const card = STARTER_CATALOG.dawnfang!;
+    expect(card).toMatchObject({ type: 'piece', name: 'Dawnfang', cost: 2, sealTimer: 2 });
+    expect(starterDeck().filter((id) => id === 'dawnfang')).toHaveLength(1);
+    const state = bare(0);
+    piece(state, 'white', 'dawnfang', 'c4');
+    piece(state, 'white', 'initiate', 'b5');
+    piece(state, 'white', 'initiate', 'a3');
+    piece(state, 'black', 'initiate', 'd5');
+    piece(state, 'black', 'initiate', 'b6');
+    const to = legalActions(state)
+      .filter((a): a is Extract<Action, { type: 'move' }> => a.type === 'move' && a.from === S('c4'))
+      .map((a) => a.to)
+      .sort((x, y) => x - y);
+    const expected = ['a5', 'b2', 'b6', 'd2', 'd6', 'e3', 'e5', 'b3', 'd3', 'd5'].map(S).sort((x, y) => x - y);
+    expect(to).toEqual(expected);
+  });
+
+  it('hatches two turns after it is sealed', () => {
+    let state = bare(10);
+    piece(state, 'white', 'initiate', 'c3');
+    piece(state, 'black', 'initiate', 'a7');
+    const dawnfang = give(state, 'white', 'dawnfang');
+    state = act(state, find(state, (a) => a.type === 'seal' && a.cardUid === dawnfang && a.target === S('c3')));
+    expect(sealAt(state, S('c3'))?.timer).toBe(2);
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('a7') && a.to === S('a6')));
+    expect(sealAt(state, S('c3'))?.timer).toBe(1);
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('d1') && a.to === S('c1')));
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('a6') && a.to === S('a5')));
+    expect(sealAt(state, S('c3'))).toBeUndefined();
+    expect(pieceAt(state, S('c3'))?.cardId).toBe('dawnfang');
   });
 });
 
@@ -488,7 +523,8 @@ describe('starter deck', () => {
       insight: 2,
       dispel: 2,
       wyrmling: 2,
-      duskfang: 2,
+      duskfang: 1,
+      dawnfang: 1,
     });
     expect(starterDeck()).toHaveLength(24);
   });

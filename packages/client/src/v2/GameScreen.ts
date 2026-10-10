@@ -36,6 +36,7 @@ const GLYPHS: Record<string, string> = {
   cathedral_runner: '♝',
   dawn_paladin: '☀\uFE0E',
   duskfang: '☾\uFE0E',
+  dawnfang: '☼\uFE0E',
   wyrmling: '§',
   eclipse_knight: '◐\uFE0E',
   tower: '♜',

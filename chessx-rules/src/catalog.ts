@@ -59,6 +59,12 @@ const DUSKFANG: PieceDef = {
   rules: [rule({ dirs: DIAG, range: 1, mode: 'move' }), rule({ dirs: KNIGHT, range: 1, leap: true, mode: 'capture' })],
 };
 
+const DAWNFANG: PieceDef = {
+  kind: 'dawnfang',
+  name: 'Dawnfang',
+  rules: [rule({ dirs: KNIGHT, range: 1, leap: true }), rule({ dirs: DIAG, range: 1 })],
+};
+
 const ECLIPSE_KNIGHT: PieceDef = {
   kind: 'eclipse_knight',
   name: 'Eclipse Knight',
@@ -89,6 +95,7 @@ export const STARTER_CATALOG: Record<string, Card> = {
   cathedral_runner: { type: 'piece', id: 'cathedral_runner', name: 'Cathedral Runner', cost: 3, sealTimer: 2, piece: RUNNER },
   dawn_paladin: { type: 'piece', id: 'dawn_paladin', name: 'Dawn Paladin', cost: 4, sealTimer: 3, piece: DAWN_PALADIN, art: '/art/pic-003.png', boardArt: '/art/pic-003.png' },
   duskfang: { type: 'piece', id: 'duskfang', name: 'Duskfang', cost: 2, sealTimer: 3, piece: DUSKFANG, art: '/art/pic-001.png', boardArt: '/art/pic-001.png' },
+  dawnfang: { type: 'piece', id: 'dawnfang', name: 'Dawnfang', cost: 2, sealTimer: 2, piece: DAWNFANG },
   eclipse_knight: { type: 'piece', id: 'eclipse_knight', name: 'Eclipse Knight', cost: 4, sealTimer: 3, piece: ECLIPSE_KNIGHT, art: '/art/pic-004.png', boardArt: '/art/pic-004.png' },
   wyrmling: { type: 'piece', id: 'wyrmling', name: 'Wyrmling', cost: 2, sealTimer: 1, piece: WYRMLING, art: '/art/pic-002.png', boardArt: '/art/pic-002.png' },
   tower: { type: 'piece', id: 'tower', name: 'Tower', cost: 5, sealTimer: 3, piece: TOWER },
@@ -98,7 +105,8 @@ export const STARTER_CATALOG: Record<string, Card> = {
 
 /**
  * A 24-card starter deck: 2 Initiates, 3 Squires, 2 Pages, 2 Hoppers, 2 Runners, 2 Towers, 3 Dawn Paladins, 2 Insight,
- * 2 Dispel, 2 Wyrmlings, 2 Duskfangs. Four cost-2 cards at most (msg-026). Pages replaced two Squires (msg-032).
+ * 2 Dispel, 2 Wyrmlings, 1 Duskfang, 1 Dawnfang. Four cost-2 cards at most (msg-026). Pages replaced two Squires
+ * (msg-032). Dawnfang took the second Duskfang seat (msg-037).
  */
 export function starterDeck(): string[] {
   const counts: Record<string, number> = {
@@ -112,7 +120,8 @@ export function starterDeck(): string[] {
     insight: 2,
     dispel: 2,
     wyrmling: 2,
-    duskfang: 2,
+    duskfang: 1,
+    dawnfang: 1,
   };
   return Object.entries(counts).flatMap(([id, n]) => Array.from({ length: n }, () => id));
 }
