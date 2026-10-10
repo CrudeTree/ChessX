@@ -447,14 +447,15 @@ function spellActions(state: GameState): Action[] {
 
 /**
  * A turn is: optionally one spell, then one action, and the action ends the turn (msg-034). There is no
- * pass. `endTurn` is only legal in a game saved while an older rule kept the turn open after the action.
+ * pass. A King in check gets no spell first, only the action that answers the check (msg-036).
+ * `endTurn` is only legal in a game saved while an older rule kept the turn open after the action.
  */
 export function legalActions(state: GameState): Action[] {
   if (state.status.kind !== 'playing') return [];
   if (state.phase === 'setup') return deployActions(state);
   if (state.actionTaken) return [{ type: 'endTurn' }];
   const out = mainActions(state);
-  if (!state.spellPlayed) out.push(...spellActions(state));
+  if (!state.spellPlayed && !isInCheck(state, state.active)) out.push(...spellActions(state));
   return out;
 }
 

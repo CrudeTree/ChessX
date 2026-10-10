@@ -943,7 +943,9 @@ export class GameScreen {
     const mana = `${view.mana[view.active]} mana`;
     s.textContent = view.spellPlayed
       ? `${who}: spell played, ${mana} left. Now move, summon or seal.${check}`
-      : `${who}: turn ${turn}, ${mana}. Play a spell first if you want one, then move, summon or seal.${check}`;
+      : view.inCheck
+        ? `${who}: turn ${turn}, ${mana}. No spell while in check: move, summon or seal to answer it.${check}`
+        : `${who}: turn ${turn}, ${mana}. Play a spell first if you want one, then move, summon or seal.${check}`;
     s.append(el('span', 'g2-status-more', ' Your action ends the turn.'));
   }
 
@@ -956,7 +958,10 @@ export class GameScreen {
     const canCast = !view.spellPlayed && view.legalActions.some((a) => a.type === 'spell');
     const spell = el('span', `g2-cue-step${view.spellPlayed ? ' done' : canCast ? '' : ' off'}`, view.spellPlayed ? '✓ Spell' : 'Spell');
     const action = el('span', 'g2-cue-step now', 'one action');
-    spell.title = view.spellPlayed ? 'Spell played' : canCast ? 'Optional: play one spell before you act' : 'No spell you can play now';
+    spell.title = view.spellPlayed
+      ? 'Spell played'
+      : canCast ? 'Optional: play one spell before you act'
+      : view.inCheck ? 'No spell while your King is in check' : 'No spell you can play now';
     action.title = 'Move, summon or seal. It ends your turn.';
     cue.replaceChildren(spell, el('span', 'g2-cue-then', ', then '), action);
   }
