@@ -81,7 +81,7 @@ export const STARTER_CATALOG: Record<string, Card> = {
   hopper: { type: 'piece', id: 'hopper', name: 'Hopper', cost: 3, sealTimer: 2, piece: HOPPER },
   cathedral_runner: { type: 'piece', id: 'cathedral_runner', name: 'Cathedral Runner', cost: 3, sealTimer: 2, piece: RUNNER },
   dawn_paladin: { type: 'piece', id: 'dawn_paladin', name: 'Dawn Paladin', cost: 4, sealTimer: 3, piece: DAWN_PALADIN },
-  duskfang: { type: 'piece', id: 'duskfang', name: 'Duskfang', cost: 2, sealTimer: 3, piece: DUSKFANG },
+  duskfang: { type: 'piece', id: 'duskfang', name: 'Duskfang', cost: 2, sealTimer: 3, piece: DUSKFANG, art: '/art/pic-001.png', boardArt: '/art/pic-001.png' },
   eclipse_knight: { type: 'piece', id: 'eclipse_knight', name: 'Eclipse Knight', cost: 4, sealTimer: 3, piece: ECLIPSE_KNIGHT },
   wyrmling: { type: 'piece', id: 'wyrmling', name: 'Wyrmling', cost: 2, sealTimer: 1, piece: WYRMLING },
   tower: { type: 'piece', id: 'tower', name: 'Tower', cost: 5, sealTimer: 3, piece: TOWER },

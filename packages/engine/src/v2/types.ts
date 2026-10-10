@@ -57,6 +57,10 @@ export interface PieceCard {
   cost: number;
   sealTimer: number;
   piece: PieceDef;
+  /** Card face picture, a path under the client's public folder. */
+  art?: string;
+  /** Picture drawn inside the piece token on the board. */
+  boardArt?: string;
 }
 
 export type SpellEffect = { kind: 'destroySeal' } | { kind: 'draw'; count: number };
@@ -68,6 +72,7 @@ export interface SpellCard {
   cost: number;
   effect: SpellEffect;
   text: string;
+  art?: string;
 }
 
 export type Card = PieceCard | SpellCard;
