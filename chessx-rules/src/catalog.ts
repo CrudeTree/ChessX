@@ -90,7 +90,7 @@ export const STARTER_CATALOG: Record<string, Card> = {
   dawn_paladin: { type: 'piece', id: 'dawn_paladin', name: 'Dawn Paladin', cost: 4, sealTimer: 3, piece: DAWN_PALADIN },
   duskfang: { type: 'piece', id: 'duskfang', name: 'Duskfang', cost: 2, sealTimer: 3, piece: DUSKFANG, art: '/art/pic-001.png', boardArt: '/art/pic-001.png' },
   eclipse_knight: { type: 'piece', id: 'eclipse_knight', name: 'Eclipse Knight', cost: 4, sealTimer: 3, piece: ECLIPSE_KNIGHT },
-  wyrmling: { type: 'piece', id: 'wyrmling', name: 'Wyrmling', cost: 2, sealTimer: 1, piece: WYRMLING },
+  wyrmling: { type: 'piece', id: 'wyrmling', name: 'Wyrmling', cost: 2, sealTimer: 1, piece: WYRMLING, art: '/art/pic-002.png', boardArt: '/art/pic-002.png' },
   tower: { type: 'piece', id: 'tower', name: 'Tower', cost: 5, sealTimer: 3, piece: TOWER },
   insight: { type: 'spell', id: 'insight', name: 'Insight', cost: 2, effect: { kind: 'draw', count: 2 }, text: 'Draw 2 cards.' },
   dispel: { type: 'spell', id: 'dispel', name: 'Dispel', cost: 3, effect: { kind: 'destroySeal' }, text: 'Destroy a seal. Both the seal and its card go to the discard pile.' },
