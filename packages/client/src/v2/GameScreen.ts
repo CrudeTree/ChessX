@@ -3,6 +3,7 @@
 
 import { v2 } from '@chessx/engine';
 import type { RoomInfo } from '@chessx/protocol';
+import { fillFrame, type FrameCard } from './cardFrame.js';
 import { describeEvents, type PieceMemory } from './log.js';
 
 type Color = v2.Color;
@@ -40,6 +41,8 @@ const GLYPHS: Record<string, string> = {
   tower: '♜',
 };
 export const glyphFor = (kind: string, name: string): string => GLYPHS[kind] ?? (name[0] ?? '?').toUpperCase();
+/** Picture window of a spell card that has no picture yet. */
+const SPELL_GLYPH = '✦\uFE0E';
 
 type Mode = 'deploy' | 'summon' | 'seal' | 'spell';
 
@@ -74,23 +77,11 @@ interface Inspected {
   id: string;
 }
 
-/** The inspect panel's mini board is MINI x MINI with the piece in the middle. */
-const MINI = 7;
-const MID = 3;
-
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''): HTMLElementTagNameMap[K] => {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
   if (text) e.textContent = text;
   return e;
-};
-
-const artImg = (cls: string, src: string): HTMLImageElement => {
-  const img = el('img', cls);
-  img.src = src;
-  img.alt = '';
-  img.draggable = false;
-  return img;
 };
 
 export class GameScreen {
@@ -394,32 +385,28 @@ export class GameScreen {
     const seal = !handCard && it?.kind === 'seal' ? view.seals.find((s) => s.id === it.id) : undefined;
     if (it && !piece && !seal && !(it.kind === 'card' && handCard)) this.inspected = null;
 
+    let frame: FrameCard;
     let card: v2.ViewCard | undefined;
     let owner: Color = view.you;
-    let name: string;
-    let kind: string;
-    let rules: ReadonlyArray<v2.MoveRule> | undefined;
     const notes: string[] = [];
     if (handCard) {
       card = view.cards[handCard.cardId];
-      name = card?.name ?? handCard.cardId;
-      kind = handCard.cardId;
+      frame = this.frameFor(card, handCard.cardId, owner);
       notes.push('In your hand.');
     } else if (piece) {
       card = piece.cardId ? view.cards[piece.cardId] : undefined;
       owner = piece.owner;
-      name = piece.name;
-      kind = piece.kind;
       if (piece.king) {
-        rules = v2.KING.rules;
+        frame = { kind: 'king', name: piece.name, text: v2.describeMovement(v2.KING), glyph: glyphFor(piece.kind, piece.name), owner, rules: v2.KING.rules };
         notes.push('No card: the King cannot be summoned or sealed.');
+      } else {
+        frame = this.frameFor(card, piece.kind, owner, piece.name);
       }
       if (!piece.active) notes.push('Summoning sickness: cannot capture yet, but still gives check.');
     } else if (seal) {
       card = view.cards[seal.cardId];
       owner = seal.owner;
-      name = card?.name ?? seal.cardId;
-      kind = seal.cardId;
+      frame = this.frameFor(card, seal.cardId, owner);
       const whose = this.solo ? `${this.ownerLabel(owner, view)}'s` : owner === view.you ? 'your' : "your opponent's";
       const when = seal.timer <= 1 ? `at the start of ${whose} next turn` : `in ${seal.timer} of ${whose} turns`;
       notes.push(`Sealed. Hatches into this piece ${when}.`);
@@ -427,38 +414,44 @@ export class GameScreen {
       box.className = 'g2-inspect hidden';
       return;
     }
-    rules ??= card?.rules;
     // Over the half of the board away from the piece; a hand card goes up top, clear of your back row.
     const at = piece ?? seal;
     const atBottom = at !== undefined && this.screenRow(at.square) < v2.RANKS / 2;
     box.className = `g2-inspect ${atBottom ? 'at-bottom' : 'at-top'}${this.drag?.ghost ? ' hidden' : ''}`;
     box.title = 'Tap to close';
 
-    const head = el('div', 'g2-inspect-head');
-    if (card?.art) head.append(artImg(`g2-inspect-art ${owner}`, card.art));
-    else if (card?.type !== 'spell') head.append(el('span', `g2-inspect-glyph ${owner}`, glyphFor(kind, name)));
-    head.append(el('b', 'g2-inspect-name', seal ? `Seal: ${name}` : name));
+    box.append(fillFrame(el('div', 'g2-inspect-card'), frame, this.seat === 'black'));
+
+    const side = el('div', 'g2-inspect-side');
     const close = el('button', 'g2-inspect-close', '×');
     close.type = 'button';
     close.title = 'Close';
-    head.append(close);
-    box.append(head);
-
+    side.append(close);
+    if (seal) side.append(el('b', 'g2-inspect-name', `Seal: ${frame.name}`));
     const facts: string[] = [];
     if (!handCard) facts.push(this.ownerLabel(owner, view));
     if (card) facts.push(`${card.cost} mana`);
     if (card?.type === 'piece') facts.push(`seal timer ${card.sealTimer}`);
-    if (card?.type === 'spell') facts.push('spell');
-    box.append(el('div', 'g2-inspect-facts', facts.join(' · ')));
+    if (facts.length) side.append(el('div', 'g2-inspect-facts', facts.join(' · ')));
+    for (const n of notes) side.append(el('div', 'g2-inspect-note', n));
+    if (frame.rules) side.append(el('div', 'g2-inspect-legend', 'Green dot: moves there. Red ring: captures there.'));
+    box.append(side);
+  }
 
-    const body = el('div', 'g2-inspect-body');
-    if (rules) body.append(this.miniBoard(rules, owner, kind, name));
-    const text = el('div', 'g2-inspect-text');
-    text.append(el('div', '', card?.text ?? (piece?.king ? v2.describeMovement(v2.KING) : '')));
-    for (const n of notes) text.append(el('div', 'g2-inspect-note', n));
-    if (rules) text.append(el('div', 'g2-inspect-legend', 'Green dot: moves there. Red ring: captures there.'));
-    body.append(text);
-    box.append(body);
+  /** The frame for a card, or for a piece whose card is missing from the view (name only). */
+  private frameFor(card: v2.ViewCard | undefined, kind: string, owner: Color, name = card?.name ?? kind): FrameCard {
+    if (!card) return { kind: 'piece', name, text: '', glyph: glyphFor(kind, name), owner };
+    return {
+      kind: card.type,
+      name: card.name,
+      cost: card.cost,
+      sealTimer: card.sealTimer,
+      text: card.text,
+      art: card.art,
+      glyph: card.type === 'spell' ? SPELL_GLYPH : glyphFor(card.id, card.name),
+      owner,
+      rules: card.rules,
+    };
   }
 
   /** 0 for the top row of the board as this player sees it. */
@@ -471,39 +464,6 @@ export class GameScreen {
     const side = owner === 'white' ? 'White' : 'Black';
     if (this.solo) return side;
     return `${side} (${owner === view.you ? 'yours' : 'opponent'})`;
-  }
-
-  /** The piece's moves from the middle of an empty board, facing the way it faces on your screen. */
-  private miniBoard(rules: ReadonlyArray<v2.MoveRule>, owner: Color, kind: string, name: string): HTMLElement {
-    const flip = this.seat === 'black' ? -1 : 1;
-    const marks = new Map<number, { move: boolean; capture: boolean }>();
-    for (const r of rules) {
-      const towardEnemy = r.relative && owner === 'black' ? -1 : 1;
-      for (const [df, dr] of r.dirs) {
-        const sx = df * flip;
-        const sy = dr * towardEnemy * flip;
-        for (let k = 1; k <= (r.leap ? 1 : r.range); k++) {
-          const x = MID + sx * k;
-          const y = MID + sy * k;
-          if (x < 0 || x >= MINI || y < 0 || y >= MINI) break;
-          const m = marks.get(y * MINI + x) ?? { move: false, capture: false };
-          if (r.mode !== 'capture') m.move = true;
-          if (r.mode !== 'move') m.capture = true;
-          marks.set(y * MINI + x, m);
-        }
-      }
-    }
-    const grid = el('div', 'g2-mini');
-    for (let row = 0; row < MINI; row++) {
-      const y = MINI - 1 - row;
-      for (let x = 0; x < MINI; x++) {
-        const m = marks.get(y * MINI + x);
-        const cell = el('div', `g2-mini-cell ${(x + y) % 2 === 0 ? 'dark' : 'light'}${m?.move ? ' mv' : ''}${m?.capture ? ' cap' : ''}`);
-        if (x === MID && y === MID) cell.append(el('span', `g2-mini-piece ${owner}`, glyphFor(kind, name)));
-        grid.append(cell);
-      }
-    }
-    return grid;
   }
 
   // ---------------------------------------------------------------------- hand
@@ -567,17 +527,11 @@ export class GameScreen {
       if (liftable) this.pressCard(e, uid, tile);
     });
     if (card?.art) {
+      // Phones shrink the frame to name and corners over the picture.
       tile.classList.add('has-art');
       tile.style.setProperty('--art', `url("${card.art}")`);
-      tile.append(artImg('g2-cardart', card.art));
     }
-    tile.append(el('span', 'g2-cost', String(card?.cost ?? '?')), el('span', 'g2-cardname', card?.name ?? cardId));
-    tile.append(el('span', 'g2-cardtype', card?.type === 'spell' ? 'Spell' : 'Piece'));
-    tile.append(el('span', 'g2-cardtext', card?.text ?? ''));
-    if (card?.type === 'piece') {
-      tile.append(el('span', 'g2-cardseal', `Seal: hatches in ${card.sealTimer} turn${card.sealTimer === 1 ? '' : 's'}`));
-      tile.append(el('span', 'g2-cardtimer', `⧗${card.sealTimer}`));
-    }
+    fillFrame(tile, this.frameFor(card, cardId, view.you), this.seat === 'black');
     tile.title = `${card?.name}: ${card?.text}`;
     tile.addEventListener('pointerenter', (e) => {
       if (e.pointerType !== 'mouse' || this.drag || this.hoverCard === uid) return;
