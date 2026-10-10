@@ -1,6 +1,7 @@
-// The one card frame every rules-2 card is drawn in: the name on top, the picture window, the mana cost and
-// the seal timer in two corners, an 8x8 move diagram and the printed text. Spells have no timer or diagram.
-// Every size is in em, so the hand and the inspect panel show the same frame at different font sizes.
+// The one card frame every rules-2 card is drawn in: the mana cost gem, the name plate, the picture window,
+// the type line, the printed text and the seal timer. Every size is in em, so the hand, the card viewer and
+// the board effects draw the same card at different font sizes. How a piece moves is drawn beside the card
+// (movement.ts), never on it.
 
 import { v2 } from '@chessx/engine';
 
@@ -9,6 +10,8 @@ type Color = v2.Color;
 export interface FrameCard {
   /** `king` is the King, which is not a card: no cost and no timer. */
   kind: 'piece' | 'spell' | 'king';
+  /** Card id, or `king`. Picks the colour of the sigil drawn while a card has no picture. */
+  id: string;
   name: string;
   cost?: number;
   sealTimer?: number;
@@ -19,11 +22,29 @@ export interface FrameCard {
   rules?: ReadonlyArray<v2.MoveRule>;
 }
 
-const SIZE = 8;
-/** Column and row of the piece on the diagram, counted from the bottom left as you see it. */
-const AT = 3;
-
 const TYPE_LINE: Record<FrameCard['kind'], string> = { piece: 'Piece', spell: 'Spell', king: 'King · not a card' };
+
+/** Hue of the sigil for cards without a picture; any other card gets one from its id. */
+const SIGIL_HUE: Record<string, number> = {
+  king: 44,
+  initiate: 36,
+  squire: 212,
+  page: 172,
+  hopper: 138,
+  cathedral_runner: 348,
+  tower: 226,
+  dawnfang: 22,
+  insight: 200,
+  dispel: 288,
+};
+
+export function sigilHue(id: string): number {
+  const known = SIGIL_HUE[id];
+  if (known !== undefined) return known;
+  let h = 0;
+  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return h;
+}
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''): HTMLElementTagNameMap[K] => {
   const e = document.createElement(tag);
@@ -32,34 +53,35 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''):
   return e;
 };
 
-/**
- * Draw `card` into `root`. `flipped` turns the diagram the way the board is turned for a player
- * sitting at the top, so it matches the piece on the board.
- */
-export function fillFrame(root: HTMLElement, card: FrameCard, flipped: boolean): HTMLElement {
-  root.classList.add('g2-frame', `g2-frame-${card.kind}`);
-  const top = el('div', 'g2-frame-top');
-  top.append(el('span', 'g2-frame-name', card.name));
-
-  const window = el('div', 'g2-frame-window');
+/** The picture window: the card's picture, or a glowing sigil of its glyph until it has one. */
+export function cardArt(card: Pick<FrameCard, 'id' | 'art' | 'glyph'>, cls = 'g2-frame-art'): HTMLElement {
+  const art = el('div', cls);
   if (card.art) {
     const img = el('img');
     img.src = card.art;
     img.alt = '';
     img.draggable = false;
-    window.append(img);
+    art.append(img);
   } else {
-    window.append(el('span', 'g2-frame-glyph', card.glyph));
+    art.classList.add('sigil');
+    art.style.setProperty('--hue', String(sigilHue(card.id)));
+    art.append(el('span', 'g2-frame-glyph', card.glyph));
   }
+  return art;
+}
 
-  const body = el('div', 'g2-frame-body');
-  if (card.kind !== 'spell' && card.rules) body.append(moveDiagram(card.rules, card.owner, card.glyph, flipped));
-  body.append(el('div', 'g2-frame-text', card.text));
-
-  root.append(top, window, el('div', 'g2-frame-type', TYPE_LINE[card.kind]), body);
+/** Draw `card` into `root`. */
+export function fillFrame(root: HTMLElement, card: FrameCard): HTMLElement {
+  root.classList.add('g2-frame', `g2-frame-${card.kind}`);
+  const inner = el('div', 'g2-frame-inner');
+  const name = el('div', card.name.length > 11 ? 'g2-frame-name long' : 'g2-frame-name');
+  name.append(el('span', '', card.name));
+  inner.append(name, cardArt(card), el('div', 'g2-frame-type', TYPE_LINE[card.kind]), el('div', 'g2-frame-text', card.text));
+  root.append(inner);
 
   if (card.cost !== undefined) {
-    const cost = el('span', 'g2-frame-cost', String(card.cost));
+    const cost = el('span', 'g2-frame-cost');
+    cost.append(el('b', '', String(card.cost)));
     cost.title = `Mana cost ${card.cost}`;
     root.append(cost);
   }
@@ -68,39 +90,33 @@ export function fillFrame(root: HTMLElement, card: FrameCard, flipped: boolean):
     timer.title = `Seal timer ${card.sealTimer}: a seal of this card hatches after ${card.sealTimer} of its owner's turn${card.sealTimer === 1 ? '' : 's'}`;
     root.append(timer);
   }
+  root.append(el('span', 'g2-frame-shine'));
   return root;
 }
 
-/** Where the piece can go from d4 of an empty board: green dot moves there, red ring captures there. */
-function moveDiagram(rules: ReadonlyArray<v2.MoveRule>, owner: Color, glyph: string, flipped: boolean): HTMLElement {
-  const flip = flipped ? -1 : 1;
-  const marks = new Map<number, { move: boolean; capture: boolean }>();
-  for (const r of rules) {
-    const towardEnemy = r.relative && owner === 'black' ? -1 : 1;
-    for (const [df, dr] of r.dirs) {
-      const sx = df * flip;
-      const sy = dr * towardEnemy * flip;
-      for (let k = 1; k <= (r.leap ? 1 : r.range); k++) {
-        const x = AT + sx * k;
-        const y = AT + sy * k;
-        if (x < 0 || x >= SIZE || y < 0 || y >= SIZE) break;
-        const m = marks.get(y * SIZE + x) ?? { move: false, capture: false };
-        if (r.mode !== 'capture') m.move = true;
-        if (r.mode !== 'move') m.capture = true;
-        marks.set(y * SIZE + x, m);
-      }
-    }
-  }
-  const grid = el('div', 'g2-frame-diagram');
-  grid.title = 'Green dot: moves there. Red ring: captures there.';
-  for (let row = 0; row < SIZE; row++) {
-    const y = SIZE - 1 - row;
-    for (let x = 0; x < SIZE; x++) {
-      const m = marks.get(y * SIZE + x);
-      const cell = el('div', `g2-frame-sq ${(x + y) % 2 === 0 ? 'dark' : 'light'}${m?.move ? ' mv' : ''}${m?.capture ? ' cap' : ''}`);
-      if (x === AT && y === AT) cell.append(el('span', `g2-frame-token ${owner}`, glyph));
-      grid.append(cell);
-    }
-  }
-  return grid;
+/** The back of a card: seals, the opponent's hand and the empty card viewer. */
+export function cardBack(cls = ''): HTMLElement {
+  const back = el('div', `g2-back${cls ? ` ${cls}` : ''}`);
+  back.append(el('span', 'g2-back-mark', 'X'));
+  return back;
+}
+
+/**
+ * Tilt a card towards the pointer and move its shine with it. The tilt is written to CSS variables, so a
+ * card's own transforms (its place in the fan, a lift) still apply.
+ */
+export function tiltWithPointer(card: HTMLElement): void {
+  card.addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'mouse') return;
+    const box = card.getBoundingClientRect();
+    const x = (e.clientX - box.left) / box.width;
+    const y = (e.clientY - box.top) / box.height;
+    card.style.setProperty('--tilt-x', `${((0.5 - y) * 14).toFixed(2)}deg`);
+    card.style.setProperty('--tilt-y', `${((x - 0.5) * 16).toFixed(2)}deg`);
+    card.style.setProperty('--shine-x', `${(x * 100).toFixed(1)}%`);
+    card.style.setProperty('--shine-y', `${(y * 100).toFixed(1)}%`);
+  });
+  card.addEventListener('pointerleave', () => {
+    for (const v of ['--tilt-x', '--tilt-y', '--shine-x', '--shine-y']) card.style.removeProperty(v);
+  });
 }
