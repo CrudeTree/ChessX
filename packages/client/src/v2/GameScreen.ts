@@ -47,8 +47,6 @@ export const glyphFor = (kind: string, name: string): string => GLYPHS[kind] ?? 
 /** Picture window of a spell card that has no picture yet. */
 const SPELL_GLYPH = '✦\uFE0E';
 
-type Mode = 'deploy' | 'summon' | 'seal' | 'spell';
-
 /**
  * A press on a card in the hand. `ghost` is null until the pointer has moved past the threshold.
  * A mostly sideways mouse drag scrolls the hand instead (`scrollFrom`); touch swipes scroll natively.
@@ -124,8 +122,6 @@ export class GameScreen {
   private seat: Color = 'white';
 
   private selectedSquare: v2.Square | null = null;
-  private selectedCard: string | null = null;
-  private mode: Mode | null = null;
   private drag: CardDrag | null = null;
   private suppressClick = false;
   private inspected: Inspected | null = null;
@@ -136,8 +132,6 @@ export class GameScreen {
   /** What the viewer showed last, so it only plays its entrance when that changes. */
   private inspectKey = '';
   private boardPress: { x: number; y: number; at: number } | null = null;
-  /** Pointer type of the last press on a hand card: a mouse previews cards by hovering, a finger by tapping. */
-  private tilePointer = 'mouse';
 
   private readonly memory: PieceMemory = new Map();
   private lastSeq = -1;
@@ -153,7 +147,6 @@ export class GameScreen {
   private readonly boardEl = el('div', 'g2-board');
   private readonly boardBox = el('div', 'g2-boardbox');
   private readonly handEl = el('div', 'g2-hand');
-  private readonly actionsEl = el('div', 'g2-actions');
   private readonly statusEl = el('div', 'status g2-status');
   private readonly logEl = el('div', 'g2-log');
   private readonly endBtn = el('button', 'primary g2-end', 'End turn');
@@ -196,7 +189,7 @@ export class GameScreen {
     boardBox.append(this.boardEl, this.cueEl);
     this.fx = new BoardFx(this.boardEl, boardBox, (square) => this.cells[square]);
     boardWrap.append(this.oppEl, boardBox, this.meEl);
-    main.append(boardWrap, this.handEl, this.actionsEl);
+    main.append(boardWrap, this.handEl);
 
     const side = this.sideEl;
     const sheetClose = el('button', 'g2-sheet-close', 'Close');
@@ -304,8 +297,6 @@ export class GameScreen {
     this.view = null;
     this.room = null;
     this.selectedSquare = null;
-    this.selectedCard = null;
-    this.mode = null;
     this.inspected = null;
     this.hoverCard = null;
     this.hoverBoard = null;
@@ -322,7 +313,6 @@ export class GameScreen {
     this.lastSeq = -1;
     this.logEl.innerHTML = '';
     this.handEl.innerHTML = '';
-    this.actionsEl.innerHTML = '';
     this.statusEl.textContent = 'Setting up the board…';
     this.statusEl.className = 'status g2-status';
     this.endBtn.classList.add('hidden');
@@ -343,12 +333,11 @@ export class GameScreen {
     const changed = prev !== null && view.seq !== this.lastSeq;
     this.view = view;
     for (const p of view.pieces) this.memory.set(p.id, { name: p.name, owner: p.owner });
-    // A move or card choice only makes sense against the position it was made in.
+    // A picked piece or a held card only makes sense against the position it was picked in.
     if (changed) {
       this.clearSelection();
       this.cancelDrag();
     }
-    if (this.selectedCard && !view.hand?.some((c) => c.uid === this.selectedCard)) this.clearSelection();
     if (changed && prev && this.fx.enabled) this.queueFx(prev, view);
     this.appendLog(view);
     this.render();
@@ -386,19 +375,11 @@ export class GameScreen {
     return this.view?.legalActions ?? [];
   }
 
-  /** Squares the current selection can act on, with the action each leads to. */
+  /** Squares the picked piece can move to, with the move to each. Cards are played by dragging them instead. */
   private targets(): Map<v2.Square, Action> {
     const out = new Map<v2.Square, Action>();
-    if (this.selectedSquare !== null) {
-      for (const a of this.legal()) if (a.type === 'move' && a.from === this.selectedSquare) out.set(a.to, a);
-    } else if (this.selectedCard && this.mode) {
-      for (const a of this.legal()) {
-        if (!('cardUid' in a) || a.cardUid !== this.selectedCard || a.type !== this.mode) continue;
-        if (a.type === 'deploy' || a.type === 'summon') out.set(a.to, a);
-        else if (a.type === 'seal') out.set(a.target, a);
-        else if (a.type === 'spell' && a.target !== undefined) out.set(a.target, a);
-      }
-    }
+    if (this.selectedSquare === null) return out;
+    for (const a of this.legal()) if (a.type === 'move' && a.from === this.selectedSquare) out.set(a.to, a);
     return out;
   }
 
@@ -421,20 +402,13 @@ export class GameScreen {
     }
     const mine = view.pieces.find((p) => p.square === square && p.owner === view.you);
     const hasMoves = mine && this.legal().some((a) => a.type === 'move' && a.from === square);
-    if (mine && hasMoves && this.selectedSquare !== square) {
-      this.selectedSquare = square;
-      this.selectedCard = null;
-      this.mode = null;
-    } else {
-      this.clearSelection();
-    }
+    if (mine && hasMoves && this.selectedSquare !== square) this.selectedSquare = square;
+    else this.clearSelection();
     this.render();
   }
 
   private clearSelection(): void {
     this.selectedSquare = null;
-    this.selectedCard = null;
-    this.mode = null;
   }
 
   /** A tap on a piece or seal opens its card; tapping the same one again, or an empty square, closes it. */
@@ -615,6 +589,19 @@ export class GameScreen {
     setTimeout(() => ghost.remove(), 300);
   }
 
+  /** A dropped spell flies to the middle of the board and fades, where the spell is then shown big. */
+  private castAway(ghost: HTMLElement): void {
+    if (!this.fx.enabled) {
+      ghost.remove();
+      return;
+    }
+    const box = this.boardEl.getBoundingClientRect();
+    ghost.classList.add('casting');
+    ghost.style.left = `${box.left + box.width / 2 - ghost.offsetWidth / 2}px`;
+    ghost.style.top = `${box.top + box.height / 2 - ghost.offsetHeight / 2}px`;
+    setTimeout(() => ghost.remove(), 300);
+  }
+
   private takeLanding(square: v2.Square, now: number): boolean {
     const at = this.landed.get(square);
     this.landed.delete(square);
@@ -675,7 +662,7 @@ export class GameScreen {
     if (handCard) {
       card = view.cards[handCard.cardId];
       frame = this.frameFor(card, handCard.cardId, owner);
-      notes.push(this.solo ? `In ${sideName(view.you)}'s hand.` : 'In your hand.');
+      notes.push(this.solo ? `In ${sideName(view.you)}'s hand.` : 'In your hand.', this.howToPlay(handCard.uid, card));
     } else if (piece) {
       card = piece.cardId ? view.cards[piece.cardId] : undefined;
       owner = piece.owner;
@@ -746,6 +733,14 @@ export class GameScreen {
     box.replaceChildren(face, info);
   }
 
+  private howToPlay(uid: string, card: v2.ViewCard | undefined): string {
+    if (card?.type === 'spell') {
+      const targeted = this.legal().some((a) => a.type === 'spell' && a.cardUid === uid && a.target !== undefined);
+      return `Drag it ${targeted ? 'onto a glowing target' : 'onto the board'} to cast it. Casting does not end your turn.`;
+    }
+    return 'Drag it to a free square on your back row to summon it, or onto one of your pieces (not the King) to seal it. Either one ends your turn.';
+  }
+
   /** The frame for a card, or for a piece whose card is missing from the view (name only). */
   private frameFor(card: v2.ViewCard | undefined, kind: string, owner: Color, name = card?.name ?? kind): FrameCard {
     if (!card) return { kind: 'piece', id: kind, name, text: '', glyph: glyphFor(kind, name), owner };
@@ -777,62 +772,31 @@ export class GameScreen {
 
   // ---------------------------------------------------------------------- hand
 
-  /** What a card can do right now, according to the server's list of legal actions. */
-  private optionsFor(uid: string): Mode[] {
-    const kinds = new Set<Mode>();
-    for (const a of this.legal()) {
-      if ('cardUid' in a && a.cardUid === uid) kinds.add(a.type as Mode);
-    }
-    return (['deploy', 'summon', 'seal', 'spell'] as Mode[]).filter((m) => kinds.has(m));
+  /** Whether the server lists anything this card can do right now. */
+  private playable(uid: string): boolean {
+    return this.legal().some((a) => 'cardUid' in a && a.cardUid === uid);
   }
 
-  private selectCard(uid: string): void {
-    if (this.selectedCard === uid) {
-      this.clearSelection();
-      this.render();
-      return;
-    }
-    this.selectedSquare = null;
-    this.selectedCard = uid;
-    const options = this.optionsFor(uid);
-    this.mode = options.length === 1 ? options[0]! : null;
-    // A click on a spell that needs no target plays it straight away. A tap only opens it, because a
-    // finger cannot hover to read a card first; it is then cast with the Cast button.
-    if (this.mode === 'spell' && this.untargetedSpell(uid)) {
-      if (this.tilePointer === 'mouse') this.castNow(uid);
-      else this.mode = null;
-    }
-    this.render();
-  }
-
+  /** A spell that needs no target is cast by dropping it anywhere on the board. */
   private untargetedSpell(uid: string): Action | null {
     const spell = this.legal().filter((a) => a.type === 'spell' && a.cardUid === uid);
     return spell.length === 1 && spell[0]!.type === 'spell' && spell[0]!.target === undefined ? spell[0]! : null;
   }
 
-  private castNow(uid: string): void {
-    const spell = this.untargetedSpell(uid);
-    if (!spell) return;
-    this.hooks.act(spell);
-    this.clearSelection();
-    if (this.inspected?.kind === 'card' && this.inspected.id === uid) this.inspected = null;
-  }
-
   private cardTile(uid: string, cardId: string, view: v2.PlayerView): HTMLElement {
     const card = view.cards[cardId];
-    const options = this.optionsFor(uid);
+    const playable = this.playable(uid);
     const liftable = this.canLift(view, cardId);
     const lifted = this.drag?.ghost && this.drag.uid === uid;
     const tile = el(
       'button',
-      `g2-card ${card?.type ?? ''}${options.length ? ' playable' : ''}${this.selectedCard === uid ? ' selected' : ''}${liftable ? ' draggable' : ''}${lifted ? ' lifted' : ''}${this.inspected?.kind === 'card' && this.inspected.id === uid ? ' inspected' : ''}`,
+      `g2-card ${card?.type ?? ''}${playable ? ' playable' : ''}${liftable ? ' draggable' : ''}${lifted ? ' lifted' : ''}${this.inspected?.kind === 'card' && this.inspected.id === uid ? ' inspected' : ''}`,
     );
     tile.type = 'button';
     tile.dataset.uid = uid;
     // Not `disabled`: a card you cannot play right now can still be tapped to read it.
-    if (!options.length && !liftable) tile.setAttribute('aria-disabled', 'true');
+    if (!playable && !liftable) tile.setAttribute('aria-disabled', 'true');
     tile.addEventListener('pointerdown', (e) => {
-      this.tilePointer = e.pointerType;
       if (liftable) this.pressCard(e, uid, tile);
     });
     fillFrame(tile, this.frameFor(card, cardId, view.you));
@@ -848,38 +812,45 @@ export class GameScreen {
       this.hoverCard = null;
       if (this.view) this.renderInspect(this.view);
     });
+    // A click or tap only opens the card (or closes it again); cards are played by dragging them.
     tile.onclick = () => {
       if (this.suppressClick) {
         this.suppressClick = false;
         return;
       }
-      // A finger opens the card it taps; beside the board a click keeps it in the viewer too.
-      if (this.tilePointer !== 'mouse' || this.docked) {
-        const open = this.inspected?.kind === 'card' && this.inspected.id === uid;
-        this.inspected = open ? null : { kind: 'card', id: uid };
-      }
-      if (options.length) this.selectCard(uid);
-      else this.render();
+      const open = this.inspected?.kind === 'card' && this.inspected.id === uid;
+      this.inspected = open ? null : { kind: 'card', id: uid };
+      this.render();
     };
     return tile;
   }
 
   // ---------------------------------------------------------------------- drag
 
-  /** Piece cards can be picked up on your own turn, even when no drop is legal (they then snap back). */
+  /** Any card can be picked up on your own turn, even when no drop is legal (it then snaps back). */
   private canLift(view: v2.PlayerView, cardId: string): boolean {
-    return view.cards[cardId]?.type === 'piece' && view.status.kind === 'playing' && (this.solo || view.active === view.you);
+    return view.cards[cardId] !== undefined && view.status.kind === 'playing' && (this.solo || view.active === view.you);
   }
 
-  /** Squares a held card can be dropped on: a free back-row square summons (or deploys), an own piece seals. */
+  /**
+   * Squares a held card can be dropped on: a free square on your back row summons (or deploys) it, one of your
+   * pieces seals it, a spell's target casts it. A spell with no target goes anywhere (`untargetedSpell`).
+   */
   private dropTargets(uid: string): Map<v2.Square, Action> {
     const out = new Map<v2.Square, Action>();
     for (const a of this.legal()) {
       if (!('cardUid' in a) || a.cardUid !== uid) continue;
       if (a.type === 'deploy' || a.type === 'summon') out.set(a.to, a);
       else if (a.type === 'seal') out.set(a.target, a);
+      else if (a.type === 'spell' && a.target !== undefined) out.set(a.target, a);
     }
     return out;
+  }
+
+  /** What dropping the held card on `square` does, if anything. */
+  private dropAction(uid: string, square: v2.Square | null): Action | undefined {
+    if (square === null) return undefined;
+    return this.dropTargets(uid).get(square) ?? this.untargetedSpell(uid) ?? undefined;
   }
 
   private pressCard(e: PointerEvent, uid: string, tile: HTMLElement): void {
@@ -929,9 +900,9 @@ export class GameScreen {
       const tile = this.tileFor(drag.uid);
       if (!tile) return this.cancelDrag();
       const ghost = tile.cloneNode(true) as HTMLElement;
-      ghost.classList.remove('selected', 'lifted', 'fresh', 'inspected');
+      ghost.classList.remove('lifted', 'fresh', 'inspected');
       ghost.classList.add('g2-drag-ghost');
-      if (!this.dropTargets(drag.uid).size) ghost.classList.add('nowhere');
+      if (!this.dropTargets(drag.uid).size && !this.untargetedSpell(drag.uid)) ghost.classList.add('nowhere');
       ghost.style.fontSize = getComputedStyle(tile).fontSize;
       ghost.style.animationDelay = '';
       document.body.appendChild(ghost);
@@ -946,10 +917,12 @@ export class GameScreen {
     drag.ghost.style.left = `${e.clientX - drag.ghost.offsetWidth / 2}px`;
     drag.ghost.style.top = `${e.clientY - drag.ghost.offsetHeight - 6}px`;
     const square = this.squareAt(e.clientX, e.clientY);
-    const hover = square !== null && this.dropTargets(drag.uid).has(square) ? square : null;
+    const anywhere = this.untargetedSpell(drag.uid) !== null;
+    const hover = square !== null && (anywhere || this.dropTargets(drag.uid).has(square)) ? square : null;
     if (hover !== drag.hover) {
       if (drag.hover !== null) this.cells[drag.hover]?.classList.remove('drop-hover');
-      if (hover !== null) this.cells[hover]?.classList.add('drop-hover');
+      if (hover !== null && !anywhere) this.cells[hover]?.classList.add('drop-hover');
+      this.boardEl.classList.toggle('drop-over', anywhere && hover !== null);
       drag.hover = hover;
       drag.ghost.classList.toggle('over', hover !== null);
       this.showSealWarning(drag);
@@ -1002,10 +975,11 @@ export class GameScreen {
       return;
     }
     const square = e.type === 'pointerup' ? this.squareAt(e.clientX, e.clientY) : null;
-    const action = square !== null ? this.dropTargets(drag.uid).get(square) : undefined;
+    const action = this.dropAction(drag.uid, square);
     this.drag = null;
     if (action && square !== null) {
-      this.land(ghost, square);
+      if (action.type === 'spell') this.castAway(ghost);
+      else this.land(ghost, square);
       this.hooks.act(action);
       this.clearSelection();
       this.render();
@@ -1058,7 +1032,7 @@ export class GameScreen {
     const label = el('div', 'g2-handlabel');
     label.textContent = this.solo ? `${this.name(view.you)}'s hand` : spent ? 'Your hand · opponent\'s turn' : 'Your hand';
     if (view.hand?.some((c) => this.canLift(view, c.cardId))) {
-      label.append(el('span', 'g2-handtip', ' · drag a piece card up to your back row to summon it, or onto your piece to seal · tap any card or piece to read it'));
+      label.append(el('span', 'g2-handtip', ' · drag a piece to your back row to summon it, or onto your piece to seal it · drag a spell onto the board to cast it · tap a card to read it'));
     }
     this.handEl.append(label, this.dropNoteEl);
 
@@ -1095,50 +1069,6 @@ export class GameScreen {
     row.scrollLeft = scroll;
   }
 
-  private renderActions(view: v2.PlayerView): void {
-    this.actionsEl.innerHTML = '';
-    const uid = this.selectedCard;
-    if (!uid) return;
-    const card = view.hand?.find((c) => c.uid === uid);
-    const info = card ? view.cards[card.cardId] : undefined;
-    const options = this.optionsFor(uid);
-    const bar = el('div', 'g2-choose');
-    bar.append(el('b', '', info?.name ?? 'Card'));
-    const labels: Record<Mode, string> = {
-      deploy: 'Deploy',
-      summon: `Summon (${info?.cost ?? 0} mana)`,
-      seal: `Seal onto one of your pieces (${info?.cost ?? 0} mana)`,
-      spell: `Cast (${info?.cost ?? 0} mana)`,
-    };
-    for (const m of options) {
-      const b = el('button', this.mode === m ? 'primary' : '', labels[m]);
-      b.onclick = () => {
-        if (m === 'spell' && this.untargetedSpell(uid)) this.castNow(uid);
-        else this.mode = m;
-        this.render();
-      };
-      bar.appendChild(b);
-    }
-    const cancel = el('button', '', 'Cancel');
-    cancel.onclick = () => {
-      this.clearSelection();
-      this.render();
-    };
-    bar.appendChild(cancel);
-    if (this.mode) {
-      bar.appendChild(
-        el(
-          'span',
-          'hint',
-          this.mode === 'deploy' || this.mode === 'summon' ? 'Pick a free square on your back row.' : this.mode === 'seal' ? 'Pick one of your own pieces (not the King). It is consumed.' : 'Pick a seal.',
-        ),
-      );
-    } else if (options.length > 1) {
-      bar.appendChild(el('span', 'hint', 'Choose what to do with it.'));
-    }
-    this.actionsEl.appendChild(bar);
-  }
-
   // -------------------------------------------------------------------- render
 
   private name(color: Color): string {
@@ -1152,6 +1082,10 @@ export class GameScreen {
     const held = this.drag?.ghost ? this.drag : null;
     const targets = held ? new Map<v2.Square, Action>() : this.targets();
     const drops = held ? this.dropTargets(held.uid) : new Map<v2.Square, Action>();
+    // A held spell with no target lights up the whole board rather than any one square.
+    const anywhere = held !== null && this.untargetedSpell(held.uid) !== null;
+    this.boardEl.classList.toggle('drop-all', anywhere);
+    this.boardEl.classList.toggle('drop-over', anywhere && held?.hover !== null);
     const lastMove = view.events.find((e): e is Extract<v2.GameEvent, { type: 'moved' }> => e.type === 'moved');
     const inspectedAt = this.inspectedSquare(view);
 
@@ -1160,12 +1094,11 @@ export class GameScreen {
       const piece = view.pieces.find((p) => p.square === square);
       const seal = view.seals.find((s) => s.square === square);
       const classes = ['g2-cell', (v2.fileOf(square) + v2.rankOf(square)) % 2 === 0 ? 'dark' : 'light'];
-      const target = targets.get(square);
-      if (target) classes.push(target.type === 'seal' ? 'target seal' : piece || seal ? 'target capture' : 'target');
+      if (targets.has(square)) classes.push(piece || seal ? 'target capture' : 'target');
       const drop = drops.get(square);
-      if (drop) classes.push(drop.type === 'seal' ? 'drop drop-seal' : 'drop');
-      if (held && held.hover === square) classes.push('drop-hover');
-      const warning = this.sealWarning(drop ?? target);
+      if (drop) classes.push(drop.type === 'seal' ? 'drop drop-seal' : drop.type === 'spell' ? 'drop drop-spell' : 'drop');
+      if (drop && held?.hover === square) classes.push('drop-hover');
+      const warning = this.sealWarning(drop);
       if (warning) cell.title = warning;
       else cell.removeAttribute('title');
       if (this.selectedSquare === square) classes.push('selected');
@@ -1184,7 +1117,6 @@ export class GameScreen {
 
     this.renderHand(view);
     this.renderInspect(view);
-    this.renderActions(view);
     this.renderPlayers();
     this.renderStatus(view);
     this.renderCue(view);

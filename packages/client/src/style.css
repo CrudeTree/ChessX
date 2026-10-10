@@ -3501,19 +3501,13 @@ button,
   }
 }
 
-.g2-cell.target.capture::after,
-.g2-cell.target.seal::after {
+.g2-cell.target.capture::after {
   width: 88%;
   height: 88%;
   background: transparent;
   border: 0.6cqw solid rgba(255, 90, 80, 0.95);
   box-shadow: 0 0 1.4cqw rgba(255, 70, 60, 0.75), inset 0 0 1.4cqw rgba(255, 70, 60, 0.55);
   animation: none;
-}
-
-.g2-cell.target.seal::after {
-  border-color: rgba(190, 160, 255, 0.95);
-  box-shadow: 0 0 1.4cqw rgba(170, 130, 255, 0.75), inset 0 0 1.4cqw rgba(170, 130, 255, 0.55);
 }
 
 .g2-coord {
@@ -3595,6 +3589,43 @@ button,
 .g2-cell.drop-seal.drop-hover::after {
   border-color: #e4d8ff;
   box-shadow: 0 0 2cqw rgba(170, 130, 255, 0.95);
+}
+
+/* A spell's target (Dispel's seals): red, since the spell destroys what it lands on. */
+.g2-cell.drop-spell {
+  box-shadow: inset 0 0 0 3px rgba(255, 110, 95, 0.95), inset 0 0 2.4cqw rgba(255, 90, 80, 0.55);
+}
+
+.g2-cell.drop-spell::after {
+  border-color: rgba(255, 190, 180, 0.85);
+}
+
+.g2-cell.drop-spell.drop-hover {
+  box-shadow: inset 0 0 0 4px #ffb4a8, inset 0 0 3.4cqw rgba(255, 90, 80, 0.95);
+}
+
+.g2-cell.drop-spell.drop-hover::after {
+  border-color: #ffe1dc;
+  box-shadow: 0 0 2cqw rgba(255, 90, 80, 0.95);
+}
+
+/* A held spell with no target can be dropped anywhere: the whole board glows, brighter under the card. */
+.g2-board.drop-all {
+  outline: 0.5cqw solid rgba(170, 140, 255, 0.55);
+  outline-offset: 0.4cqw;
+  animation: g2-drop-all 1.6s ease-in-out infinite;
+}
+
+.g2-board.drop-all.drop-over {
+  outline-color: rgba(220, 205, 255, 0.95);
+  animation-duration: 0.8s;
+}
+
+@keyframes g2-drop-all {
+  50% {
+    outline-offset: 0.9cqw;
+    outline-color: rgba(200, 180, 255, 0.9);
+  }
 }
 
 @keyframes g2-spin {
@@ -4189,16 +4220,11 @@ button,
 }
 
 .g2-card:hover,
-.g2-card.selected,
 .g2-card.inspected {
   z-index: 30;
   translate: 0 calc(var(--card-w) * -0.17);
   rotate: 0deg;
   scale: 1.08;
-}
-
-.g2-card.selected {
-  box-shadow: 0 0 0 0.12em #fff3d6, 0 0 1.4em 0.4em rgba(240, 190, 90, 0.75);
 }
 
 .g2-card.inspected {
@@ -4281,6 +4307,15 @@ button,
   transform-origin: 50% 50%;
 }
 
+/* A cast spell flies to the middle of the board, where the spell is shown big. */
+.g2-card.g2-drag-ghost.casting {
+  transition: left 0.26s cubic-bezier(0.3, 0, 0.4, 1), top 0.26s cubic-bezier(0.3, 0, 0.4, 1), scale 0.26s ease, opacity 0.26s ease-in, rotate 0.26s ease;
+  rotate: 0deg;
+  scale: 1.3;
+  opacity: 0;
+  transform-origin: 50% 50%;
+}
+
 .g2-droptag {
   position: fixed;
   z-index: 1001;
@@ -4305,10 +4340,6 @@ button,
   color: #ece6ff;
   font-size: 13px;
   font-weight: 600;
-}
-
-.g2-actions:empty {
-  display: none;
 }
 
 /* ------------------------------------------------------------ the card viewer */
@@ -4707,32 +4738,6 @@ button,
 .g2-sheet-close,
 .g2-sheet-shade {
   display: none;
-}
-
-.g2-choose {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 12px;
-  background: linear-gradient(180deg, rgba(38, 34, 56, 0.96), rgba(23, 21, 35, 0.96));
-  border: 1px solid rgba(232, 194, 122, 0.45);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
-}
-
-.g2-choose b {
-  font-family: var(--card-font);
-  color: #f5e3b3;
-}
-
-.g2-choose button {
-  padding: 7px 12px;
-  font-size: 13px;
-}
-
-.g2-choose button.primary {
-  width: auto;
 }
 
 .g2-side {
@@ -5636,10 +5641,6 @@ button,
     font-size: 11px;
   }
 
-  .g2-actions {
-    order: 1;
-  }
-
   .g2-hand {
     order: 2;
     position: relative;
@@ -5721,12 +5722,6 @@ button,
     scale: none;
   }
 
-  .g2-card.selected {
-    translate: 0 -6px;
-    rotate: none;
-    scale: none;
-  }
-
   .g2-card .g2-frame-type,
   .g2-card .g2-frame-text,
   .g2-card .g2-frame-shine {
@@ -5793,21 +5788,6 @@ button,
 
   .g2-card.g2-drag-ghost .g2-frame-name {
     min-height: 0;
-  }
-
-  .g2-choose {
-    gap: 6px;
-    padding: 6px 8px;
-  }
-
-  .g2-choose button {
-    padding: 6px 10px;
-    font-size: 13px;
-  }
-
-  .g2-choose .hint {
-    flex-basis: 100%;
-    font-size: 11px;
   }
 
   .g2-status-more {
