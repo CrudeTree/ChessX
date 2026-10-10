@@ -43,15 +43,6 @@ function newRecord(): v2.GameRecord {
   return { state: v2.newGame({ seed, decks: { white: v2.starterDeck(), black: v2.starterDeck() } }), seq: 1, events: [] };
 }
 
-/**
- * The site closes the turn once the action is taken and no spell can follow it (msg-029). An affordable spell
- * still in hand keeps the turn open, since a spell never ends a turn and the player may still want it.
- */
-function nothingLeftThisTurn(state: v2.GameState, mover: Color): boolean {
-  if (state.status.kind !== 'playing' || state.phase !== 'play' || state.active !== mover || !state.actionTaken) return false;
-  return v2.legalActions(state).every((a) => a.type === 'endTurn');
-}
-
 function randomCode(len = 5): string {
   const bytes = randomBytes(len);
   let out = '';
@@ -315,14 +306,11 @@ export class LiveGame {
     if (current.state.active !== color) throw new GameError('It is not your turn.');
     const before = current.state.active;
     let result: v2.ApplyResult;
+    // The engine ends the turn with the move, summon or seal itself (msg-034); a spell keeps it open.
     try {
       result = v2.applyLegalAction(current.state, action);
     } catch {
       throw new GameError('That is not a legal action.');
-    }
-    if (action.type !== 'endTurn' && nothingLeftThisTurn(result.state, before)) {
-      const closed = v2.applyLegalAction(result.state, { type: 'endTurn' });
-      result = { state: closed.state, events: [...result.events, ...closed.events] };
     }
     const next = result.state;
     if (action.type === 'spell') this.cardsThisTurn++;

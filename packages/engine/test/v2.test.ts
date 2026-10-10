@@ -153,28 +153,58 @@ describe('setup', () => {
 });
 
 describe('turn flow and resources', () => {
-  it('gives +1 mana (no cap) and a card at the start of each turn, and needs an action before ending', () => {
+  it('the action ends the turn: the other side gains +1 mana (no cap) and draws a card at once (msg-034)', () => {
     let state = bare(40);
     state.deck.black = [{ uid: 'dk1', cardId: 'squire' }];
     expect(legalActions(state).some((a) => a.type === 'endTurn')).toBe(false);
     state = act(state, find(state, (a) => a.type === 'move' && a.from === S('d1')));
-    expect(legalActions(state).some((a) => a.type === 'endTurn')).toBe(true);
-    state = act(state, { type: 'endTurn' });
     expect(state.active).toBe('black');
+    expect(state.actionTaken).toBe(false);
     expect(state.mana.black).toBe(41);
     expect(state.hand.black.map((c) => c.uid)).toContain('dk1');
+    expect(legalActions(state).some((a) => a.type === 'endTurn')).toBe(false);
   });
 
-  it('allows one action and one spell per turn', () => {
+  it('summoning and sealing end the turn too', () => {
+    const state = bare(10);
+    piece(state, 'white', 'initiate', 'c3');
+    const squire = give(state, 'white', 'squire');
+    expect(act(state, find(state, (a) => a.type === 'summon' && a.cardUid === squire)).active).toBe('black');
+    expect(act(state, find(state, (a) => a.type === 'seal' && a.cardUid === squire)).active).toBe('black');
+  });
+
+  it('allows one spell, then one action; the spell does not end the turn (msg-034)', () => {
     const state = bare(10);
     const insight = give(state, 'white', 'insight');
     give(state, 'white', 'insight');
     state.deck.white = [{ uid: 'a', cardId: 'squire' }, { uid: 'b', cardId: 'squire' }, { uid: 'c', cardId: 'squire' }, { uid: 'd', cardId: 'squire' }];
     let next = act(state, { type: 'spell', cardUid: insight });
+    expect(next.active).toBe('white');
     expect(next.hand.white.length).toBe(3);
     expect(legalActions(next).some((a) => a.type === 'spell')).toBe(false);
+    expect(legalActions(next).some((a) => a.type === 'move')).toBe(true);
     next = act(next, find(next, (a) => a.type === 'move'));
-    expect(legalActions(next).filter((a) => a.type === 'move')).toHaveLength(0);
+    expect(next.active).toBe('black');
+  });
+
+  it('no spell after the action: an affordable spell in hand does not hold the turn open (msg-034)', () => {
+    const state = bare(10);
+    const insight = give(state, 'white', 'insight');
+    state.deck.white = [{ uid: 'a', cardId: 'squire' }, { uid: 'b', cardId: 'squire' }];
+    const next = act(state, find(state, (a) => a.type === 'move'));
+    expect(next.active).toBe('black');
+    expect(next.hand.white.map((c) => c.uid)).toContain(insight);
+    expect(next.discard.white).toHaveLength(0);
+  });
+
+  it('a game saved while an older rule held the turn open after the action can only end the turn', () => {
+    let state = bare(10);
+    give(state, 'white', 'insight');
+    state.actionTaken = true;
+    expect(legalActions(state)).toEqual([{ type: 'endTurn' }]);
+    state = act(state, { type: 'endTurn' });
+    expect(state.active).toBe('black');
+    expect(state.actionTaken).toBe(false);
   });
 });
 
@@ -207,7 +237,6 @@ describe('summoning', () => {
     state = act(state, find(state, (a) => a.type === 'summon' && a.cardUid === tower && a.to === S('a1')));
     expect(pieceAt(state, S('a1'))!.activeFromTurn).toBe(2);
     expect(isInCheck(state, 'black')).toBe(true);
-    state = act(state, { type: 'endTurn' });
     expect(state.active).toBe('black');
     expect(isInCheck(state, 'black')).toBe(true);
     const kingSteps = legalActions(state).filter((a) => a.type === 'move' && a.from === S('a8'));
@@ -333,7 +362,7 @@ describe('sealing', () => {
     expect(sealAt(next, mine.square)?.card.id).toBe('tower');
     expect(next.mana.white).toBe(0);
     expect(next.hand.white.some((c) => c.uid === tower)).toBe(false);
-    expect(legalActions(next).filter((a) => a.type === 'move')).toHaveLength(0);
+    expect(next.active).toBe('black');
   });
 
   it('a timer-1 seal hatches at the start of its owner\'s next turn, after exactly one enemy move', () => {
@@ -342,10 +371,8 @@ describe('sealing', () => {
     const squire = give(state, 'white', 'squire');
     state = act(state, find(state, (a) => a.type === 'seal' && a.cardUid === squire));
     expect(sealAt(state, S('c3'))?.timer).toBe(1);
-    state = act(state, { type: 'endTurn' });
-    expect(sealAt(state, S('c3'))).toBeDefined();
+    expect(state.active).toBe('black');
     state = act(state, find(state, (a) => a.type === 'move'));
-    state = act(state, { type: 'endTurn' });
     expect(sealAt(state, S('c3'))).toBeUndefined();
     const hatched = pieceAt(state, S('c3'))!;
     expect(hatched.def.kind).toBe('squire');
@@ -358,9 +385,7 @@ describe('sealing', () => {
     const tower = give(state, 'white', 'tower');
     state = act(state, find(state, (a) => a.type === 'seal' && a.cardUid === tower));
     for (let round = 1; round <= 3; round++) {
-      state = act(state, { type: 'endTurn' });
       state = act(state, find(state, (a) => a.type === 'move'));
-      state = act(state, { type: 'endTurn' });
       if (round < 3) {
         expect(sealAt(state, S('c3'))?.timer).toBe(3 - round);
         state = act(state, find(state, (a) => a.type === 'move'));
@@ -385,11 +410,10 @@ describe('sealing', () => {
     piece(state, 'black', 'initiate', 'c4');
     const squire = give(state, 'white', 'squire');
     state = act(state, find(state, (a) => a.type === 'seal' && a.cardUid === squire));
-    state = act(state, { type: 'endTurn' });
     state = act(state, find(state, (a) => a.type === 'move' && a.to === S('c3')));
     expect(sealAt(state, S('c3'))).toBeUndefined();
     expect(state.discard.white.map((c) => c.cardId)).toContain('squire');
-    state = act(state, { type: 'endTurn' });
+    expect(state.active).toBe('white');
     expect(pieceAt(state, S('c3'))?.owner).toBe('black');
   });
 
@@ -458,9 +482,12 @@ describe('starter deck', () => {
     const wyrmling = give(state, 'white', 'wyrmling');
     const insight = give(state, 'white', 'insight');
     expect(legalActions(state).some((a) => a.type === 'spell' && a.cardUid === insight)).toBe(true);
-    const next = act(state, find(state, (a) => a.type === 'seal' && a.cardUid === wyrmling));
-    expect(next.mana.white).toBe(1);
-    expect(legalActions(next).some((a) => a.type === 'spell' && a.cardUid === insight)).toBe(false);
+    const sealed = act(state, find(state, (a) => a.type === 'seal' && a.cardUid === wyrmling));
+    expect(sealed.mana.white).toBe(1);
+    expect(sealed.active).toBe('black');
+    const cast = act(state, { type: 'spell', cardUid: insight });
+    expect(cast.mana.white).toBe(1);
+    expect(legalActions(cast).some((a) => a.type === 'seal' && a.cardUid === wyrmling)).toBe(false);
   });
 });
 
@@ -477,7 +504,6 @@ describe('endgame', () => {
     state.actionTaken = false;
     state.mana.black = 0;
     state = act(state, find(state, (a) => a.type === 'move'));
-    state = act(state, { type: 'endTurn' });
     expect(state.status).toEqual({ kind: 'stalemate' });
     expect(legalActions(state)).toEqual([]);
   });
@@ -488,7 +514,6 @@ describe('endgame', () => {
     state.pieces.find((p) => p.owner === 'white')!.square = S('c7');
     piece(state, 'white', 'tower', 'b1');
     state = act(state, find(state, (a) => a.type === 'move' && a.from === S('b1') && a.to === S('a1')));
-    state = act(state, { type: 'endTurn' });
     expect(state.status).toEqual({ kind: 'checkmate', winner: 'white' });
   });
 
@@ -502,8 +527,8 @@ describe('endgame', () => {
     let state = bare(0);
     state.pieces.find((p) => p.owner === 'black' && p.def.king)!.square = S('a8');
     for (let turn = 0; turn < 6; turn++) {
-      const moved = act(state, find(state, (a) => a.type === 'move'));
-      const ended = applyLegalAction(moved, { type: 'endTurn' });
+      const ended = applyLegalAction(state, find(state, (a) => a.type === 'move'));
+      expect(ended.events.some((e) => e.type === 'turnStarted')).toBe(true);
       expect(ended.events.some((e) => e.type === 'drew')).toBe(false);
       state = ended.state;
       expect(state.status).toEqual({ kind: 'playing' });
@@ -519,9 +544,7 @@ describe('endgame', () => {
     state = act(state, find(state, (a) => a.type === 'move' && a.from === S('e7') && a.to === S('e8')));
     expect(pieceAt(state, S('e8'))).toMatchObject({ owner: 'white', cardId: 'squire' });
     expect(pieceAt(state, S('e8'))!.def.kind).toBe('squire');
-    state = act(state, { type: 'endTurn' });
     state = act(state, find(state, (a) => a.type === 'move'));
-    state = act(state, { type: 'endTurn' });
     expect(pieceAt(state, S('e8'))!.def.kind).toBe('squire');
     expect(legalActions(state).some((a) => a.type === 'move' && a.from === S('e8'))).toBe(false);
     const eclipse = give(state, 'white', 'eclipse_knight');
@@ -542,10 +565,9 @@ describe('full games', () => {
       for (let step = 0; step < 500 && state.status.kind === 'playing'; step++) {
         const actions = legalActions(state);
         expect(actions.length).toBeGreaterThan(0);
+        expect(actions.some((a) => a.type === 'endTurn')).toBe(false);
         pick = (pick * 1103515245 + 12345) & 0x7fffffff;
-        const nonEnd = actions.filter((a) => a.type !== 'endTurn');
-        const pool = state.actionTaken || nonEnd.length === 0 ? actions : nonEnd;
-        state = act(state, pool[pick % pool.length]!);
+        state = act(state, actions[pick % actions.length]!);
       }
     }
   });

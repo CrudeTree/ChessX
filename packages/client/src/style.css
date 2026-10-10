@@ -3730,6 +3730,47 @@ button,
   bottom: 8px;
 }
 
+/* Straddles the board's top edge so it never hides a square anyone summons onto. */
+.g2-cue {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(24, 24, 36, 0.92);
+  border: 1px solid var(--accent);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.g2-cue-step {
+  font-weight: 700;
+  color: #c9a8ff;
+}
+
+.g2-cue-step.off {
+  color: var(--muted);
+  font-weight: 400;
+  text-decoration: line-through;
+}
+
+.g2-cue-step.done {
+  color: #7fd18b;
+}
+
+.g2-cue-step.now {
+  color: var(--accent);
+}
+
+.g2-hand.spent .g2-handrow {
+  filter: grayscale(0.7) brightness(0.8);
+}
+
 .g2-card.inspected {
   outline: 2px solid #7fb8ff;
   outline-offset: 1px;
