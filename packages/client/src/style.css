@@ -3504,56 +3504,254 @@ button,
   scrollbar-width: thin;
 }
 
-.g2-card {
+/*
+ * The card frame (cardFrame.ts): one layout for every card, sized in em so the hand and the inspect panel
+ * draw the same frame at different font sizes. Pieces are bronze, spells violet, the King (not a card) steel.
+ */
+.g2-frame {
+  --frame: #a8834a;
+  --frame-hi: #e0bd7a;
+  --frame-bg: linear-gradient(180deg, #2f2a22, #1e1b16);
+  --frame-paper: #ebe0c4;
   position: relative;
-  flex: 0 0 auto;
-  width: 118px;
-  min-height: 132px;
+  width: 16em;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 3px;
-  padding: 8px 8px 8px;
+  gap: 0.35em;
+  padding: 0.45em;
+  border: 0.3em solid var(--frame);
+  border-radius: 0.9em;
+  background: var(--frame-bg);
+  box-shadow: inset 0 0 0 0.1em rgba(0, 0, 0, 0.55), 0 0.2em 0.6em rgba(0, 0, 0, 0.35);
+  color: var(--text);
   text-align: left;
   font-weight: 400;
-  border-radius: 10px;
-  border: 2px solid #3a3a52;
-  background: var(--panel-2);
-  opacity: 0.55;
+  line-height: 1.2;
 }
 
-.g2-card.piece {
-  background: linear-gradient(180deg, #2b2a40, #222234);
+.g2-frame-spell {
+  --frame: #8a6ad0;
+  --frame-hi: #cbb6ff;
+  --frame-bg: linear-gradient(180deg, #2e2446, #1d1830);
+  --frame-paper: #e6def6;
 }
 
-.g2-card.spell {
-  background: linear-gradient(180deg, #33264a, #241d36);
+.g2-frame-king {
+  --frame: #7d8597;
+  --frame-hi: #c9d0de;
+  --frame-bg: linear-gradient(180deg, #282b36, #1b1c24);
+  --frame-paper: #e2e5ec;
 }
 
-.g2-cardart {
-  display: block;
-  width: calc(100% + 16px);
-  height: 58px;
-  margin: -8px -8px 2px;
+.g2-frame-top {
+  display: flex;
+  align-items: center;
+  min-height: 1.9em;
+  padding: 0 0.4em 0 2.1em;
+  border-radius: 0.4em;
+  border: 0.08em solid var(--frame);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.g2-frame-king .g2-frame-top {
+  padding-left: 0.5em;
+}
+
+.g2-frame-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 1.1em;
+  font-weight: 700;
+  color: var(--frame-hi);
+}
+
+.g2-frame-window {
+  height: 5em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 0.4em;
+  border: 0.1em solid var(--frame);
+  background: radial-gradient(circle at 50% 45%, rgba(255, 255, 255, 0.1), rgba(0, 0, 0, 0.4));
+}
+
+.g2-frame-window img {
+  width: 100%;
+  height: 100%;
   object-fit: cover;
   object-position: center 55%;
-  border-radius: 8px 8px 0 0;
   image-rendering: pixelated;
   pointer-events: none;
 }
 
+.g2-frame-glyph {
+  font-size: 3em;
+  line-height: 1;
+  font-family: 'Segoe UI Symbol', 'DejaVu Sans', sans-serif;
+  color: var(--frame-hi);
+  opacity: 0.85;
+}
+
+.g2-frame-type {
+  font-size: 0.72em;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--frame-hi);
+}
+
+.g2-frame-body {
+  display: flex;
+  gap: 0.4em;
+  align-items: stretch;
+  min-height: 6em;
+}
+
+.g2-frame-diagram {
+  flex: none;
+  width: 6em;
+  height: 6em;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
+  border: 0.1em solid #2b2420;
+  border-radius: 0.2em;
+  overflow: hidden;
+}
+
+.g2-frame-sq {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.g2-frame-sq.light {
+  background: #d6c9a8;
+}
+
+.g2-frame-sq.dark {
+  background: #7a5f45;
+}
+
+.g2-frame-sq.mv::before {
+  content: '';
+  position: absolute;
+  width: 55%;
+  height: 55%;
+  border-radius: 50%;
+  background: rgba(46, 184, 92, 0.95);
+}
+
+.g2-frame-sq.cap::after {
+  content: '';
+  position: absolute;
+  inset: 4%;
+  border-radius: 50%;
+  border: max(1px, 0.12em) solid rgba(217, 53, 49, 0.95);
+}
+
+.g2-frame-token {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6em;
+  line-height: 1;
+  font-family: 'Segoe UI Symbol', 'DejaVu Sans', sans-serif;
+}
+
+.g2-frame-token.white {
+  background: #f7f3ea;
+  color: #2b2420;
+  box-shadow: inset 0 0 0 1px #2b2420;
+}
+
+.g2-frame-token.black {
+  background: #1c1b24;
+  color: #f2eee6;
+  box-shadow: inset 0 0 0 1px #d8d2e6;
+}
+
+.g2-frame-text {
+  flex: 1;
+  min-width: 0;
+  padding: 0.35em 0.45em 1.1em;
+  border-radius: 0.3em;
+  background: var(--frame-paper);
+  color: #2b2420;
+  font-size: 0.9em;
+  line-height: 1.25;
+}
+
+.g2-frame-cost {
+  position: absolute;
+  top: -0.45em;
+  left: -0.45em;
+  width: 1.75em;
+  height: 1.75em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 0.12em solid #12121a;
+  background: var(--mana);
+  color: #06233a;
+  font-size: 1.3em;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.g2-frame-timer {
+  position: absolute;
+  right: -0.4em;
+  bottom: -0.4em;
+  height: 1.6em;
+  padding: 0 0.45em;
+  display: flex;
+  align-items: center;
+  border-radius: 0.8em;
+  border: 0.1em solid #b9a5ff;
+  background: #2a2146;
+  color: #ece6ff;
+  font-size: 1.1em;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* A hand card is the frame at a small size, every card the same height. */
+.g2-card {
+  flex: 0 0 auto;
+  margin: 6px 0 2px 6px;
+  font-size: 9.5px;
+  opacity: 0.55;
+}
+
+.g2-card .g2-frame-body {
+  height: 6em;
+  overflow: hidden;
+}
+
+.g2-card .g2-frame-text {
+  overflow: hidden;
+}
+
 .g2-card.playable {
   opacity: 1;
-  border-color: #6a6a92;
 }
 
 .g2-card.playable:hover {
-  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent), 0 0.2em 0.6em rgba(0, 0, 0, 0.35);
 }
 
 .g2-card.selected {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(212, 162, 76, 0.3);
+  box-shadow: 0 0 0 2px #fff3d6, 0 0 14px 4px rgba(212, 162, 76, 0.65);
   transform: translateY(-4px);
 }
 
@@ -3575,14 +3773,13 @@ button,
   pointer-events: none;
   cursor: grabbing;
   opacity: 0.95;
-  border-color: var(--accent);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 0 0 2px var(--accent), 0 12px 28px rgba(0, 0, 0, 0.55);
   transform-origin: 50% 100%;
   transform: rotate(-3deg) scale(0.8);
 }
 
 .g2-drag-ghost.nowhere {
-  border-color: var(--danger);
+  box-shadow: 0 0 0 2px var(--danger), 0 12px 28px rgba(0, 0, 0, 0.55);
 }
 
 .g2-drag-ghost.returning {
@@ -3648,48 +3845,6 @@ button,
   letter-spacing: 0;
 }
 
-.g2-cost {
-  position: absolute;
-  top: -8px;
-  right: -8px;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--mana);
-  color: #06233a;
-  font-weight: 800;
-  font-size: 14px;
-  border: 2px solid #12121a;
-}
-
-.g2-cardname {
-  font-size: 14px;
-  font-weight: 700;
-  padding-right: 14px;
-}
-
-.g2-cardtype {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--muted);
-}
-
-.g2-cardtext {
-  font-size: 11px;
-  color: #cfcce0;
-  line-height: 1.25;
-}
-
-.g2-cardseal {
-  margin-top: auto;
-  font-size: 10px;
-  color: #b9a5ff;
-}
-
 .g2-actions:empty {
   display: none;
 }
@@ -3711,15 +3866,22 @@ button,
   left: 50%;
   transform: translateX(-50%);
   z-index: 4;
-  width: min(calc(100% - 16px), 380px);
+  width: min(calc(100% - 16px), 400px);
   max-height: calc(100% - 16px);
   overflow: hidden;
-  padding: 8px 10px 10px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px;
   border-radius: 10px;
   background: rgba(24, 24, 36, 0.96);
   border: 1px solid #3a4a66;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6);
   cursor: pointer;
+}
+
+.g2-inspect.hidden {
+  display: none;
 }
 
 .g2-inspect.at-top {
@@ -3728,6 +3890,48 @@ button,
 
 .g2-inspect.at-bottom {
   bottom: 8px;
+}
+
+.g2-inspect-card {
+  flex: none;
+  font-size: 13px;
+}
+
+.g2-inspect-side {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #cfcce0;
+}
+
+.g2-inspect-name {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.g2-inspect-close {
+  align-self: flex-end;
+  width: auto;
+  padding: 0 8px;
+  font-size: 18px;
+  line-height: 26px;
+}
+
+.g2-inspect-facts {
+  color: var(--muted);
+}
+
+.g2-inspect-note {
+  color: #b9a5ff;
+}
+
+.g2-inspect-legend {
+  font-size: 11px;
+  color: var(--muted);
 }
 
 /* Straddles the board's top edge so it never hides a square anyone summons onto. */
@@ -3780,164 +3984,10 @@ button,
   cursor: default;
 }
 
-.g2-cardtimer,
 .g2-menu,
 .g2-sheet-close,
 .g2-sheet-shade {
   display: none;
-}
-
-.g2-inspect-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.g2-inspect-glyph {
-  width: 26px;
-  height: 26px;
-  flex: none;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  font-family: 'Segoe UI Symbol', 'DejaVu Sans', sans-serif;
-  border: 2px solid;
-}
-
-.g2-inspect-glyph.white,
-.g2-mini-piece.white {
-  background: #f7f3ea;
-  color: #2b2420;
-  border-color: #2b2420;
-}
-
-.g2-inspect-glyph.black,
-.g2-mini-piece.black {
-  background: #1c1b24;
-  color: #f2eee6;
-  border-color: #d8d2e6;
-}
-
-.g2-inspect-art {
-  width: 44px;
-  height: 44px;
-  flex: none;
-  object-fit: cover;
-  object-position: center 55%;
-  border-radius: 6px;
-  border: 2px solid;
-  image-rendering: pixelated;
-}
-
-.g2-inspect-art.white {
-  border-color: #f7f3ea;
-}
-
-.g2-inspect-art.black {
-  border-color: #6a6a92;
-}
-
-.g2-inspect-name {
-  flex: 1;
-  font-size: 15px;
-}
-
-.g2-inspect-close {
-  width: auto;
-  padding: 0 8px;
-  font-size: 18px;
-  line-height: 26px;
-}
-
-.g2-inspect-facts {
-  margin: 4px 0 8px;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.g2-inspect-body {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-}
-
-.g2-inspect-text {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  font-size: 12px;
-  line-height: 1.35;
-  color: #cfcce0;
-}
-
-.g2-inspect-note {
-  color: #b9a5ff;
-}
-
-.g2-inspect-legend {
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.g2-mini {
-  flex: none;
-  width: 126px;
-  height: 126px;
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  grid-template-rows: repeat(7, 1fr);
-  border: 2px solid #2b2420;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.g2-mini-cell {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.g2-mini-cell.light {
-  background: #d6c9a8;
-}
-
-.g2-mini-cell.dark {
-  background: #7a5f45;
-}
-
-.g2-mini-cell.mv::before {
-  content: '';
-  position: absolute;
-  width: 40%;
-  height: 40%;
-  border-radius: 50%;
-  background: rgba(79, 201, 120, 0.95);
-}
-
-.g2-mini-cell.cap::after {
-  content: '';
-  position: absolute;
-  inset: 8%;
-  border-radius: 50%;
-  border: 2px solid rgba(217, 83, 79, 0.95);
-}
-
-.g2-mini-piece {
-  width: 88%;
-  height: 88%;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  line-height: 1;
-  font-family: 'Segoe UI Symbol', 'DejaVu Sans', sans-serif;
-  border: 1px solid;
 }
 
 .g2-choose {
@@ -4096,16 +4146,17 @@ button,
   }
 
   .g2-inspect {
-    padding: 6px 8px 8px;
+    gap: 8px;
+    padding: 6px;
   }
 
-  .g2-inspect-facts {
-    margin: 2px 0 6px;
+  .g2-inspect-card {
+    font-size: 10.5px;
   }
 
-  .g2-mini {
-    width: 98px;
-    height: 98px;
+  .g2-inspect-side {
+    gap: 4px;
+    font-size: 11px;
   }
 
   .g2-actions {
@@ -4149,39 +4200,49 @@ button,
     padding: 10px 8px 4px 2px;
   }
 
+  /* The frame shrinks to its name and two corners over the picture; tap the card to read the whole frame. */
   .g2-card {
     width: 84px;
-    min-height: 0;
     height: 66px;
-    padding: 6px 7px;
-    gap: 1px;
+    padding: 1.9em 0.5em 0.4em;
+    font-size: 9px;
+    border-width: 2px;
   }
 
   .g2-card.selected {
     transform: translateY(-3px);
   }
 
-  .g2-cardname {
+  .g2-card .g2-frame-window,
+  .g2-card .g2-frame-type,
+  .g2-card .g2-frame-body {
+    display: none;
+  }
+
+  .g2-card .g2-frame-top {
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+  }
+
+  .g2-card .g2-frame-name {
     font-size: 12.5px;
     line-height: 1.15;
-    overflow: hidden;
+    white-space: normal;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
   }
 
-  .g2-cost {
-    width: 22px;
-    height: 22px;
-    top: -7px;
-    right: -6px;
-    font-size: 12px;
+  .g2-card .g2-frame-cost {
+    top: -2px;
+    left: -2px;
   }
 
-  .g2-cardtext,
-  .g2-cardseal,
-  .g2-cardart {
-    display: none;
+  .g2-card .g2-frame-timer {
+    right: -2px;
+    bottom: -2px;
   }
 
   .g2-card.has-art {
@@ -4190,16 +4251,8 @@ button,
     image-rendering: pixelated;
   }
 
-  .g2-card.has-art .g2-cardname,
-  .g2-card.has-art .g2-cardtimer {
+  .g2-card.has-art .g2-frame-name {
     text-shadow: 0 1px 2px #000;
-  }
-
-  .g2-cardtimer {
-    display: block;
-    margin-top: auto;
-    font-size: 10px;
-    color: #b9a5ff;
   }
 
   .g2-choose {
