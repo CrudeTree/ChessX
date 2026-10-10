@@ -30,6 +30,7 @@ const GLYPHS: Record<string, string> = {
   king: '♚',
   initiate: '✚',
   squire: '♟',
+  page: '¶',
   hopper: '♞',
   cathedral_runner: '♝',
   dawn_paladin: '☀\uFE0E',
