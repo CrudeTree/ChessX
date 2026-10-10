@@ -477,6 +477,41 @@ describe('endgame', () => {
     expect(legalActions(state).some((a) => a.type === 'endTurn')).toBe(false);
     expect(() => applyLegalAction(state, { type: 'endTurn' })).toThrow();
   });
+
+  it('an empty deck skips the draw with no deck-out loss; checkmate stays the only win (msg-033)', () => {
+    let state = bare(0);
+    state.pieces.find((p) => p.owner === 'black' && p.def.king)!.square = S('a8');
+    for (let turn = 0; turn < 6; turn++) {
+      const moved = act(state, find(state, (a) => a.type === 'move'));
+      const ended = applyLegalAction(moved, { type: 'endTurn' });
+      expect(ended.events.some((e) => e.type === 'drew')).toBe(false);
+      state = ended.state;
+      expect(state.status).toEqual({ kind: 'playing' });
+      expect(state.deck[state.active]).toHaveLength(0);
+      expect(state.hand[state.active]).toHaveLength(0);
+    }
+  });
+
+  it('a Squire on the far rank stays a Squire and can be sealed to an Eclipse Knight, the crown (msg-033)', () => {
+    let state = bare(5);
+    state.pieces.find((p) => p.owner === 'black' && p.def.king)!.square = S('a8');
+    piece(state, 'white', 'squire', 'e7');
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('e7') && a.to === S('e8')));
+    expect(pieceAt(state, S('e8'))).toMatchObject({ owner: 'white', cardId: 'squire' });
+    expect(pieceAt(state, S('e8'))!.def.kind).toBe('squire');
+    state = act(state, { type: 'endTurn' });
+    state = act(state, find(state, (a) => a.type === 'move'));
+    state = act(state, { type: 'endTurn' });
+    expect(pieceAt(state, S('e8'))!.def.kind).toBe('squire');
+    expect(legalActions(state).some((a) => a.type === 'move' && a.from === S('e8'))).toBe(false);
+    const eclipse = give(state, 'white', 'eclipse_knight');
+    const mana = state.mana.white;
+    state = act(state, find(state, (a) => a.type === 'seal' && a.cardUid === eclipse && a.target === S('e8')));
+    expect(pieceAt(state, S('e8'))).toBeUndefined();
+    expect(sealAt(state, S('e8'))).toMatchObject({ owner: 'white', timer: 3 });
+    expect(sealAt(state, S('e8'))!.card.id).toBe('eclipse_knight');
+    expect(state.mana.white).toBe(mana - 4);
+  });
 });
 
 describe('full games', () => {

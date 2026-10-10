@@ -37,8 +37,8 @@ Source: Djabooty, 2026-10-05. This is the rules baseline to design, playtest, an
 - **Stalemate test:** A seal is a piece for blocking squares and for being captured, but it has no legal move and does not count as a piece that can act. If a player's only pieces are the King and one or more seals, and the King has no legal move (and cannot summon or seal), that player is in stalemate.
 - **Hatching timing:** A piece cannot hatch onto a square an enemy has moved onto. The seal must survive until the start of its owner's turn, when the timer resolves. If an enemy captures the seal's square first, the seal and its card are lost. The piece only hatches if the seal's square is still under its owner's control at that moment.
 - **Timer timing:** A seal's timer counts down at the start of each of its owner's turns, and the piece hatches when it reaches 0. A timer of 1 hatches at the start of the owner's next turn, so the opponent gets exactly one move in between.
-- **Empty deck (how v2 plays today):** When a deck runs out, the draw is skipped. There is no deck-out loss; checkmate stays the only win.
-- **No promotion (how v2 plays today):** A piece that reaches the far rank stays as it is. It can still be sealed like any other piece.
+- **Empty deck (changed by congress, msg-033, 2026-10-10):** When a deck runs out, the draw is skipped. There is no deck-out loss; checkmate stays the only win.
+- **No promotion (changed by congress, msg-033, 2026-10-10):** A piece that reaches the far rank stays as it is. It can still be sealed like any other piece. Sealing is the crown: a Squire that reaches e8 can be sealed to an Eclipse Knight (cost 4, timer 3).
 
 ## Open questions
 
