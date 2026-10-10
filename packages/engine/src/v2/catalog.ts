@@ -29,6 +29,12 @@ const SQUIRE: PieceDef = {
   ],
 };
 
+const PAGE: PieceDef = {
+  kind: 'page',
+  name: 'Page',
+  rules: [rule({ dirs: ORTHO, range: 1 })],
+};
+
 const HOPPER: PieceDef = {
   kind: 'hopper',
   name: 'Hopper',
@@ -78,6 +84,7 @@ const TOWER: PieceDef = {
 export const STARTER_CATALOG: Record<string, Card> = {
   initiate: { type: 'piece', id: 'initiate', name: 'Initiate', cost: 0, sealTimer: 1, piece: INITIATE },
   squire: { type: 'piece', id: 'squire', name: 'Squire', cost: 1, sealTimer: 1, piece: SQUIRE },
+  page: { type: 'piece', id: 'page', name: 'Page', cost: 1, sealTimer: 1, piece: PAGE },
   hopper: { type: 'piece', id: 'hopper', name: 'Hopper', cost: 3, sealTimer: 2, piece: HOPPER },
   cathedral_runner: { type: 'piece', id: 'cathedral_runner', name: 'Cathedral Runner', cost: 3, sealTimer: 2, piece: RUNNER },
   dawn_paladin: { type: 'piece', id: 'dawn_paladin', name: 'Dawn Paladin', cost: 4, sealTimer: 3, piece: DAWN_PALADIN },
@@ -90,13 +97,14 @@ export const STARTER_CATALOG: Record<string, Card> = {
 };
 
 /**
- * A 24-card starter deck: 2 Initiates, 5 Squires, 2 Hoppers, 2 Runners, 2 Towers, 3 Dawn Paladins, 2 Insight, 2 Dispel,
- * 2 Wyrmlings, 2 Duskfangs. Four cost-2 cards at most (msg-026).
+ * A 24-card starter deck: 2 Initiates, 3 Squires, 2 Pages, 2 Hoppers, 2 Runners, 2 Towers, 3 Dawn Paladins, 2 Insight,
+ * 2 Dispel, 2 Wyrmlings, 2 Duskfangs. Four cost-2 cards at most (msg-026). Pages replaced two Squires (msg-032).
  */
 export function starterDeck(): string[] {
   const counts: Record<string, number> = {
     initiate: 2,
-    squire: 5,
+    squire: 3,
+    page: 2,
     hopper: 2,
     cathedral_runner: 2,
     tower: 2,

@@ -275,6 +275,25 @@ describe('Eclipse Knight', () => {
   });
 });
 
+describe('Page', () => {
+  it('costs 1, seals on a 1-turn timer, and steps one square straight to move or capture (msg-032)', () => {
+    const card = STARTER_CATALOG.page!;
+    expect(card).toMatchObject({ type: 'piece', cost: 1, sealTimer: 1 });
+    expect(starterDeck().filter((id) => id === 'page')).toHaveLength(2);
+    expect(starterDeck().filter((id) => id === 'squire')).toHaveLength(3);
+    const state = bare(0);
+    piece(state, 'white', 'page', 'e3');
+    piece(state, 'white', 'initiate', 'e2');
+    piece(state, 'black', 'initiate', 'd3');
+    const to = legalActions(state)
+      .filter((a): a is Extract<Action, { type: 'move' }> => a.type === 'move' && a.from === S('e3'))
+      .map((a) => a.to)
+      .sort((x, y) => x - y);
+    const expected = ['e4', 'd3', 'f3'].map(S).sort((x, y) => x - y);
+    expect(to).toEqual(expected);
+  });
+});
+
 describe('Wyrmling', () => {
   it('costs 2, seals on a 1-turn timer, and leaps exactly two squares straight to move or capture', () => {
     const card = STARTER_CATALOG.wyrmling!;
@@ -408,7 +427,8 @@ describe('starter deck', () => {
     for (const id of starterDeck()) counts[id] = (counts[id] ?? 0) + 1;
     expect(counts).toEqual({
       initiate: 2,
-      squire: 5,
+      squire: 3,
+      page: 2,
       hopper: 2,
       cathedral_runner: 2,
       tower: 2,
