@@ -131,7 +131,9 @@ export class GameScreen {
   private hoverBoard: Inspected | null = null;
   /** What the viewer showed last, so it only plays its entrance when that changes. */
   private inspectKey = '';
-  private boardPress: { x: number; y: number; at: number } | null = null;
+  /** The press on the board so far; `held` once it was held long enough to open a card. */
+  private boardPress: { x: number; y: number; at: number; held?: boolean } | null = null;
+  private holdTimer: number | undefined;
 
   private readonly memory: PieceMemory = new Map();
   private lastSeq = -1;
@@ -220,7 +222,14 @@ export class GameScreen {
     this.buildBoard();
     boardBox.addEventListener('pointerdown', (e) => {
       this.boardPress = { x: e.clientX, y: e.clientY, at: performance.now() };
+      this.startHold(e);
     });
+    boardBox.addEventListener('pointermove', (e) => {
+      const press = this.boardPress;
+      if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > TAP_SLOP) clearTimeout(this.holdTimer);
+    });
+    boardBox.addEventListener('pointerup', () => clearTimeout(this.holdTimer));
+    boardBox.addEventListener('pointercancel', () => clearTimeout(this.holdTimer));
     this.boardEl.addEventListener('click', (e) => {
       const tap = this.boardTap(e);
       const cell = (e.target as HTMLElement).closest<HTMLElement>('[data-sq]');
@@ -242,13 +251,37 @@ export class GameScreen {
     });
   }
 
-  /** A press that wandered off is a drag, and a drag on the board does nothing; only a quick tap opens a card. */
+  /**
+   * A press that wandered off is a drag, and a drag on the board does nothing; nor does letting go of a press that
+   * was held to open a card. Only a quick tap opens a card.
+   */
   private boardTap(e: MouseEvent): 'quick' | 'slow' | null {
     const press = this.boardPress;
     this.boardPress = null;
+    clearTimeout(this.holdTimer);
     if (!press) return 'quick';
-    if (Math.hypot(e.clientX - press.x, e.clientY - press.y) > TAP_SLOP) return null;
+    if (press.held || Math.hypot(e.clientX - press.x, e.clientY - press.y) > TAP_SLOP) return null;
     return performance.now() - press.at < TAP_MS ? 'quick' : 'slow';
+  }
+
+  /**
+   * When the card viewer floats over the board, a tap on a piece you can move only picks it up, so that its card
+   * does not hide where it can go; holding a piece or seal opens its card instead. Beside the board there is no
+   * need: the mouse shows it, and a tap keeps it there.
+   */
+  private startHold(e: PointerEvent): void {
+    clearTimeout(this.holdTimer);
+    if (this.docked || !e.isPrimary || e.button !== 0) return;
+    const cell = (e.target as HTMLElement).closest<HTMLElement>('.g2-cell');
+    if (!cell) return;
+    const square = Number(cell.dataset.sq);
+    this.holdTimer = window.setTimeout(() => {
+      const thing = this.view ? this.thingAt(this.view, square) : null;
+      if (!thing || !this.boardPress) return;
+      this.boardPress.held = true;
+      this.inspected = thing;
+      this.render();
+    }, TAP_MS);
   }
 
   private placeStatus(): void {
@@ -395,14 +428,12 @@ export class GameScreen {
       this.render();
       return;
     }
-    if (quick) this.toggleInspect(view, square);
-    if (!playing) {
-      this.render();
-      return;
-    }
-    const mine = view.pieces.find((p) => p.square === square && p.owner === view.you);
-    const hasMoves = mine && this.legal().some((a) => a.type === 'move' && a.from === square);
-    if (mine && hasMoves && this.selectedSquare !== square) this.selectedSquare = square;
+    const mine = view.pieces.some((p) => p.square === square && p.owner === view.you);
+    const movable = playing && mine && this.legal().some((a) => a.type === 'move' && a.from === square);
+    // A card floating over the board would hide the squares the piece can move to (see `startHold`).
+    if (movable && !this.docked) this.inspected = null;
+    else if (quick) this.toggleInspect(view, square);
+    if (movable && this.selectedSquare !== square) this.selectedSquare = square;
     else this.clearSelection();
     this.render();
   }
@@ -1032,7 +1063,8 @@ export class GameScreen {
     const label = el('div', 'g2-handlabel');
     label.textContent = this.solo ? `${this.name(view.you)}'s hand` : spent ? 'Your hand · opponent\'s turn' : 'Your hand';
     if (view.hand?.some((c) => this.canLift(view, c.cardId))) {
-      label.append(el('span', 'g2-handtip', ' · drag a piece to your back row to summon it, or onto your piece to seal it · drag a spell onto the board to cast it · tap a card to read it'));
+      const read = this.docked ? 'tap a card to read it' : 'tap a card or hold a piece to read it';
+      label.append(el('span', 'g2-handtip', ` · drag a piece to your back row to summon it, or onto your piece to seal it · drag a spell onto the board to cast it · ${read}`));
     }
     this.handEl.append(label, this.dropNoteEl);
 

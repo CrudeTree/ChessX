@@ -3399,6 +3399,9 @@ button,
   padding: 2.4cqw;
   border-radius: 2cqw;
   user-select: none;
+  -webkit-user-select: none;
+  /* Holding a piece opens its card; no "copy / look up" bubble on iOS. */
+  -webkit-touch-callout: none;
   background:
     linear-gradient(145deg, rgba(255, 226, 170, 0.16), transparent 30%, transparent 70%, rgba(255, 226, 170, 0.1)),
     linear-gradient(135deg, #4a3522, #2a1d12 45%, #3e2c1b);
