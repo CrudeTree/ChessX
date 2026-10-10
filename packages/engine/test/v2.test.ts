@@ -15,6 +15,7 @@ import {
   type Color,
   type GameState,
   type Piece,
+  type PieceCard,
   cloneState,
   viewFor,
 } from '../src/v2/index.js';
@@ -195,6 +196,33 @@ describe('turn flow and resources', () => {
     expect(next.active).toBe('black');
     expect(next.hand.white.map((c) => c.uid)).toContain(insight);
     expect(next.discard.white).toHaveLength(0);
+  });
+
+  it('a King in check gets no spell first, only the action that answers the check (msg-036)', () => {
+    let state = bare(10);
+    piece(state, 'black', 'initiate', 'f7');
+    state.seals.push({ id: 'sw', owner: 'white', square: S('d6'), card: STARTER_CATALOG.wyrmling as PieceCard, timer: 1 });
+    state.seals.push({ id: 'sq', owner: 'white', square: S('a5'), card: STARTER_CATALOG.squire as PieceCard, timer: 3 });
+    give(state, 'black', 'insight');
+    give(state, 'black', 'dispel');
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('d1') && a.to === S('c1')));
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('f7') && a.to === S('f6')));
+    expect(pieceAt(state, S('d6'))?.cardId).toBe('wyrmling');
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('c1') && a.to === S('b1')));
+    expect(state.active).toBe('black');
+    expect(isInCheck(state, 'black')).toBe(true);
+    const answers = legalActions(state);
+    expect(answers.some((a) => a.type === 'spell')).toBe(false);
+    expect(answers.length).toBeGreaterThan(0);
+    expect(answers.every((a) => !isInCheck(act(state, a), 'black'))).toBe(true);
+    expect(() => act(state, { type: 'spell', cardUid: state.hand.black.find((c) => c.cardId === 'insight')!.uid })).toThrow();
+
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('d8') && a.to === S('c8')));
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('b1') && a.to === S('a1')));
+    expect(isInCheck(state, 'black')).toBe(false);
+    const quiet = legalActions(state).filter((a) => a.type === 'spell');
+    expect(quiet.some((a) => a.type === 'spell' && state.hand.black.find((c) => c.uid === a.cardUid)?.cardId === 'insight')).toBe(true);
+    expect(quiet.some((a) => a.type === 'spell' && a.target === S('a5'))).toBe(true);
   });
 
   it('a game saved while an older rule held the turn open after the action can only end the turn', () => {
