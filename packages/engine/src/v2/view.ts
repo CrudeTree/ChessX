@@ -33,6 +33,10 @@ export interface ViewCard {
   text: string;
   /** Pieces: the move rules behind `text`, so the client can draw them. */
   rules?: ReadonlyArray<MoveRule>;
+  /** Card face picture, when the card has one. */
+  art?: string;
+  /** Pieces: picture for the board token, when the card has one. */
+  boardArt?: string;
 }
 
 export interface ViewPiece {
@@ -115,9 +119,13 @@ export function describeMovement(def: PieceDef): string {
 }
 
 function viewCard(card: Card): ViewCard {
-  return card.type === 'piece'
-    ? { id: card.id, type: 'piece', name: card.name, cost: card.cost, sealTimer: card.sealTimer, text: describeMovement(card.piece), rules: card.piece.rules }
-    : { id: card.id, type: 'spell', name: card.name, cost: card.cost, text: card.text };
+  const out: ViewCard =
+    card.type === 'piece'
+      ? { id: card.id, type: 'piece', name: card.name, cost: card.cost, sealTimer: card.sealTimer, text: describeMovement(card.piece), rules: card.piece.rules }
+      : { id: card.id, type: 'spell', name: card.name, cost: card.cost, text: card.text };
+  if (card.art) out.art = card.art;
+  if (card.type === 'piece' && card.boardArt) out.boardArt = card.boardArt;
+  return out;
 }
 
 export function viewFor(record: GameRecord, you: Color, opts: ViewOptions = {}): PlayerView {

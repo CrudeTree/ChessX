@@ -84,6 +84,14 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''):
   return e;
 };
 
+const artImg = (cls: string, src: string): HTMLImageElement => {
+  const img = el('img', cls);
+  img.src = src;
+  img.alt = '';
+  img.draggable = false;
+  return img;
+};
+
 export class GameScreen {
   private view: v2.PlayerView | null = null;
   private room: RoomInfo | null = null;
@@ -422,7 +430,8 @@ export class GameScreen {
     box.title = 'Tap to close';
 
     const head = el('div', 'g2-inspect-head');
-    if (card?.type !== 'spell') head.append(el('span', `g2-inspect-glyph ${owner}`, glyphFor(kind, name)));
+    if (card?.art) head.append(artImg(`g2-inspect-art ${owner}`, card.art));
+    else if (card?.type !== 'spell') head.append(el('span', `g2-inspect-glyph ${owner}`, glyphFor(kind, name)));
     head.append(el('b', 'g2-inspect-name', seal ? `Seal: ${name}` : name));
     const close = el('button', 'g2-inspect-close', '×');
     close.type = 'button';
@@ -552,6 +561,11 @@ export class GameScreen {
       this.tilePointer = e.pointerType;
       if (liftable) this.pressCard(e, uid, tile);
     });
+    if (card?.art) {
+      tile.classList.add('has-art');
+      tile.style.setProperty('--art', `url("${card.art}")`);
+      tile.append(artImg('g2-cardart', card.art));
+    }
     tile.append(el('span', 'g2-cost', String(card?.cost ?? '?')), el('span', 'g2-cardname', card?.name ?? cardId));
     tile.append(el('span', 'g2-cardtype', card?.type === 'spell' ? 'Spell' : 'Piece'));
     tile.append(el('span', 'g2-cardtext', card?.text ?? ''));
@@ -864,7 +878,9 @@ export class GameScreen {
       // Keep the coordinate labels, replace the rest.
       for (const child of [...cell.children]) if (!child.classList.contains('g2-coord')) child.remove();
       if (piece) {
-        const tok = el('div', `g2-piece ${piece.owner}${piece.active ? '' : ' sick'}`, glyphFor(piece.kind, piece.name));
+        const boardArt = piece.cardId ? view.cards[piece.cardId]?.boardArt : undefined;
+        const tok = el('div', `g2-piece ${piece.owner}${piece.active ? '' : ' sick'}${boardArt ? ' art' : ''}`, boardArt ? '' : glyphFor(piece.kind, piece.name));
+        if (boardArt) tok.style.backgroundImage = `url("${boardArt}")`;
         tok.title = `${piece.name}${piece.active ? '' : ' (summoning sickness: cannot capture yet, but still gives check)'}`;
         cell.appendChild(tok);
       } else if (seal) {

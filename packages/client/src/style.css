@@ -3420,6 +3420,23 @@ button,
   border-color: #d8d2e6;
 }
 
+.g2-piece.art {
+  background-size: 150%;
+  background-position: 55% 52%;
+  image-rendering: pixelated;
+  border-width: 3px;
+}
+
+.g2-piece.art.white {
+  border-color: #f7f3ea;
+  box-shadow: 0 0 0 1px #2b2420, 0 3px 6px rgba(0, 0, 0, 0.4);
+}
+
+.g2-piece.art.black {
+  border-color: #1c1b24;
+  box-shadow: 0 0 0 1px #d8d2e6, 0 3px 6px rgba(0, 0, 0, 0.4);
+}
+
 /* Summoning sickness: cannot capture yet (still gives check). */
 .g2-piece.sick {
   opacity: 0.62;
@@ -3511,6 +3528,18 @@ button,
 
 .g2-card.spell {
   background: linear-gradient(180deg, #33264a, #241d36);
+}
+
+.g2-cardart {
+  display: block;
+  width: calc(100% + 16px);
+  height: 58px;
+  margin: -8px -8px 2px;
+  object-fit: cover;
+  object-position: center 55%;
+  border-radius: 8px 8px 0 0;
+  image-rendering: pixelated;
+  pointer-events: none;
 }
 
 .g2-card.playable {
@@ -3748,6 +3777,25 @@ button,
   background: #1c1b24;
   color: #f2eee6;
   border-color: #d8d2e6;
+}
+
+.g2-inspect-art {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  object-fit: cover;
+  object-position: center 55%;
+  border-radius: 6px;
+  border: 2px solid;
+  image-rendering: pixelated;
+}
+
+.g2-inspect-art.white {
+  border-color: #f7f3ea;
+}
+
+.g2-inspect-art.black {
+  border-color: #6a6a92;
 }
 
 .g2-inspect-name {
@@ -4090,8 +4138,20 @@ button,
   }
 
   .g2-cardtext,
-  .g2-cardseal {
+  .g2-cardseal,
+  .g2-cardart {
     display: none;
+  }
+
+  .g2-card.has-art {
+    background: linear-gradient(180deg, rgba(18, 18, 28, 0.7), rgba(18, 18, 28, 0.1) 55%, rgba(18, 18, 28, 0.65)),
+      var(--art) center 55% / cover no-repeat;
+    image-rendering: pixelated;
+  }
+
+  .g2-card.has-art .g2-cardname,
+  .g2-card.has-art .g2-cardtimer {
+    text-shadow: 0 1px 2px #000;
   }
 
   .g2-cardtimer {

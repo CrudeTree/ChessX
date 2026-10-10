@@ -601,6 +601,14 @@ describe('port additions', () => {
     expect(cards.insight!.rules).toBeUndefined();
   });
 
+  it('sends card art where a card has a picture, and nothing where it has none', () => {
+    const cards = viewFor({ state: bare(), seq: 0, events: [] }, 'white').cards;
+    expect(cards.duskfang).toMatchObject({ art: '/art/pic-001.png', boardArt: '/art/pic-001.png' });
+    expect(cards.squire!.art).toBeUndefined();
+    expect(cards.squire!.boardArt).toBeUndefined();
+    expect(cards.insight!.art).toBeUndefined();
+  });
+
   it('resigned and timeout results end the game with no legal actions', () => {
     const state = bare(5);
     state.status = { kind: 'timeout', winner: 'black' };
