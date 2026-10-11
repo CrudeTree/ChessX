@@ -86,6 +86,7 @@ const TOWER: PieceDef = {
 /**
  * Starter cards. Costs, timers, and movement are PLACEHOLDERS drawn from the villagers' paper
  * draft (message board, msg-013). They exist to exercise the engine, not to be final balance.
+ * Dawn Paladin and Dawnfang cost 6 (Djabooty, 2026-10-10).
  */
 export const STARTER_CATALOG: Record<string, Card> = {
   initiate: { type: 'piece', id: 'initiate', name: 'Initiate', cost: 0, sealTimer: 1, piece: INITIATE },
@@ -93,9 +94,9 @@ export const STARTER_CATALOG: Record<string, Card> = {
   page: { type: 'piece', id: 'page', name: 'Page', cost: 1, sealTimer: 1, piece: PAGE },
   hopper: { type: 'piece', id: 'hopper', name: 'Hopper', cost: 3, sealTimer: 2, piece: HOPPER },
   cathedral_runner: { type: 'piece', id: 'cathedral_runner', name: 'Cathedral Runner', cost: 3, sealTimer: 2, piece: RUNNER },
-  dawn_paladin: { type: 'piece', id: 'dawn_paladin', name: 'Dawn Paladin', cost: 4, sealTimer: 3, piece: DAWN_PALADIN, art: '/art/pic-003.png', boardArt: '/art/pic-003.png' },
+  dawn_paladin: { type: 'piece', id: 'dawn_paladin', name: 'Dawn Paladin', cost: 6, sealTimer: 3, piece: DAWN_PALADIN, art: '/art/pic-003.png', boardArt: '/art/pic-003.png' },
   duskfang: { type: 'piece', id: 'duskfang', name: 'Duskfang', cost: 2, sealTimer: 3, piece: DUSKFANG, art: '/art/pic-001.png', boardArt: '/art/pic-001.png' },
-  dawnfang: { type: 'piece', id: 'dawnfang', name: 'Dawnfang', cost: 2, sealTimer: 2, piece: DAWNFANG },
+  dawnfang: { type: 'piece', id: 'dawnfang', name: 'Dawnfang', cost: 6, sealTimer: 2, piece: DAWNFANG },
   eclipse_knight: { type: 'piece', id: 'eclipse_knight', name: 'Eclipse Knight', cost: 4, sealTimer: 3, piece: ECLIPSE_KNIGHT, art: '/art/pic-004.png', boardArt: '/art/pic-004.png' },
   wyrmling: { type: 'piece', id: 'wyrmling', name: 'Wyrmling', cost: 2, sealTimer: 1, piece: WYRMLING, art: '/art/pic-002.png', boardArt: '/art/pic-002.png' },
   tower: { type: 'piece', id: 'tower', name: 'Tower', cost: 5, sealTimer: 3, piece: TOWER },

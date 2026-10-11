@@ -322,9 +322,9 @@ describe('summoning', () => {
 });
 
 describe('Dawn Paladin', () => {
-  it('costs 4, seals on a 3-turn timer, and leaps like a knight or steps one square straight', () => {
+  it('costs 6 (Djabooty, 2026-10-10), seals on a 3-turn timer, and leaps like a knight or steps one square straight', () => {
     const card = STARTER_CATALOG.dawn_paladin!;
-    expect(card).toMatchObject({ type: 'piece', cost: 4, sealTimer: 3 });
+    expect(card).toMatchObject({ type: 'piece', cost: 6, sealTimer: 3 });
     expect(starterDeck().filter((id) => id === 'dawn_paladin')).toHaveLength(3);
     const state = bare(0);
     piece(state, 'white', 'dawn_paladin', 'c4');
@@ -360,9 +360,9 @@ describe('Duskfang', () => {
 });
 
 describe('Dawnfang', () => {
-  it('costs 2, seals on a 2-turn timer, and leaps like a knight or steps one square diagonally to move or capture (msg-037)', () => {
+  it('costs 6 (Djabooty, 2026-10-10), seals on a 2-turn timer, and leaps like a knight or steps one square diagonally to move or capture (msg-037)', () => {
     const card = STARTER_CATALOG.dawnfang!;
-    expect(card).toMatchObject({ type: 'piece', name: 'Dawnfang', cost: 2, sealTimer: 2 });
+    expect(card).toMatchObject({ type: 'piece', name: 'Dawnfang', cost: 6, sealTimer: 2 });
     expect(starterDeck().filter((id) => id === 'dawnfang')).toHaveLength(1);
     const state = bare(0);
     piece(state, 'white', 'dawnfang', 'c4');
@@ -590,7 +590,7 @@ describe('starter deck', () => {
   });
 
   it('holds at most four cost-2 piece cards', () => {
-    expect(starterDeck().filter((id) => STARTER_CATALOG[id]!.type === 'piece' && STARTER_CATALOG[id]!.cost === 2)).toHaveLength(4);
+    expect(starterDeck().filter((id) => STARTER_CATALOG[id]!.type === 'piece' && STARTER_CATALOG[id]!.cost === 2).length).toBeLessThanOrEqual(4);
   });
 
   it('prints Insight at 2 mana, so turn 1 is a Wyrmling seal or an Insight, never both (msg-028)', () => {
