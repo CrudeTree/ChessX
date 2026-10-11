@@ -80,6 +80,14 @@ const DUSKFANG: PieceDef = {
 };
 
 /**
+ * Every card has two faces (Djabooty, 2026-10-11): `<id>_white.png` for White and `<id>_dark.png` for Black. The
+ * pictures also show how strong a card is, from a humble Initiate up to the Ancient Mystic Dragon.
+ */
+const faces = (id: string) => ({ art: `/art/${id}_white.png`, darkArt: `/art/${id}_dark.png` });
+/** A piece wears the same face on the board as on its card. */
+const pieceFaces = (id: string) => ({ ...faces(id), boardArt: `/art/${id}_white.png`, darkBoardArt: `/art/${id}_dark.png` });
+
+/**
  * Starter cards. Costs and timers are PLACEHOLDERS to playtest, not final balance.
  *
  * Evolution lines (Djabooty, 2026-10-11): the chess pieces are the end of a line, never a card you summon. Level 1
@@ -92,18 +100,62 @@ const DUSKFANG: PieceDef = {
  * more than the one below it, and a first level that leaps off the back row (Colt, Wyrmling) costs 2, not 1.
  */
 export const STARTER_CATALOG: Record<string, Card> = {
-  initiate: { type: 'piece', id: 'initiate', name: 'Initiate', cost: 0, sealTimer: 1, piece: INITIATE },
-  squire: { type: 'piece', id: 'squire', name: 'Squire', cost: 1, sealTimer: 1, piece: SQUIRE },
+  initiate: { type: 'piece', id: 'initiate', name: 'Initiate', cost: 0, sealTimer: 1, piece: INITIATE, ...pieceFaces('initiate') },
+  squire: { type: 'piece', id: 'squire', name: 'Squire', cost: 1, sealTimer: 1, piece: SQUIRE, ...pieceFaces('squire') },
 
-  recruit: { type: 'piece', id: 'recruit', name: 'Recruit', cost: 1, sealTimer: 1, piece: RECRUIT, line: 'Warrior', level: 1 },
-  warrior: { type: 'piece', id: 'warrior', name: 'Warrior', cost: 4, sealTimer: 0, piece: WARRIOR, line: 'Warrior', level: 2, evolvesFrom: 'recruit' },
-  warlord: { type: 'piece', id: 'warlord', name: 'Warlord', cost: 6, sealTimer: 0, piece: WARLORD, line: 'Warrior', level: 3, evolvesFrom: 'warrior' },
+  recruit: { type: 'piece', id: 'recruit', name: 'Recruit', cost: 1, sealTimer: 1, piece: RECRUIT, line: 'Warrior', level: 1, ...pieceFaces('recruit') },
+  warrior: {
+    type: 'piece',
+    id: 'warrior',
+    name: 'Warrior',
+    cost: 4,
+    sealTimer: 0,
+    piece: WARRIOR,
+    line: 'Warrior',
+    level: 2,
+    evolvesFrom: 'recruit',
+    ...pieceFaces('warrior'),
+  },
+  warlord: {
+    type: 'piece',
+    id: 'warlord',
+    name: 'Warlord',
+    cost: 6,
+    sealTimer: 0,
+    piece: WARLORD,
+    line: 'Warrior',
+    level: 3,
+    evolvesFrom: 'warrior',
+    ...pieceFaces('warlord'),
+  },
 
-  apprentice: { type: 'piece', id: 'apprentice', name: 'Apprentice', cost: 1, sealTimer: 1, piece: APPRENTICE, line: 'Mage', level: 1 },
-  mage: { type: 'piece', id: 'mage', name: 'Mage', cost: 3, sealTimer: 0, piece: MAGE, line: 'Mage', level: 2, evolvesFrom: 'apprentice' },
-  archmage: { type: 'piece', id: 'archmage', name: 'Archmage', cost: 4, sealTimer: 0, piece: ARCHMAGE, line: 'Mage', level: 3, evolvesFrom: 'mage' },
+  apprentice: { type: 'piece', id: 'apprentice', name: 'Apprentice', cost: 1, sealTimer: 1, piece: APPRENTICE, line: 'Mage', level: 1, ...pieceFaces('apprentice') },
+  mage: {
+    type: 'piece',
+    id: 'mage',
+    name: 'Mage',
+    cost: 3,
+    sealTimer: 0,
+    piece: MAGE,
+    line: 'Mage',
+    level: 2,
+    evolvesFrom: 'apprentice',
+    ...pieceFaces('mage'),
+  },
+  archmage: {
+    type: 'piece',
+    id: 'archmage',
+    name: 'Archmage',
+    cost: 4,
+    sealTimer: 0,
+    piece: ARCHMAGE,
+    line: 'Mage',
+    level: 3,
+    evolvesFrom: 'mage',
+    ...pieceFaces('archmage'),
+  },
 
-  colt: { type: 'piece', id: 'colt', name: 'Colt', cost: 2, sealTimer: 1, piece: COLT, line: 'Paladin', level: 1 },
+  colt: { type: 'piece', id: 'colt', name: 'Colt', cost: 2, sealTimer: 1, piece: COLT, line: 'Paladin', level: 1, ...pieceFaces('colt') },
   paladin: {
     type: 'piece',
     id: 'paladin',
@@ -114,10 +166,7 @@ export const STARTER_CATALOG: Record<string, Card> = {
     line: 'Paladin',
     level: 2,
     evolvesFrom: 'colt',
-    art: '/art/paladin_white.png',
-    boardArt: '/art/paladin_white.png',
-    darkArt: '/art/paladin_dark.png',
-    darkBoardArt: '/art/paladin_dark.png',
+    ...pieceFaces('paladin'),
   },
   dawn_paladin: {
     type: 'piece',
@@ -129,8 +178,7 @@ export const STARTER_CATALOG: Record<string, Card> = {
     line: 'Paladin',
     level: 3,
     evolvesFrom: 'paladin',
-    art: '/art/pic-003.png',
-    boardArt: '/art/pic-003.png',
+    ...pieceFaces('dawn_paladin'),
   },
   eclipse_knight: {
     type: 'piece',
@@ -142,12 +190,22 @@ export const STARTER_CATALOG: Record<string, Card> = {
     line: 'Paladin',
     level: 3,
     evolvesFrom: 'paladin',
-    art: '/art/pic-004.png',
-    boardArt: '/art/pic-004.png',
+    ...pieceFaces('eclipse_knight'),
   },
 
-  wyrmling: { type: 'piece', id: 'wyrmling', name: 'Wyrmling', cost: 2, sealTimer: 1, piece: WYRMLING, line: 'Dragon', level: 1, art: '/art/pic-002.png', boardArt: '/art/pic-002.png' },
-  mystic_dragon: { type: 'piece', id: 'mystic_dragon', name: 'Mystic Dragon', cost: 6, sealTimer: 0, piece: MYSTIC_DRAGON, line: 'Dragon', level: 2, evolvesFrom: 'wyrmling' },
+  wyrmling: { type: 'piece', id: 'wyrmling', name: 'Wyrmling', cost: 2, sealTimer: 1, piece: WYRMLING, line: 'Dragon', level: 1, ...pieceFaces('wyrmling') },
+  mystic_dragon: {
+    type: 'piece',
+    id: 'mystic_dragon',
+    name: 'Mystic Dragon',
+    cost: 6,
+    sealTimer: 0,
+    piece: MYSTIC_DRAGON,
+    line: 'Dragon',
+    level: 2,
+    evolvesFrom: 'wyrmling',
+    ...pieceFaces('mystic_dragon'),
+  },
   ancient_mystic_dragon: {
     type: 'piece',
     id: 'ancient_mystic_dragon',
@@ -158,13 +216,38 @@ export const STARTER_CATALOG: Record<string, Card> = {
     line: 'Dragon',
     level: 3,
     evolvesFrom: 'mystic_dragon',
+    ...pieceFaces('ancient_mystic_dragon'),
   },
 
-  duskfang: { type: 'piece', id: 'duskfang', name: 'Duskfang', cost: 15, sealTimer: 3, piece: DUSKFANG, art: '/art/pic-001.png', boardArt: '/art/pic-001.png' },
+  duskfang: { type: 'piece', id: 'duskfang', name: 'Duskfang', cost: 15, sealTimer: 3, piece: DUSKFANG, ...pieceFaces('duskfang') },
 
-  insight: { type: 'spell', id: 'insight', name: 'Insight', cost: 2, effect: { kind: 'draw', count: 2 }, text: 'Draw 2 cards.' },
-  dispel: { type: 'spell', id: 'dispel', name: 'Dispel', cost: 3, effect: { kind: 'destroySeal' }, text: 'Destroy a sacrifice before its piece arrives. Its card goes to the discard pile.' },
+  insight: { type: 'spell', id: 'insight', name: 'Insight', cost: 2, effect: { kind: 'draw', count: 2 }, text: 'Draw 2 cards.', ...faces('insight') },
+  dispel: {
+    type: 'spell',
+    id: 'dispel',
+    name: 'Dispel',
+    cost: 3,
+    effect: { kind: 'destroySeal' },
+    text: 'Destroy a sacrifice before its piece arrives. Its card goes to the discard pile.',
+    ...faces('dispel'),
+  },
 };
+
+/** A saved game keeps the costs and moves its cards had when it began, but shows today's pictures. */
+export function withCurrentArt(catalog: Record<string, Card>): Record<string, Card> {
+  const out: Record<string, Card> = {};
+  for (const [id, card] of Object.entries(catalog)) {
+    const now = STARTER_CATALOG[id];
+    if (card.type === 'piece' && now?.type === 'piece') {
+      out[id] = { ...card, art: now.art, darkArt: now.darkArt, boardArt: now.boardArt, darkBoardArt: now.darkBoardArt };
+    } else if (card.type === 'spell' && now?.type === 'spell') {
+      out[id] = { ...card, art: now.art, darkArt: now.darkArt };
+    } else {
+      out[id] = card;
+    }
+  }
+  return out;
+}
 
 /**
  * A 24-card starter deck: 2 Initiates and 1 Squire; per line two level-1 cards and one of each higher level

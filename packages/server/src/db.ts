@@ -12,7 +12,7 @@ const { DatabaseSync } = process.getBuiltinModule('node:sqlite') as typeof impor
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { ChatMessage } from '@chessx/protocol';
-import { pruneUnknownCards, upgradeState, type Color, type GameState, type v2 } from '@chessx/engine';
+import { pruneUnknownCards, upgradeState, v2, type Color, type GameState } from '@chessx/engine';
 
 export interface UserRow {
   id: string;
@@ -545,9 +545,11 @@ export const parseState = (row: GameRow): GameState | null => {
   pruneUnknownCards(state);
   return state;
 };
-/** A v2 game's saved state, or null for a v1 game / a game that has not started. */
+/** A v2 game's saved state, or null for a v1 game / a game that has not started. Its cards show today's pictures. */
 export const parseRecord = (row: GameRow): v2.GameRecord | null => {
   if (!row.state_json || row.rules_version !== 2) return null;
-  return JSON.parse(row.state_json) as v2.GameRecord;
+  const record = JSON.parse(row.state_json) as v2.GameRecord;
+  record.state.catalog = v2.withCurrentArt(record.state.catalog);
+  return record;
 };
 export const parseChat = (row: GameRow): ChatMessage[] => JSON.parse(row.chat_json) as ChatMessage[];

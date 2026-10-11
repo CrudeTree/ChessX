@@ -19,6 +19,7 @@ import {
   type PieceCard,
   cloneState,
   viewFor,
+  withCurrentArt,
 } from '../src/v2/index.js';
 
 const S = parseSquare;
@@ -932,27 +933,40 @@ describe('port additions', () => {
     expect(cards.insight!.rules).toBeUndefined();
   });
 
-  it('sends card art where a card has a picture, and nothing where it has none', () => {
+  it('sends card art to the client, with no board picture for a spell', () => {
     const cards = viewFor({ state: bare(), seq: 0, events: [] }, 'white').cards;
-    expect(cards.duskfang).toMatchObject({ art: '/art/pic-001.png', boardArt: '/art/pic-001.png' });
-    expect(cards.dawn_paladin).toMatchObject({ art: '/art/pic-003.png', boardArt: '/art/pic-003.png' });
-    expect(cards.eclipse_knight).toMatchObject({ art: '/art/pic-004.png', boardArt: '/art/pic-004.png' });
-    expect(cards.squire!.art).toBeUndefined();
-    expect(cards.squire!.boardArt).toBeUndefined();
-    expect(cards.insight!.art).toBeUndefined();
+    expect(cards.duskfang).toMatchObject({
+      art: '/art/duskfang_white.png',
+      boardArt: '/art/duskfang_white.png',
+      darkArt: '/art/duskfang_dark.png',
+      darkBoardArt: '/art/duskfang_dark.png',
+    });
+    expect(cards.insight).toMatchObject({ art: '/art/insight_white.png', darkArt: '/art/insight_dark.png' });
+    expect(cards.insight).not.toHaveProperty('boardArt');
+    expect(cards.insight).not.toHaveProperty('darkBoardArt');
   });
 
-  it('gives each side its own face of a two-faced card: light for White, dark for Black (Djabooty, 2026-10-11)', () => {
+  it('gives every card a light face for White and a dark face for Black (Djabooty, 2026-10-11)', () => {
     const cards = viewFor({ state: bare(), seq: 0, events: [] }, 'white').cards;
-    const light = { art: '/art/paladin_white.png', boardArt: '/art/paladin_white.png' };
-    const dark = { art: '/art/paladin_dark.png', boardArt: '/art/paladin_dark.png' };
-    expect(cards.paladin).toMatchObject({ ...light, darkArt: dark.art, darkBoardArt: dark.boardArt });
-    expect(faceArt(cards.paladin!, 'white')).toEqual(light);
-    expect(faceArt(cards.paladin!, 'black')).toEqual(dark);
-    // A card with one picture shows it to both sides.
-    expect(cards.wyrmling).not.toHaveProperty('darkArt');
-    expect(faceArt(cards.wyrmling!, 'black')).toEqual(faceArt(cards.wyrmling!, 'white'));
-    expect(faceArt(cards.squire!, 'black')).toEqual({ art: undefined, boardArt: undefined });
+    for (const id of Object.keys(STARTER_CATALOG)) {
+      const card = cards[id]!;
+      const onBoard = (file: string) => (card.type === 'piece' ? file : undefined);
+      expect(faceArt(card, 'white')).toEqual({ art: `/art/${id}_white.png`, boardArt: onBoard(`/art/${id}_white.png`) });
+      expect(faceArt(card, 'black')).toEqual({ art: `/art/${id}_dark.png`, boardArt: onBoard(`/art/${id}_dark.png`) });
+    }
+    // A card with only one picture shows it to both sides.
+    const single = { art: '/art/new_card.png', boardArt: '/art/new_card.png' };
+    expect(faceArt(single, 'black')).toEqual(single);
+  });
+
+  it('a saved game keeps its cards\' costs and moves but shows today\'s pictures', () => {
+    const wyrmling = STARTER_CATALOG.wyrmling as PieceCard;
+    const saved: PieceCard = { ...wyrmling, cost: 1, art: '/art/pic-002.png', boardArt: '/art/pic-002.png', darkArt: undefined, darkBoardArt: undefined };
+    const custom: PieceCard = { ...wyrmling, id: 'custom', name: 'Custom', art: '/art/custom.png' };
+    const catalog = withCurrentArt({ wyrmling: saved, insight: { ...STARTER_CATALOG.insight!, art: undefined, darkArt: undefined }, custom });
+    expect(catalog.wyrmling).toEqual({ ...wyrmling, cost: 1 });
+    expect(catalog.insight).toEqual(STARTER_CATALOG.insight);
+    expect(catalog.custom).toBe(custom);
   });
 
   it('resigned and timeout results end the game with no legal actions', () => {

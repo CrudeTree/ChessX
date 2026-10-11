@@ -2426,7 +2426,7 @@ button.danger {
   height: 98px;
   translate: 0 -50%;
   border-radius: 14px;
-  background: url('/art/pic-002.png') center / cover;
+  background: url('/art/wyrmling_white.png') center / cover;
   image-rendering: pixelated;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5), 0 0 0 2px rgba(232, 194, 122, 0.4);
 }
