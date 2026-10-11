@@ -31,7 +31,7 @@ The rook, bishop, knight and queen are the top of a line, never a card you summo
 
 ## Card faces (Djabooty, 2026-10-11)
 
-Every card has two faces: a light face for the player with White and a dark face for the player with Black. Owning a card gives you both. The light face looks holy, majestic and noble (think Gandalf the White); the dark face looks mighty, powerful and dark (think Sauron). Every current card has both faces, and its pictures show how strong it is: first levels such as the Initiate, Squire, Recruit, Apprentice, Colt and Wyrmling look humble, final forms look mighty, and the Ancient Mystic Dragon outshines them all (changed by Djabooty, 2026-10-11). A new card that has only one picture shows it to both sides until it gets its second face.
+Every card has two faces: a light face for the player with White and a dark face for the player with Black. Owning a card gives you both. The light face looks holy, majestic and noble (think Gandalf the White); the dark face looks mighty, powerful and dark (think Sauron). Every current card has both faces, and its pictures show how strong it is: first levels such as the Squire, Recruit, Apprentice, Colt and Wyrmling look humble, final forms look mighty, and the Ancient Mystic Dragon outshines them all (changed by Djabooty, 2026-10-11). The Initiate is a grown man in a plain hooded robe with a staff, a stern zealot for White and a sinister cultist for Black: plainly equipped but threatening, never a child (changed by Djabooty, 2026-10-11). A new card that has only one picture shows it to both sides until it gets its second face.
 
 ## What was removed
 
