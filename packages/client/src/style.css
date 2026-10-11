@@ -4273,16 +4273,17 @@ button,
     linear-gradient(135deg, #876646, #634a31);
 }
 
+/* The last move's two squares: a flat tint, no edge, so they never read as squares a piece can go to. */
 .g2-cell.last::before {
   content: '';
   position: absolute;
   inset: 0;
   background: radial-gradient(circle, rgba(255, 214, 120, 0.36), rgba(255, 214, 120, 0.2) 72%);
-  box-shadow: inset 0 0 0 2px rgba(255, 214, 120, 0.5);
 }
 
+/* The picked piece's square: filled, where the squares it can go to are lit along their edges. */
 .g2-cell.selected {
-  box-shadow: inset 0 0 0 3px #ffd77a, inset 0 0 2.4cqw rgba(255, 196, 90, 0.75);
+  box-shadow: inset 0 0 0 0.35cqw #ffd45a, inset 0 0 0 100vmax rgba(255, 208, 70, 0.4);
 }
 
 .g2-cell.check {
@@ -4299,33 +4300,55 @@ button,
   }
 }
 
-.g2-cell.target::after {
+/* Squares the picked piece can go to: a soft yellow glow, strongest along the edges, slowly pulsing. Under the piece. */
+.g2-cell.target::before {
   content: '';
   position: absolute;
-  z-index: 2;
-  width: 30%;
-  height: 30%;
-  border-radius: 50%;
-  background: radial-gradient(circle, #d6ffe6 0%, #4fdc8b 45%, rgba(40, 170, 95, 0.9) 72%);
-  box-shadow: 0 0 1.2cqw rgba(80, 230, 140, 0.8), 0 0 0 2px rgba(0, 0, 0, 0.22);
+  inset: 0;
   pointer-events: none;
-  animation: g2-target 1.6s ease-in-out infinite;
+  background: rgba(255, 230, 130, 0.2);
+  box-shadow:
+    inset 0 0 0 0.35cqw rgba(255, 212, 70, 0.95),
+    inset 0 0 3.2cqw 0.5cqw rgba(255, 224, 110, 0.78);
+  animation: g2-target 1.8s ease-in-out infinite;
 }
 
 @keyframes g2-target {
   50% {
-    scale: 1.15;
-    box-shadow: 0 0 2.2cqw rgba(80, 230, 140, 1), 0 0 0 2px rgba(0, 0, 0, 0.22);
+    opacity: 0.55;
   }
 }
 
-.g2-cell.target.capture::after {
-  width: 88%;
-  height: 88%;
-  background: transparent;
-  border: 0.6cqw solid rgba(255, 90, 80, 0.95);
-  box-shadow: 0 0 1.4cqw rgba(255, 70, 60, 0.75), inset 0 0 1.4cqw rgba(255, 70, 60, 0.55);
+/* The square a dragged piece, or the mouse, is over. */
+.g2-cell.target.drag-over::before {
+  opacity: 1;
   animation: none;
+  background: rgba(255, 222, 110, 0.3);
+  box-shadow:
+    inset 0 0 0 0.5cqw #ffe38c,
+    inset 0 0 3.2cqw 0.6cqw rgba(255, 204, 60, 0.95);
+}
+
+@media (hover: hover) {
+  .g2-cell.target:hover::before {
+    opacity: 1;
+    animation: none;
+    background: rgba(255, 222, 110, 0.3);
+    box-shadow:
+      inset 0 0 0 0.5cqw #ffe38c,
+      inset 0 0 3.2cqw 0.6cqw rgba(255, 204, 60, 0.95);
+  }
+}
+
+/* Your pieces that can move: picked up with a tap, or dragged (a finger on one drags it, never the page). */
+.g2-cell.movable {
+  cursor: grab;
+  touch-action: none;
+}
+
+body.g2-grabbing,
+body.g2-grabbing * {
+  cursor: grabbing !important;
 }
 
 .g2-coord {
@@ -4534,6 +4557,47 @@ button,
   border-radius: 50%;
   border: 0.06em dashed rgba(255, 255, 255, 0.75);
   animation: g2-spin 9s linear infinite;
+}
+
+/* A dragged piece (a copy of its token, in the page). The one on its square fades while it is held. */
+.g2-piece.g2-piece-ghost {
+  position: fixed;
+  z-index: 1000;
+  margin: 0;
+  scale: 1.12;
+  filter: drop-shadow(0 0.3em 0.25em rgba(0, 0, 0, 0.55));
+  animation: none;
+  transition: scale 0.12s ease;
+}
+
+/* Under a finger it rides bigger, above the fingertip. */
+.g2-piece.g2-piece-ghost.touch {
+  scale: 1.4;
+}
+
+.g2-piece.g2-piece-ghost.over {
+  filter: drop-shadow(0 0.3em 0.25em rgba(0, 0, 0, 0.55)) drop-shadow(0 0 0.3em rgba(255, 210, 80, 0.95));
+}
+
+/* Let go on a lit square: it settles into the square and waits there for the server. */
+.g2-piece.g2-piece-ghost.landing {
+  scale: 1;
+  filter: none;
+  transition: left 0.12s ease-out, top 0.12s ease-out, scale 0.12s ease-out;
+}
+
+.g2-piece.g2-piece-ghost.returning {
+  scale: 1;
+  filter: none;
+  transition: left 0.2s ease, top 0.2s ease, scale 0.2s ease;
+}
+
+.g2-piece.lifted {
+  opacity: 0.3;
+}
+
+.g2-piece.away {
+  opacity: 0;
 }
 
 /* A seal: the card lies face down on the square, its timer on top. */
@@ -6313,6 +6377,7 @@ button,
   .g2-seal,
   .g2-card,
   .g2-cell,
+  .g2-cell::before,
   .g2-cell::after,
   .g2-inspect-card,
   .g2-inspect-info,

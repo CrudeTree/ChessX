@@ -63,8 +63,27 @@ interface CardDrag {
   hover: v2.Square | null;
 }
 
-/** Pixels the pointer must travel before a press on a card becomes a drag rather than a click. */
+/** Pixels the pointer must travel before a press on a card or piece becomes a drag rather than a click. */
 const DRAG_THRESHOLD = 6;
+
+/**
+ * A press on one of your pieces that can move. `ghost` is null until the pointer has moved past DRAG_THRESHOLD;
+ * from then on a copy of the piece follows the pointer, and letting go on a lit square moves it there.
+ */
+interface PieceDrag {
+  from: v2.Square;
+  pointerId: number;
+  pointerType: string;
+  startX: number;
+  startY: number;
+  ghost: HTMLElement | null;
+  hover: v2.Square | null;
+}
+
+/** A piece dropped on a square is shown there until the server's answer redraws the board, at most this long. */
+const DROP_WAIT_MS = 3000;
+/** A piece let go anywhere else flies back to its square for this long (`.g2-piece-ghost.returning`). */
+const RETURN_MS = 200;
 
 /** A press on the board only counts as a tap if it stays within TAP_SLOP pixels; only a quick one opens a card. */
 const TAP_SLOP = 10;
@@ -151,6 +170,11 @@ export class GameScreen {
 
   private selectedSquare: v2.Square | null = null;
   private drag: CardDrag | null = null;
+  private pieceDrag: PieceDrag | null = null;
+  /** A dragged piece let go on a lit square: its copy waits there until the move comes back from the server. */
+  private dropped: { from: v2.Square; to: v2.Square; ghost: HTMLElement; timer: number } | null = null;
+  /** A dragged piece let go anywhere else, flying back to its square. */
+  private returning: { from: v2.Square; ghost: HTMLElement; timer: number } | null = null;
   private suppressClick = false;
   private inspected: Inspected | null = null;
   /** Hand card under the mouse; it is shown in the card viewer until the mouse leaves. */
@@ -159,8 +183,8 @@ export class GameScreen {
   private hoverBoard: Inspected | null = null;
   /** What the viewer showed last, so it only plays its entrance when that changes. */
   private inspectKey = '';
-  /** The press on the board so far; `held` once it was held long enough to open a card. */
-  private boardPress: { x: number; y: number; at: number; held?: boolean } | null = null;
+  /** The press on the board so far; `held` once it was held long enough to open a card, `dragged` once it lifted a piece. */
+  private boardPress: { x: number; y: number; at: number; held?: boolean; dragged?: boolean } | null = null;
   private holdTimer: number | undefined;
 
   private readonly memory: PieceMemory = new Map();
@@ -271,6 +295,7 @@ export class GameScreen {
     boardBox.addEventListener('pointerdown', (e) => {
       this.boardPress = { x: e.clientX, y: e.clientY, at: performance.now() };
       this.startHold(e);
+      this.pressPiece(e);
     });
     boardBox.addEventListener('pointermove', (e) => {
       const press = this.boardPress;
@@ -284,7 +309,7 @@ export class GameScreen {
       if (tap && cell) this.onSquare(Number(cell.dataset.sq), tap === 'quick');
     });
     this.boardEl.addEventListener('pointermove', (e) => {
-      if (e.pointerType !== 'mouse' || !this.docked || this.drag) return;
+      if (e.pointerType !== 'mouse' || !this.docked || this.drag || this.pieceDrag?.ghost) return;
       const cell = (e.target as HTMLElement).closest<HTMLElement>('[data-sq]');
       this.setBoardHover(cell ? Number(cell.dataset.sq) : null);
     });
@@ -300,15 +325,15 @@ export class GameScreen {
   }
 
   /**
-   * A press that wandered off is a drag, and a drag on the board does nothing; nor does letting go of a press that
-   * was held to open a card. Only a quick tap opens a card.
+   * A press that wandered off is a drag, which moves a piece by itself (`pressPiece`) or does nothing; nor does
+   * letting go of a press that was held to open a card. Only a quick tap opens a card.
    */
   private boardTap(e: MouseEvent): 'quick' | 'slow' | null {
     const press = this.boardPress;
     this.boardPress = null;
     clearTimeout(this.holdTimer);
     if (!press) return 'quick';
-    if (press.held || Math.hypot(e.clientX - press.x, e.clientY - press.y) > TAP_SLOP) return null;
+    if (press.held || press.dragged || Math.hypot(e.clientX - press.x, e.clientY - press.y) > TAP_SLOP) return null;
     return performance.now() - press.at < TAP_MS ? 'quick' : 'slow';
   }
 
@@ -387,6 +412,9 @@ export class GameScreen {
 
   reset(): void {
     this.cancelDrag();
+    this.cancelPieceDrag();
+    this.clearDropped();
+    this.clearReturning();
     sound.setBattle(false);
     this.view = null;
     this.room = null;
@@ -433,6 +461,7 @@ export class GameScreen {
     if (changed) {
       this.clearSelection();
       this.cancelDrag();
+      this.cancelPieceDrag();
     }
     const playing = view.status.kind === 'playing';
     // Before queueFx, which takes the cards just dropped on squares (see `takeLanding`).
@@ -440,6 +469,11 @@ export class GameScreen {
     else if (!prev && playing) sound.sfx?.battle();
     sound.setBattle(playing);
     if (changed && prev && this.fx.enabled) this.queueFx(prev, view);
+    // After queueFx, which does not slide a piece that was dragged to its square.
+    if (changed) {
+      this.clearDropped();
+      this.clearReturning();
+    }
     this.appendLog(view);
     this.render();
   }
@@ -484,6 +518,15 @@ export class GameScreen {
     return out;
   }
 
+  /** Squares holding one of your pieces that can move now: tap one to pick it up, or drag it. */
+  private movers(view: v2.PlayerView): Set<v2.Square> {
+    const out = new Set<v2.Square>();
+    if (view.status.kind !== 'playing') return out;
+    const mine = new Set(view.pieces.filter((p) => p.owner === view.you).map((p) => p.square));
+    for (const a of view.legalActions) if (a.type === 'move' && mine.has(a.from)) out.add(a.from);
+    return out;
+  }
+
   private onSquare(square: v2.Square, quick = true): void {
     const view = this.view;
     if (!view) return;
@@ -496,8 +539,7 @@ export class GameScreen {
       this.render();
       return;
     }
-    const mine = view.pieces.some((p) => p.square === square && p.owner === view.you);
-    const movable = playing && mine && this.legal().some((a) => a.type === 'move' && a.from === square);
+    const movable = this.movers(view).has(square);
     // A card floating over the board would hide the squares the piece can move to (see `startHold`).
     if (movable && !this.docked) this.inspected = null;
     else if (quick) this.toggleInspect(view, square);
@@ -660,6 +702,7 @@ export class GameScreen {
           break;
         }
         case 'moved': {
+          if (this.dropped?.from === e.from && this.dropped.to === e.to) break;
           const from = this.cells[e.from];
           const to = this.cells[e.to];
           if (!from || !to) break;
@@ -1023,7 +1066,7 @@ export class GameScreen {
   }
 
   private pressCard(e: PointerEvent, uid: string, tile: HTMLElement): void {
-    if (e.button !== 0 || this.drag) return;
+    if (e.button !== 0 || this.drag || this.pieceDrag) return;
     // Stops the browser starting a text selection; the click still fires.
     if (e.pointerType === 'mouse') e.preventDefault();
     // Touch pointers are captured by the pressed tile, which is rebuilt when the drag starts;
@@ -1199,6 +1242,159 @@ export class GameScreen {
     return cell && this.boardEl.contains(cell) ? Number(cell.dataset.sq) : null;
   }
 
+  // ---------------------------------------------------------------- piece drag
+
+  /** A press on one of your pieces that can move. Dragging it moves it; letting go without dragging is a tap. */
+  private pressPiece(e: PointerEvent): void {
+    if (e.button !== 0 || !e.isPrimary || this.drag || this.pieceDrag || this.dropped || !this.view) return;
+    const cell = (e.target as HTMLElement).closest<HTMLElement>('.g2-cell');
+    if (!cell || !this.boardEl.contains(cell)) return;
+    const from = Number(cell.dataset.sq);
+    if (!this.movers(this.view).has(from)) return;
+    // Stops the browser starting a text selection; the click still fires.
+    if (e.pointerType === 'mouse') e.preventDefault();
+    this.pieceDrag = { from, pointerId: e.pointerId, pointerType: e.pointerType, startX: e.clientX, startY: e.clientY, ghost: null, hover: null };
+    window.addEventListener('pointermove', this.onPieceMove);
+    window.addEventListener('pointerup', this.onPieceUp);
+    window.addEventListener('pointercancel', this.onPieceUp);
+  }
+
+  private readonly onPieceMove = (e: PointerEvent): void => {
+    const drag = this.pieceDrag;
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    let ghost = drag.ghost;
+    if (!ghost) {
+      if (Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) < DRAG_THRESHOLD) return;
+      ghost = this.liftPiece(drag);
+      if (!ghost) return;
+    }
+    // Under a finger the piece rides above it, so the finger does not hide it; it lands where the finger is.
+    const lift = drag.pointerType === 'touch' ? ghost.offsetHeight * 0.9 : 0;
+    ghost.style.left = `${e.clientX - ghost.offsetWidth / 2}px`;
+    ghost.style.top = `${e.clientY - ghost.offsetHeight / 2 - lift}px`;
+    const square = this.squareAt(e.clientX, e.clientY);
+    const hover = square !== null && this.targets().has(square) ? square : null;
+    if (hover === drag.hover) return;
+    if (drag.hover !== null) this.cells[drag.hover]?.classList.remove('drag-over');
+    if (hover !== null) this.cells[hover]?.classList.add('drag-over');
+    drag.hover = hover;
+    ghost.classList.toggle('over', hover !== null);
+  };
+
+  /** Past the threshold: a copy of the piece follows the pointer, and the squares it can go to light up. */
+  private liftPiece(drag: PieceDrag): HTMLElement | null {
+    const token = this.cells[drag.from]?.querySelector<HTMLElement>('.g2-piece');
+    if (!token) {
+      this.cancelPieceDrag();
+      return null;
+    }
+    clearTimeout(this.holdTimer);
+    this.clearReturning();
+    if (this.boardPress) this.boardPress.dragged = true;
+    const ghost = token.cloneNode(true) as HTMLElement;
+    ghost.classList.remove(...Object.keys(TOKEN_FX_MS), 'lifted');
+    ghost.classList.add('g2-piece-ghost');
+    if (drag.pointerType === 'touch') ghost.classList.add('touch');
+    ghost.style.animationDelay = '';
+    ghost.style.width = `${token.offsetWidth}px`;
+    ghost.style.height = `${token.offsetHeight}px`;
+    ghost.style.fontSize = getComputedStyle(token).fontSize;
+    document.body.appendChild(ghost);
+    drag.ghost = ghost;
+    if (drag.pointerType === 'mouse') document.body.classList.add('g2-grabbing');
+    if (this.selectedSquare !== drag.from) {
+      this.selectedSquare = drag.from;
+      sound.sfx?.select();
+    }
+    // A card floating over the board would hide the squares the piece can go to.
+    if (!this.docked) this.inspected = null;
+    this.render();
+    return ghost;
+  }
+
+  private readonly onPieceUp = (e: PointerEvent): void => {
+    const drag = this.pieceDrag;
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    this.removePieceListeners();
+    this.pieceDrag = null;
+    document.body.classList.remove('g2-grabbing');
+    const ghost = drag.ghost;
+    // Never dragged: the click that follows picks the piece up, or puts it down (`onSquare`).
+    if (!ghost) return;
+    if (drag.hover !== null) this.cells[drag.hover]?.classList.remove('drag-over');
+    const square = e.type === 'pointerup' ? this.squareAt(e.clientX, e.clientY) : null;
+    const move = square === null ? undefined : this.targets().get(square);
+    if (move && square !== null) this.dropPiece(drag.from, square, move, ghost);
+    else this.returnPiece(drag.from, ghost);
+  };
+
+  /** Let go on a lit square: the move is sent, and the piece waits on its new square until the server answers. */
+  private dropPiece(from: v2.Square, to: v2.Square, move: Action, ghost: HTMLElement): void {
+    this.clearDropped();
+    ghost.classList.add('landing');
+    this.placeOn(ghost, to);
+    const timer = window.setTimeout(() => {
+      this.clearDropped();
+      this.render();
+    }, DROP_WAIT_MS);
+    this.dropped = { from, to, ghost, timer };
+    this.hooks.act(move);
+    this.clearSelection();
+    this.render();
+  }
+
+  /** Let go anywhere else: the piece flies back to its square and stays picked up, so a tap can still move it. */
+  private returnPiece(from: v2.Square, ghost: HTMLElement): void {
+    this.clearReturning();
+    ghost.classList.add('returning');
+    this.placeOn(ghost, from);
+    const timer = window.setTimeout(() => {
+      this.clearReturning();
+      this.render();
+    }, RETURN_MS);
+    this.returning = { from, ghost, timer };
+    this.render();
+  }
+
+  /** Centre a dragged piece's copy on a square. */
+  private placeOn(ghost: HTMLElement, square: v2.Square): void {
+    const box = this.cells[square]?.getBoundingClientRect();
+    if (!box) return;
+    ghost.style.left = `${box.left + box.width / 2 - ghost.offsetWidth / 2}px`;
+    ghost.style.top = `${box.top + box.height / 2 - ghost.offsetHeight / 2}px`;
+  }
+
+  private clearDropped(): void {
+    if (!this.dropped) return;
+    clearTimeout(this.dropped.timer);
+    this.dropped.ghost.remove();
+    this.dropped = null;
+  }
+
+  private clearReturning(): void {
+    if (!this.returning) return;
+    clearTimeout(this.returning.timer);
+    this.returning.ghost.remove();
+    this.returning = null;
+  }
+
+  /** Put a held piece back without moving it: a new position came in, or the game closed. */
+  private cancelPieceDrag(): void {
+    const drag = this.pieceDrag;
+    if (!drag) return;
+    this.removePieceListeners();
+    this.pieceDrag = null;
+    document.body.classList.remove('g2-grabbing');
+    drag.ghost?.remove();
+    if (drag.hover !== null) this.cells[drag.hover]?.classList.remove('drag-over');
+  }
+
+  private removePieceListeners(): void {
+    window.removeEventListener('pointermove', this.onPieceMove);
+    window.removeEventListener('pointerup', this.onPieceUp);
+    window.removeEventListener('pointercancel', this.onPieceUp);
+  }
+
   private renderHand(view: v2.PlayerView): void {
     const scroll = this.handEl.querySelector('.g2-handrow')?.scrollLeft ?? 0;
     this.handEl.innerHTML = '';
@@ -1269,13 +1465,18 @@ export class GameScreen {
     this.boardEl.classList.toggle('drop-over', anywhere && held?.hover !== null);
     const lastMove = view.events.find((e): e is Extract<v2.GameEvent, { type: 'moved' }> => e.type === 'moved');
     const inspectedAt = this.inspectedSquare(view);
+    const movers = this.movers(view);
+    // A dragged piece leaves a faint copy on its square, also while it flies back; one dropped elsewhere is gone from it.
+    const lifted = this.pieceDrag?.ghost ? this.pieceDrag.from : (this.returning?.from ?? null);
+    const away = this.dropped?.from ?? null;
 
     for (let square = 0; square < v2.FILES * v2.RANKS; square++) {
       const cell = this.cells[square]!;
       const piece = view.pieces.find((p) => p.square === square);
       const seal = view.seals.find((s) => s.square === square);
       const classes = ['g2-cell', (v2.fileOf(square) + v2.rankOf(square)) % 2 === 0 ? 'dark' : 'light'];
-      if (targets.has(square)) classes.push(piece || seal ? 'target capture' : 'target');
+      if (movers.has(square) && square !== away) classes.push('movable');
+      if (targets.has(square)) classes.push(this.pieceDrag?.hover === square ? 'target drag-over' : 'target');
       const drop = drops.get(square);
       if (drop) classes.push(drop.type === 'seal' ? 'drop drop-seal' : drop.type === 'spell' ? 'drop drop-spell' : 'drop');
       if (drop && held?.hover === square) classes.push('drop-hover');
@@ -1292,6 +1493,8 @@ export class GameScreen {
       const tok = piece ? this.pieceToken(piece, view) : seal ? this.sealToken(seal, view) : null;
       if (tok) {
         this.applyTokenFx(tok, piece?.id ?? seal!.id, now);
+        if (piece && square === away) tok.classList.add('away');
+        else if (piece && square === lifted) tok.classList.add('lifted');
         cell.appendChild(tok);
       }
     }
