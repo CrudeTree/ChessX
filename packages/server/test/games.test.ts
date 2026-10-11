@@ -1,9 +1,9 @@
 import { createGame, starterDeck, v2, type Action, type Color } from '@chessx/engine';
-import type { ServerMessage } from '@chessx/protocol';
+import type { ChatMessage, ServerMessage } from '@chessx/protocol';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Db, newId, type GameRow } from '../src/db.js';
 import { GameError, GameManager, type Transport } from '../src/games.js';
 
@@ -15,9 +15,10 @@ function setup() {
   return { db, games, alice: mk('Alice'), bob: mk('Bob') };
 }
 
+/** Keeps a copy of each message, as a socket would, so later changes to the game cannot rewrite what was sent. */
 function transport(userId: string): Transport & { messages: ServerMessage[] } {
   const messages: ServerMessage[] = [];
-  return { userId, messages, send: (m) => void messages.push(m) };
+  return { userId, messages, send: (m) => void messages.push(structuredClone(m)) };
 }
 
 /** The first legal action matching `want`, taken for whoever is to move. */
@@ -163,6 +164,92 @@ describe('cards, then a move that ends the turn (Djabooty, 2026-10-10)', () => {
     game.record!.state.actionTaken = true;
     game.actV2(white, { type: 'endTurn' });
     expect(game.record!.state.active).toBe('black');
+  });
+});
+
+describe('chat', () => {
+  const GIF = { url: 'https://static.klipy.com/ii/ffd4ac143e63/e8/3a/y1i7SXbN.webp', width: 220, height: 180, title: 'Happy dance' };
+
+  function chatGame(solo = false) {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(1_000_000);
+    const { db, games, alice, bob } = setup();
+    const game = games.create(alice.id, solo, []);
+    if (!solo) game.join(bob.id, []);
+    const ta = transport(alice.id);
+    const tb = transport(bob.id);
+    game.attach(ta);
+    if (!solo) game.attach(tb);
+    const notified: ChatMessage[] = [];
+    game.onChat = (_game, _from, _to, msg) => void notified.push(msg);
+    /** The next line goes out after the per-player limit (400 ms). */
+    const say = (t: Transport, text: string, gif?: unknown) => {
+      vi.setSystemTime(Date.now() + 1000);
+      game.chatMessage(t, text, gif);
+    };
+    return { db, game, ta, tb, notified, say };
+  }
+  const lines = (t: { messages: ServerMessage[] }): ChatMessage[] => t.messages.flatMap((m) => (m.type === 'chat' ? m.messages : []));
+
+  afterEach(() => vi.useRealTimers());
+
+  it('delivers text with emojis to both players, tidied up, and tells the other seat', () => {
+    const { ta, tb, notified, say } = chatGame();
+    say(ta, '  gg \n wp 🎉🔥  ');
+    expect(lines(tb).at(-1)).toMatchObject({ name: 'Alice', text: 'gg wp 🎉🔥' });
+    expect(lines(ta).at(-1)?.text).toBe('gg wp 🎉🔥');
+    expect(notified.map((m) => m.text)).toEqual(['gg wp 🎉🔥']);
+    say(ta, '   ');
+    expect(lines(tb)).toHaveLength(1);
+  });
+
+  it('sends a KLIPY GIF on its own or with text, and keeps it in the saved history', () => {
+    const { db, game, ta, tb, notified, say } = chatGame();
+    say(ta, '', GIF);
+    say(tb, 'lol', { ...GIF, url: 'https://static2.klipy.com/ii/x/y.gif' });
+    expect(lines(tb).map((m) => [m.text, m.gif?.url])).toEqual([
+      ['', GIF.url],
+      ['lol', 'https://static2.klipy.com/ii/x/y.gif'],
+    ]);
+    expect(notified[0]?.gif).toEqual(GIF);
+    expect(JSON.parse(db.gameById(game.id)!.chat_json)).toEqual(game.chat);
+  });
+
+  it('refuses GIFs that are not KLIPY media, and sends nothing for them', () => {
+    const { tb, say } = chatGame();
+    for (const url of [
+      'http://static.klipy.com/ii/a.gif',
+      'https://klipy.com/ii/a.gif',
+      'https://static.klipy.com.evil.test/a.gif',
+      'https://evil.test/static.klipy.com/a.gif',
+      'https://static.klipy.com:8443/a.gif',
+      'https://user@static.klipy.com/a.gif',
+      'javascript:alert(1)',
+      'x'.repeat(700),
+    ]) {
+      expect(() => say(tb, 'hi', { ...GIF, url }), url).toThrow(GameError);
+    }
+    for (const bad of [{ ...GIF, width: 0 }, { ...GIF, height: 1.5 }, { ...GIF, width: '220' }, { ...GIF, height: 99_999 }, 'gif', [GIF]]) {
+      expect(() => say(tb, '', bad)).toThrow(GameError);
+    }
+    expect(lines(tb)).toHaveLength(0);
+  });
+
+  it('cuts long messages between characters, never through an emoji', () => {
+    const { tb, say } = chatGame();
+    say(tb, '😀'.repeat(200));
+    const faces = lines(tb).at(-1)!.text;
+    expect(faces).toBe('😀'.repeat(120));
+    const family = '👨‍👩‍👧';
+    say(tb, `a${family.repeat(40)}`);
+    expect(lines(tb).at(-1)!.text).toBe(`a${family.repeat(29)}`);
+  });
+
+  it('practice games chat without notifying anyone', () => {
+    const { ta, notified, say } = chatGame(true);
+    say(ta, 'note to self', GIF);
+    expect(lines(ta)).toHaveLength(1);
+    expect(notified).toHaveLength(0);
   });
 });
 

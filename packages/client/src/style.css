@@ -2998,13 +2998,11 @@ button.danger {
    so it can never sit on top of the card panel. */
 #inspect > #chat {
   position: static;
+  flex: none;
   width: auto;
+  height: clamp(240px, 34vh, 360px);
   margin-top: auto;
   z-index: auto;
-}
-
-#inspect > #chat .chat-log {
-  max-height: 22vh;
 }
 
 #inspect > .zoom {
@@ -3396,112 +3394,515 @@ button.danger {
 }
 
 /* ------------------------------------------------------------------- Chat */
+/* Built by chat.ts. Where it sits is up to the game screen; on its own it floats in the bottom-left corner. */
 #chat {
   position: fixed;
   left: 16px;
   bottom: 16px;
   width: 340px;
+  height: 380px;
+  z-index: 5;
+}
+
+.chat {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  z-index: 5;
-  transition: opacity 0.2s ease;
+  min-height: 0;
+  background: linear-gradient(180deg, rgba(38, 34, 58, 0.98), rgba(24, 22, 36, 0.98));
+  border: 1px solid rgba(150, 130, 220, 0.32);
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.chat-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.chat-head-icon svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+  color: var(--accent);
+}
+
+.chat-title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.chat-with {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Only the phone sheet has somewhere to close to. */
+.chat-close {
+  display: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font-size: 15px;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  color: var(--muted);
+}
+
+.chat-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .chat-log {
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
   gap: 3px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  font-size: 13px;
-  line-height: 1.4;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 8px 10px 10px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   scrollbar-width: thin;
-  cursor: pointer;
-  transition: max-height 0.25s ease, background 0.25s ease, border-color 0.25s ease;
 }
 
-/* Faded (default): translucent, short, older lines dissolve toward the top. */
-.chat.faded .chat-log {
-  max-height: 150px;
-  background: rgba(20, 20, 30, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.35) 35%, black 75%);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.35) 35%, black 75%);
+/* A short conversation sits at the bottom, by the box you type in. */
+.chat-empty + .chat-msg {
+  margin-top: auto;
 }
 
-.chat.faded .chat-log:empty {
-  display: none;
+.chat-empty {
+  margin: auto;
+  padding: 12px;
+  font-size: 13px;
+  text-align: center;
+  color: var(--muted);
 }
 
-/* Expanded: click the message area to read comfortably. */
-.chat.expanded .chat-log {
-  max-height: 360px;
-  background: rgba(24, 24, 36, 0.96);
-  border: 1px solid #3a3a52;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
-  cursor: default;
+.chat-empty-icon {
+  margin-bottom: 4px;
+  font-size: 26px;
 }
 
-.chat-line {
-  word-wrap: break-word;
-  color: #e4e2ee;
+.chat-msg {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  animation: chat-in 0.18s ease-out;
 }
 
-.chat-line .who {
+.chat-msg.mine {
+  align-items: flex-end;
+}
+
+.chat-msg.first:not(:nth-child(2)) {
+  margin-top: 8px;
+}
+
+.chat-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0 6px 3px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.chat-meta b {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-weight: 700;
-  margin-right: 6px;
+  color: #ece8ff;
 }
 
-.chat-line.white .who {
-  color: #f7f3ea;
+/* Which side they play, as a little piece-coloured dot. */
+.chat-meta b::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f2efe6;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
 }
 
-.chat-line.black .who {
-  color: #b8b4d0;
+.chat-msg.black .chat-meta b::before {
+  background: #1b1a22;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.45);
 }
 
-.chat-line.me .who {
+.chat-msg.mine .chat-meta b {
   color: var(--accent);
 }
 
-.chat-line .time {
-  color: var(--muted);
+.chat-meta time {
   font-size: 10.5px;
-  margin-left: 6px;
+}
+
+.chat-bubble {
+  max-width: 88%;
+  padding: 7px 11px;
+  font-size: 13.5px;
+  line-height: 1.38;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border-radius: 15px;
+}
+
+.chat-msg.theirs .chat-bubble {
+  color: #efedf7;
+  background: #302d47;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.chat-msg.mine .chat-bubble {
+  color: #fff;
+  background: linear-gradient(135deg, #7c5cff, #5f43d8);
+  box-shadow: 0 2px 10px rgba(124, 92, 255, 0.25);
+}
+
+.chat-msg.theirs.first .chat-bubble {
+  border-top-left-radius: 5px;
+}
+
+.chat-msg.mine.first .chat-bubble {
+  border-top-right-radius: 5px;
+}
+
+/* A few emoji on their own: big, no bubble. */
+.chat-msg.jumbo .chat-bubble {
+  padding: 0 2px;
+  font-size: 34px;
+  line-height: 1.15;
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+
+.chat-msg.has-gif .chat-bubble {
+  padding: 0;
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+
+.chat-gif {
+  display: block;
+  max-width: 100%;
+  object-fit: cover;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.chat-msg.has-gif .chat-text {
+  display: block;
+  padding: 4px 6px 0;
+}
+
+.chat-gif-missing {
+  display: inline-block;
+  padding: 7px 11px;
+  font-style: italic;
+  color: var(--muted);
+  border: 1px dashed #4a4766;
+  border-radius: 12px;
+}
+
+.chat-jump {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  z-index: 2;
+  padding: 5px 12px;
+  font-size: 12px;
+  color: #1a1408;
+  background: var(--accent);
+  border: 0;
+  border-radius: 999px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+  translate: -50% 0;
 }
 
 .chat-form {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
   margin: 0;
+  padding: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.chat-tool {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-radius: 9px;
+}
+
+.chat-tool:hover,
+.chat-tool.active {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+  filter: none;
+}
+
+.chat-tool.active {
+  color: var(--accent);
+}
+
+.chat-tool svg {
+  width: 22px;
+  height: 22px;
+}
+
+.chat-gif-btn span {
+  padding: 1px 4px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  border: 1.7px solid currentColor;
+  border-radius: 5px;
 }
 
 #chat-input {
+  flex: 1;
+  min-width: 0;
   margin: 0;
-  padding: 8px 12px;
-  font-size: 13px;
-  background: rgba(24, 24, 36, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.chat.faded #chat-input:not(:focus) {
-  opacity: 0.6;
+  padding: 8px 13px;
+  font-size: 14px;
+  background: rgba(10, 10, 18, 0.55);
+  border: 1px solid #3a3a52;
+  border-radius: 999px;
 }
 
 #chat-input:focus {
-  background: rgba(24, 24, 36, 0.95);
+  background: rgba(10, 10, 18, 0.85);
   border-color: var(--accent);
 }
 
-/* New lines pop in. */
+.chat-send {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  color: #1a1408;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 50%;
+}
+
+.chat-send svg {
+  width: 18px;
+  height: 18px;
+  translate: 1px 0;
+}
+
+.chat-send:disabled,
+.chat-send:disabled:hover {
+  color: var(--muted);
+  background: none;
+  border-color: #3a3a52;
+}
+
+/* The emoji and GIF pickers cover the messages, and reach higher than the box if it is short. */
+.chat-pop {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  height: max(100%, 300px);
+  background: #1b1928;
+  border: 1px solid rgba(150, 130, 220, 0.38);
+  border-radius: 12px;
+  box-shadow: 0 -12px 34px rgba(0, 0, 0, 0.5);
+  animation: chat-pop-in 0.14s ease-out;
+}
+
+@keyframes chat-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.chat-emoji-tabs {
+  display: flex;
+  gap: 2px;
+  flex: none;
+  padding: 6px 6px 4px;
+  overflow-x: auto;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  scrollbar-width: none;
+}
+
+.chat-emoji-tab {
+  flex: none;
+  width: 34px;
+  height: 30px;
+  padding: 0;
+  font-size: 17px;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  opacity: 0.55;
+  filter: grayscale(0.7);
+}
+
+.chat-emoji-tab:hover,
+.chat-emoji-tab.active {
+  opacity: 1;
+  filter: none;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.chat-emoji-grid {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  padding: 0 6px 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.chat-emoji-head {
+  padding: 8px 4px 4px;
+  font-size: 10.5px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.chat-emoji-cells {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+}
+
+.chat-emoji-cell {
+  height: 36px;
+  padding: 0;
+  font-family: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif;
+  font-size: 22px;
+  line-height: 1;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  transition: transform 0.1s ease;
+}
+
+.chat-emoji-cell:hover {
+  filter: none;
+  background: rgba(255, 255, 255, 0.1);
+  transform: scale(1.15);
+}
+
+.chat-gif-search {
+  flex: none;
+  width: auto;
+  margin: 8px 8px 6px;
+  padding: 8px 13px;
+  font-size: 14px;
+  border-radius: 999px;
+}
+
+.chat-gif-results {
+  flex: 1;
+  min-height: 0;
+  padding: 0 8px 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.chat-gif-grid {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.chat-gif-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.chat-gif-tile {
+  display: block;
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+  background: #2a2839 center / cover no-repeat;
+  border: 0;
+  border-radius: 8px;
+}
+
+.chat-gif-tile img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.chat-gif-tile:hover {
+  filter: none;
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.chat-gif-status {
+  padding: 16px 8px;
+  font-size: 12.5px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.chat-gif-status.error {
+  color: #f0a7a5;
+}
+
+.chat-gif-credit {
+  flex: none;
+  padding: 4px 10px 6px;
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  text-align: right;
+  color: var(--muted);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* New messages pop in. */
 @keyframes chat-in {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: none; }
-}
-
-.chat-line {
-  animation: chat-in 0.18s ease-out;
 }
 
 /* ------------------------------------------------------------------ Toast */
@@ -3921,20 +4322,20 @@ button,
     max-height: 30vh;
   }
 
-  /* Chat as a sheet: always the expanded look, no fade. */
-  #chat.faded .chat-log,
-  #chat.expanded .chat-log {
-    mask-image: none;
-    -webkit-mask-image: none;
-    max-height: 40vh;
-    min-height: 120px;
-    background: var(--panel-2);
-    border: 1px solid #3a3a52;
-    cursor: default;
+  /* Chat as a sheet: the box keeps its own header, so no grab handle or padding. */
+  #chat {
+    height: min(62vh, 520px);
+    max-height: none;
+    padding: 0;
+    overflow: visible;
   }
 
-  #chat.faded #chat-input:not(:focus) {
-    opacity: 1;
+  #chat::before {
+    display: none;
+  }
+
+  #chat-input {
+    font-size: 16px; /* smaller text makes iPhones zoom in */
   }
 
   /* Inside a scrolling sheet nothing may shrink, or the mini-map collapses. */
@@ -5685,10 +6086,29 @@ body.g2-grabbing * {
   font-weight: 600;
 }
 
-/* The shared chat box lives in the side column on this screen. */
-.g2-chat-slot #chat {
+/* The chat sits under the log and takes the larger share of the column's spare height. */
+.g2-side > .g2-chat-slot {
+  display: flex;
+  flex: 2.2 1 0;
+  min-height: 300px;
+}
+
+.g2-side > .side-block.grow {
+  min-height: 110px;
+}
+
+.g2-chat-slot > #chat {
   position: static;
+  flex: 1;
   width: 100%;
+  height: auto;
+  z-index: auto;
+}
+
+/* Phones only: the chat button by ☰, and the peek at a new message. */
+.g2-chat-btn,
+.g2-chat-peek {
+  display: none;
 }
 
 /* Sound switches (sound.ts) and the music's credit. */
@@ -6782,18 +7202,119 @@ body.g2-grabbing * {
     max-height: 30vh;
   }
 
-  .g2-chat-slot #chat {
+  .g2-statusblock {
+    position: relative;
+  }
+
+  .g2-chat-btn {
+    display: grid;
+    place-items: center;
+    position: relative;
+    flex: none;
+    width: 42px;
+    padding: 8px 0;
+  }
+
+  .g2-chat-btn svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .g2-chat-badge {
+    position: absolute;
+    top: -7px;
+    right: -6px;
+    min-width: 19px;
+    height: 19px;
+    padding: 0 5px;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 19px;
+    text-align: center;
+    color: #fff;
+    background: #e5484d;
+    border-radius: 10px;
+    box-shadow: 0 0 0 2px var(--bg);
+  }
+
+  .g2-chat-peek:not(.hidden) {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 8px);
+    z-index: 12;
+    max-width: min(88vw, 340px);
+    padding: 8px 12px;
+    font-size: 13.5px;
+    font-weight: 400;
+    text-align: left;
+    background: #302d47;
+    border: 1px solid rgba(150, 130, 220, 0.45);
+    border-radius: 14px 14px 4px 14px;
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55);
+    animation: chat-in 0.2s ease-out;
+  }
+
+  .g2-chat-peek b {
+    flex: none;
+    color: var(--accent);
+  }
+
+  .g2-chat-peek span {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  /* The chat is a sheet of its own; while the keyboard is up it sits on top of it (--kb, set by GameScreen). */
+  .g2-chat-slot {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: var(--kb, 0px);
+    z-index: 31;
+    display: flex;
+    height: min(74dvh, 620px);
+    max-height: calc(var(--vvh, 100dvh) - 8px);
+    visibility: hidden;
+    transform: translateY(calc(100% + 30px));
+    transition: transform 0.22s ease, visibility 0s linear 0.22s;
+  }
+
+  .g2-chat-slot.open {
+    visibility: visible;
     transform: none;
+    transition: transform 0.22s ease;
+  }
+
+  .g2-chat-slot > #chat {
+    position: static;
+    flex: 1;
+    height: auto;
     max-height: none;
-    padding: 0;
-    background: none;
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
+    margin: 0;
+    padding: 0 0 env(safe-area-inset-bottom);
+    overflow: visible;
+    background: linear-gradient(180deg, rgba(38, 34, 58, 0.99), rgba(22, 20, 33, 0.99));
+    border: 1px solid rgba(150, 130, 220, 0.38);
+    border-bottom: 0;
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -20px 50px rgba(0, 0, 0, 0.6);
+    transform: none;
+    transition: none;
     z-index: auto;
   }
 
-  .g2-chat-slot #chat::before {
-    display: none;
+  .g2-chat-slot .chat-close {
+    display: grid;
+  }
+
+  /* The sheet is tall enough, so the pickers never reach past its top. */
+  .g2-chat-slot .chat-pop {
+    top: 6px;
+    height: auto;
   }
 }

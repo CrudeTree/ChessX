@@ -2,7 +2,7 @@
 // The original (rules 1) game keeps its own Pixi renderer in ../game/GameView.ts.
 
 import { v2 } from '@chessx/engine';
-import type { RoomInfo } from '@chessx/protocol';
+import type { ChatMessage, RoomInfo } from '@chessx/protocol';
 import { cardBack, fillFrame, tiltWithPointer, type FrameCard } from './cardFrame.js';
 import { BoardFx, CARD_DIVE_MS, type BannerTone } from './fx.js';
 import { describeEvents, type PieceMemory } from './log.js';
@@ -27,6 +27,8 @@ export interface GameScreenHooks {
   names(): Record<Color, string>;
   /** Clock for a side, or null in practice games. */
   clock(color: Color): ClockText | null;
+  /** The chat box was opened or moved; a moved box forgets how far it was scrolled. */
+  chatShown(): void;
 }
 
 /** Glyphs for the placeholder cards; any other piece falls back to its initial. */
@@ -123,6 +125,8 @@ const SPELL_HIT_DELAY = 700;
 const DRAW_MS = 560;
 /** The card viewer sits beside the board from this width; narrower screens float it over the board. */
 const DOCKED_QUERY = '(min-width: 1200px)';
+/** Phones: how long a new message shows over the status row while the chat is closed. */
+const CHAT_PEEK_MS = 4500;
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''): HTMLElementTagNameMap[K] => {
   const e = document.createElement(tag);
@@ -152,6 +156,8 @@ const SPEAKER = '<path d="M4 9.5v5h3.5l4.5 4v-13l-4.5 4z" fill="currentColor"/>'
 const WAVES = '<path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>';
 const NOTE = '<path d="M9.5 17V6.5l9-2V15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="7.3" cy="17" r="2.3" fill="currentColor"/><circle cx="16.3" cy="15" r="2.3" fill="currentColor"/>';
 const SLASH = '<path d="M4 4l16 16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>';
+const CHAT_ICON =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16v10.5H10l-4.5 3.5V16H4z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></svg>';
 
 function paintSwitch(btn: HTMLButtonElement, on: boolean, name: string, icon: string): void {
   btn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icon}${on ? '' : SLASH}</svg><span>${name}</span>`;
@@ -231,6 +237,14 @@ export class GameScreen {
   /** The music's licence asks for this credit wherever it plays. */
   private readonly creditEl = el('div', 'g2-credit');
   private readonly menuBtn = el('button', 'g2-menu', '☰');
+  private readonly logBlock = el('div', 'side-block grow');
+  /** Phones: opens the chat, with a count of messages that came while it was closed. */
+  private readonly chatBtn = el('button', 'g2-chat-btn');
+  private readonly chatBadge = el('span', 'g2-chat-badge hidden');
+  /** Phones: the newest message, shown for a moment over the status row while the chat is closed. */
+  private readonly chatPeek = el('button', 'g2-chat-peek hidden');
+  private unread = 0;
+  private peekTimer = 0;
   private readonly sheetShade = el('div', 'g2-sheet-shade hidden');
   /**
    * Phones fit the whole game on one screen, so a pull on a card never fights a page scroll: the status and
@@ -238,7 +252,7 @@ export class GameScreen {
    */
   private readonly narrow = window.matchMedia('(max-width: 899px)');
   private readonly wide = window.matchMedia(DOCKED_QUERY);
-  /** Chat is moved in here so it sits with the rest of the screen. */
+  /** Chat is moved in here: under the log on wide screens, a sheet of its own on phones. */
   readonly chatSlot = el('div', 'g2-chat-slot');
   private readonly cells: HTMLElement[] = [];
   private readonly fx: BoardFx;
@@ -261,10 +275,18 @@ export class GameScreen {
     sheetClose.onclick = () => this.toggleSheet(false);
     this.codeBlock.append(el('div', 'label', 'Invite code'), this.codeEl, this.hintEl);
     this.menuBtn.type = 'button';
-    this.menuBtn.title = 'Log, sound, chat, invite code and resign';
+    this.menuBtn.title = 'Log, sound, invite code and resign';
     this.menuBtn.onclick = () => this.toggleSheet();
-    this.statusBlock.append(this.statusEl, this.endBtn, this.menuBtn);
-    const logBlock = el('div', 'side-block grow');
+    this.chatBtn.type = 'button';
+    this.chatBtn.title = 'Chat';
+    this.chatBtn.setAttribute('aria-label', 'Chat');
+    this.chatBtn.innerHTML = CHAT_ICON;
+    this.chatBtn.append(this.chatBadge);
+    this.chatBtn.onclick = () => this.openChat(!this.chatOpen);
+    this.chatPeek.type = 'button';
+    this.chatPeek.onclick = () => this.openChat(true);
+    this.statusBlock.append(this.statusEl, this.endBtn, this.chatBtn, this.menuBtn, this.chatPeek);
+    const logBlock = this.logBlock;
     logBlock.append(el('div', 'label', 'Log'), this.logEl);
     const soundBlock = el('div', 'side-block g2-sound');
     const switches = el('div', 'g2-sound-switches');
@@ -281,8 +303,11 @@ export class GameScreen {
     leave.onclick = () => this.hooks.leave();
     this.resignBtn.onclick = () => this.hooks.resign();
     buttons.append(this.resignBtn, leave);
-    side.append(sheetClose, this.codeBlock, this.statusBlock, logBlock, soundBlock, buttons, this.chatSlot);
-    this.sheetShade.onclick = () => this.toggleSheet(false);
+    side.append(sheetClose, this.codeBlock, this.statusBlock, logBlock, this.chatSlot, soundBlock, buttons);
+    this.sheetShade.onclick = () => {
+      this.toggleSheet(false);
+      this.openChat(false);
+    };
 
     root.append(this.detailEl, main, side, this.sheetShade);
     this.placeStatus();
@@ -358,11 +383,16 @@ export class GameScreen {
   }
 
   private placeStatus(): void {
-    if (this.narrow.matches) this.handEl.after(this.statusBlock);
-    else {
+    if (this.narrow.matches) {
+      this.handEl.after(this.statusBlock);
+      this.root.append(this.chatSlot);
+    } else {
       this.codeBlock.after(this.statusBlock);
+      this.logBlock.after(this.chatSlot);
       this.toggleSheet(false);
+      this.openChat(false);
     }
+    this.hooks.chatShown();
   }
 
   private get docked(): boolean {
@@ -380,8 +410,80 @@ export class GameScreen {
   }
 
   private toggleSheet(open = !this.sideEl.classList.contains('open')): void {
+    if (open) this.openChat(false);
     this.sideEl.classList.toggle('open', open);
-    this.sheetShade.classList.toggle('hidden', !open);
+    this.syncShade();
+  }
+
+  private syncShade(): void {
+    this.sheetShade.classList.toggle('hidden', !this.sideEl.classList.contains('open') && !this.chatOpen);
+  }
+
+  private get chatOpen(): boolean {
+    return this.chatSlot.classList.contains('open');
+  }
+
+  /** Phones: the chat sheet. Wide screens always show the chat, so there is nothing to open. */
+  openChat(open: boolean): void {
+    if (open && !this.narrow.matches) return;
+    if (open) this.toggleSheet(false);
+    this.chatSlot.classList.toggle('open', open);
+    this.followKeyboard(open);
+    if (open) {
+      this.unread = 0;
+      this.renderUnread();
+      this.hidePeek();
+      this.hooks.chatShown();
+    }
+    this.syncShade();
+  }
+
+  /** A message from the other player: on a phone with the chat closed, count it and show it for a moment. */
+  chatArrived(m: ChatMessage): void {
+    if (!this.narrow.matches || this.chatOpen) return;
+    this.unread++;
+    this.renderUnread();
+    this.chatPeek.replaceChildren(el('b', '', m.name), el('span', '', m.text || 'sent a GIF'));
+    this.chatPeek.classList.remove('hidden');
+    clearTimeout(this.peekTimer);
+    this.peekTimer = window.setTimeout(() => this.hidePeek(), CHAT_PEEK_MS);
+  }
+
+  private hidePeek(): void {
+    clearTimeout(this.peekTimer);
+    this.chatPeek.classList.add('hidden');
+  }
+
+  private renderUnread(): void {
+    this.chatBadge.textContent = this.unread > 9 ? '9+' : String(this.unread);
+    this.chatBadge.classList.toggle('hidden', this.unread === 0);
+    this.chatBtn.setAttribute('aria-label', this.unread ? `Chat, ${this.unread} new` : 'Chat');
+  }
+
+  /**
+   * A phone's keyboard covers the bottom of the screen without moving fixed things out of its way, so while the chat
+   * sheet is open it sits on top of whatever the keyboard leaves visible.
+   */
+  private readonly fitAboveKeyboard = (): void => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    this.chatSlot.style.setProperty('--kb', `${Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop))}px`);
+    this.chatSlot.style.setProperty('--vvh', `${Math.round(vv.height)}px`);
+  };
+
+  private followKeyboard(on: boolean): void {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    vv.removeEventListener('resize', this.fitAboveKeyboard);
+    vv.removeEventListener('scroll', this.fitAboveKeyboard);
+    if (on) {
+      vv.addEventListener('resize', this.fitAboveKeyboard);
+      vv.addEventListener('scroll', this.fitAboveKeyboard);
+      this.fitAboveKeyboard();
+    } else {
+      this.chatSlot.style.removeProperty('--kb');
+      this.chatSlot.style.removeProperty('--vvh');
+    }
   }
 
   private renderSound(): void {
@@ -441,6 +543,10 @@ export class GameScreen {
     this.statusEl.className = 'status g2-status';
     this.endBtn.classList.add('hidden');
     this.toggleSheet(false);
+    this.openChat(false);
+    this.unread = 0;
+    this.renderUnread();
+    this.hidePeek();
   }
 
   setRoom(room: RoomInfo): void {

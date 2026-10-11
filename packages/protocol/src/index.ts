@@ -192,12 +192,35 @@ export interface RoomInfo {
   players: Record<Color, { name: string; connected: boolean } | null>;
 }
 
+/** A GIF picked in the chat's KLIPY search. Every player loads it straight from KLIPY. */
+export interface ChatGif {
+  /** A media URL exactly as KLIPY returned it (KLIPY's terms: never rewritten or re-hosted). */
+  url: string;
+  width: number;
+  height: number;
+  /** What it shows: alt text, and what is left if the GIF is gone. */
+  title: string;
+}
+
 export interface ChatMessage {
   from: Color;
   name: string;
+  /** May be empty when the message is a GIF. */
   text: string;
+  gif?: ChatGif;
   /** Unix ms. */
   at: number;
+}
+
+/**
+ * KLIPY's media hosts are static.klipy.com and its numbered siblings. The host must end at the first slash, so no
+ * port, login or look-alike domain gets through; the rest is any printable ASCII but a backslash.
+ */
+const KLIPY_MEDIA_URL = /^https:\/\/static\d*\.klipy\.com\/[!-[\]-~]+$/;
+
+/** True for a GIF hosted by KLIPY; a chat GIF must be one of those. */
+export function isKlipyMediaUrl(url: string): boolean {
+  return KLIPY_MEDIA_URL.test(url);
 }
 
 // ---------------------------------------------------------------------------
@@ -233,13 +256,14 @@ export type ClientMessage =
   | { type: 'action'; action: Action }
   /** An action in a rules-2 game. Resigning is allowed at any time. */
   | { type: 'actionV2'; action: v2.Action | { type: 'resign' } }
-  | { type: 'chat'; text: string }
+  | { type: 'chat'; text: string; gif?: ChatGif }
   /** Detach this tab from its game (the game persists). */
   | { type: 'leave' };
 
 /** Messages the server sends to the browser. */
 export type ServerMessage =
-  | { type: 'welcome'; version: number; user: UserInfo; balance: Balance }
+  /** `gifKey`: the KLIPY app key the chat's GIF search uses from the browser; absent when GIFs are off. */
+  | { type: 'welcome'; version: number; user: UserInfo; balance: Balance; gifKey?: string }
   /** The admin changed card/piece numbers: apply and redraw. */
   | { type: 'balance'; balance: Balance }
   /** Your account changed (e.g. you were made a developer). */

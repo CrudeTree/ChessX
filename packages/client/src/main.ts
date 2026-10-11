@@ -2,7 +2,6 @@ import { applyBalance, DEFAULT_RULES, EMPTY_BALANCE, getCardDef, type Balance, t
 import {
   levelFor,
   xpForLevel,
-  type ChatMessage,
   type Clocks,
   type GameSummary,
   type Profile,
@@ -13,6 +12,7 @@ import {
 } from '@chessx/protocol';
 import { initAttention, notice as attention } from './attention.js';
 import { Binder, cardElement } from './binder.js';
+import { Chat } from './chat.js';
 import { BalanceEditor } from './editor.js';
 import { FriendsPanel } from './friends.js';
 import { initHome } from './home.js';
@@ -55,6 +55,8 @@ const inGameScreen = (): boolean => !gameScreen.classList.contains('hidden') || 
 // State
 
 const net = new Net();
+const chat = new Chat(chatEl);
+chat.onSend = (text, gif) => net.send({ type: 'chat', text, ...(gif ? { gif } : {}) });
 const gameView = new GameView();
 const arenaPalette = new ArenaPalette(gameView);
 arenaPalette.onOp = (op) => net.send({ type: 'arenaSetup', op });
@@ -74,6 +76,8 @@ let games: GameSummary[] = [];
 let profile: Profile | null = null;
 let lastSocialCounts: { challenges: number; requests: number } | null = null;
 let wasMyTurn = false;
+/** Whether the open game's chat history has arrived (it comes right after `seated`). */
+let chatHistoryIn = false;
 let booted = false;
 
 const inspect = new InspectPanel({
@@ -656,7 +660,9 @@ const screen2 = new GameScreen(game2Screen, {
     const ms = remaining(c, color);
     return { text: fmtClock(ms), running: c.running && c.turn === color, low: ms < 6 * 3600_000 };
   },
+  chatShown: () => chat.scrollToEnd(),
 });
+chat.onClose = () => (rules === 2 ? screen2.openChat(false) : setSheet(null));
 
 $('leave').onclick = () => goBack();
 $('m-back').onclick = () => goBack();
@@ -681,8 +687,15 @@ function leaveGameUi(): void {
   statusEl.textContent = 'Setting up the board…';
   statusEl.className = 'status';
   logEl.innerHTML = '';
-  $('chat-log').innerHTML = '';
+  chat.clear();
+  chatHistoryIn = false;
   if (viewReady) gameView.reset();
+}
+
+/** Who the chat is with; the opponent's name arrives with the room once they join. */
+function seatChat(): void {
+  const opp = you === 'white' ? 'black' : 'white';
+  chat.setSeat({ you, solo, opponent: solo || !you ? null : (room?.players[opp]?.name ?? null) });
 }
 
 /**
@@ -693,6 +706,7 @@ function placeChat(forRules: 1 | 2): void {
   if (forRules === 2) screen2.chatSlot.appendChild(chatEl);
   else if (!MOBILE && gameInit) $('inspect').appendChild(chatEl);
   else document.body.insertBefore(chatEl, $('toast'));
+  chat.scrollToEnd();
 }
 
 function goHome(): void {
@@ -768,7 +782,10 @@ function setSheet(id: string | null, opts: { peek?: boolean } = {}): void {
   for (const b of document.querySelectorAll<HTMLButtonElement>('#mtabs button')) b.classList.toggle('active', b.dataset.sheet === id);
   $('sheet-backdrop').classList.toggle('hidden', !MOBILE || id === null || peek);
   openSheet = id;
-  if (id === 'chat') $('m-chat-badge').textContent = '';
+  if (id === 'chat') {
+    $('m-chat-badge').textContent = '';
+    chat.scrollToEnd();
+  }
 }
 
 function setupMobileChrome(): void {
@@ -1047,61 +1064,6 @@ function appendLog(view: PlayerView): void {
   logEl.scrollTop = logEl.scrollHeight;
 }
 
-// ---------------------------------------------------------------------------
-// Chat: faded by default (older lines dissolve upward); click the message area
-// to expand; clicking the input keeps the compact look so it stays out of the way.
-
-const chatLog = $('chat-log');
-const chatForm = $<HTMLFormElement>('chat-form');
-const chatInput = $<HTMLInputElement>('chat-input');
-
-function setChatExpanded(expanded: boolean): void {
-  chatEl.classList.toggle('expanded', expanded);
-  chatEl.classList.toggle('faded', !expanded);
-  if (expanded) chatLog.scrollTop = chatLog.scrollHeight;
-}
-
-chatLog.addEventListener('pointerdown', (e) => {
-  e.stopPropagation();
-  setChatExpanded(true);
-});
-chatInput.addEventListener('pointerdown', (e) => e.stopPropagation());
-document.addEventListener('pointerdown', () => setChatExpanded(false));
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    setChatExpanded(false);
-    chatInput.blur();
-  }
-});
-
-chatForm.onsubmit = (e) => {
-  e.preventDefault();
-  const text = chatInput.value.trim();
-  if (!text) return;
-  net.send({ type: 'chat', text });
-  chatInput.value = '';
-};
-
-function appendChat(messages: ChatMessage[]): void {
-  for (const m of messages) {
-    const line = document.createElement('div');
-    const mine = solo ? false : m.from === you;
-    line.className = `chat-line ${m.from} ${mine ? 'me' : ''}`;
-    const who = document.createElement('span');
-    who.className = 'who';
-    who.textContent = mine ? 'You' : solo ? colorName(m.from) : m.name;
-    const text = document.createElement('span');
-    text.textContent = m.text;
-    const time = document.createElement('span');
-    time.className = 'time';
-    time.textContent = new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    line.append(who, text, time);
-    chatLog.appendChild(line);
-  }
-  while (chatLog.children.length > 120) chatLog.firstChild?.remove();
-  chatLog.scrollTop = chatLog.scrollHeight;
-}
-
 let toastTimer = 0;
 function showToast(message: string, kind: 'error' | 'info' = 'error'): void {
   toast.textContent = message;
@@ -1136,6 +1098,7 @@ net.onMessage = async (msg: ServerMessage) => {
       return;
     case 'welcome': {
       takeBalance(msg.balance);
+      chat.setGifKey(msg.gifKey);
       // Fresh socket (first connect or reconnect). On first connect the URL decides
       // (deep link / bookmarked game / binder); on reconnect, whatever was open.
       if (!booted) {
@@ -1195,6 +1158,7 @@ net.onMessage = async (msg: ServerMessage) => {
       rememberOpenGame(msg.gameId);
       if (!applyingRoute) pushRoute({ screen: 'game', id: msg.gameId });
       placeChat(rules);
+      seatChat();
       if (rules === 2) {
         // New rules: the plain-DOM board. The state follows in a `stateV2` message.
         screen2.open({ code: msg.code, solo, you: msg.color });
@@ -1220,6 +1184,7 @@ net.onMessage = async (msg: ServerMessage) => {
       return;
     case 'room':
       room = msg.room;
+      seatChat();
       if (rules === 2) {
         screen2.setRoom(msg.room);
         return;
@@ -1245,11 +1210,18 @@ net.onMessage = async (msg: ServerMessage) => {
       }
       enqueueState(msg.view, msg.clocks);
       return;
-    case 'chat':
-      appendChat(msg.messages);
-      if (MOBILE && openSheet !== 'chat' && msg.messages.length === 1) $('m-chat-badge').textContent = 'new';
-      if (msg.messages.length === 1 && msg.messages[0]!.from !== you && !solo) attention(`${msg.messages[0]!.name}: ${msg.messages[0]!.text}`);
+    case 'chat': {
+      chat.add(msg.messages);
+      // The first batch after a game opens is its history; only what comes after is news.
+      const history = !chatHistoryIn;
+      chatHistoryIn = true;
+      const m = msg.messages.at(-1);
+      if (history || !m || solo || m.from === you) return;
+      if (rules === 2) screen2.chatArrived(m);
+      else if (MOBILE && openSheet !== 'chat') $('m-chat-badge').textContent = 'new';
+      attention(`${m.name}: ${m.text || 'sent a GIF'}`);
       return;
+    }
     case 'rewards':
       // Let the game-over banner land first, then celebrate.
       setTimeout(() => showRewards(msg.report), inGameScreen() ? 1200 : 0);

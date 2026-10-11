@@ -21,6 +21,8 @@ import { SocialError, SocialService } from './social.js';
 const PORT = Number(process.env.PORT ?? 8080);
 const here = dirname(fileURLToPath(import.meta.url));
 const DB_PATH = process.env.DB_PATH ?? join(here, '..', 'data', 'chessx.sqlite');
+/** KLIPY app key for GIFs in chat. KLIPY wants its API called from the browser, so signed-in players get it. */
+const GIF_KEY = process.env.KLIPY_API_KEY?.trim() || undefined;
 
 const db = new Db(DB_PATH);
 const admin = new Admin(db, dirname(DB_PATH));
@@ -105,8 +107,9 @@ games.onYourTurn = (game, uid) => {
     tag: `game-${game.id}`,
   });
 };
-games.onChat = (game, from, to, text) => {
-  void notifier.push(to, { title: `${nameOf(from)} says`, body: text, url: `/?game=${game.id}`, tag: `chat-${game.id}` });
+games.onChat = (game, from, to, msg) => {
+  const title = msg.text ? `${nameOf(from)} says` : `${nameOf(from)} sent a GIF`;
+  void notifier.push(to, { title, body: msg.text || msg.gif?.title || 'GIF', url: `/?game=${game.id}`, tag: `chat-${game.id}` });
 };
 
 // ---------------------------------------------------------------------------
@@ -601,7 +604,7 @@ function handleMessage(t: SocketTransport, msg: ClientMessage): void {
     }
     case 'chat':
       if (!t.game) return t.error('You are not in a game.');
-      if (typeof msg.text === 'string') t.game.chatMessage(t, msg.text);
+      if (typeof msg.text === 'string') t.game.chatMessage(t, msg.text, msg.gif as unknown);
       return;
     case 'leave':
       detach(t);
@@ -628,7 +631,7 @@ httpServer.on('upgrade', (req, socket, head) => {
     const cameOnline = set.size === 0;
     set.add(t);
     db.touchLastSeen(user.id);
-    t.send({ type: 'welcome', version: PROTOCOL_VERSION, user: toUserInfo(user), balance: currentBalance() });
+    t.send({ type: 'welcome', version: PROTOCOL_VERSION, user: toUserInfo(user), balance: currentBalance(), gifKey: GIF_KEY });
     if (cameOnline) pushPresenceToFriends(user.id);
 
     ws.on('message', (raw) => {
@@ -679,4 +682,5 @@ httpServer.listen(PORT, () => {
   console.log(`  sign-in: email/password${p.google ? ', Google' : ''}${p.facebook ? ', Facebook' : ''}`);
   if (!p.google) console.log('  (set GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET to enable Google sign-in)');
   if (!p.facebook) console.log('  (set FACEBOOK_APP_ID + FACEBOOK_APP_SECRET to enable Facebook sign-in)');
+  console.log(GIF_KEY ? '  chat GIFs: on (KLIPY)' : '  (set KLIPY_API_KEY to turn on GIFs in chat)');
 });

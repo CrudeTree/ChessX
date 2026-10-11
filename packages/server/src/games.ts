@@ -21,7 +21,16 @@ import {
   type GameState,
   type GameStatus,
 } from '@chessx/engine';
-import { TURN_CLOCK_MS, type ChatMessage, type Clocks, type GameSummary, type RoomInfo, type ServerMessage } from '@chessx/protocol';
+import {
+  isKlipyMediaUrl,
+  TURN_CLOCK_MS,
+  type ChatGif,
+  type ChatMessage,
+  type Clocks,
+  type GameSummary,
+  type RoomInfo,
+  type ServerMessage,
+} from '@chessx/protocol';
 import { randomBytes } from 'node:crypto';
 import { newId, parseChat, parseRecord, parseState, type Db, type GameRow } from './db.js';
 
@@ -34,8 +43,36 @@ const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const CHAT_HISTORY = 100;
 const CHAT_MAX_LEN = 240;
 const CHAT_MIN_INTERVAL_MS = 400;
+const GIF_URL_MAX_LEN = 600;
+const GIF_TITLE_MAX_LEN = 120;
+const GIF_MAX_SIDE = 4096;
 
 export class GameError extends Error {}
+
+const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+
+/** Whitespace runs collapsed, then cut to `max` UTF-16 units without splitting an emoji or accented letter. */
+export function clipText(raw: string, max: number): string {
+  const text = raw.replace(/\s+/g, ' ').trim();
+  if (text.length <= max) return text;
+  let out = '';
+  for (const { segment } of graphemes.segment(text)) {
+    if (out.length + segment.length > max) break;
+    out += segment;
+  }
+  return out.trimEnd();
+}
+
+/** A GIF from a chat message, or null when there is none. Anything that is not a KLIPY GIF is refused. */
+export function parseChatGif(raw: unknown): ChatGif | null {
+  if (raw === undefined || raw === null) return null;
+  const g = raw as Partial<Record<keyof ChatGif, unknown>>;
+  const side = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n > 0 && n <= GIF_MAX_SIDE;
+  if (typeof raw !== 'object' || typeof g.url !== 'string' || g.url.length > GIF_URL_MAX_LEN || !isKlipyMediaUrl(g.url) || !side(g.width) || !side(g.height)) {
+    throw new GameError('That GIF cannot be sent.');
+  }
+  return { url: g.url, width: g.width, height: g.height, title: typeof g.title === 'string' ? clipText(g.title, GIF_TITLE_MAX_LEN) : '' };
+}
 
 /** A fresh rules-2 game. Every game uses the starter deck for now: v2 deck building waits for the real cards. */
 function newRecord(): v2.GameRecord {
@@ -79,7 +116,7 @@ export class LiveGame {
   /** Fired when the last viewer detaches (practice games are discarded then). */
   onEmpty: (game: LiveGame) => void = () => {};
   /** Fired when a chat line is posted; `toUserId` is the other seat. */
-  onChat: (game: LiveGame, fromUserId: string, toUserId: string, text: string) => void = () => {};
+  onChat: (game: LiveGame, fromUserId: string, toUserId: string, msg: ChatMessage) => void = () => {};
 
   constructor(
     public row: GameRow,
@@ -388,22 +425,24 @@ export class LiveGame {
     this.broadcastState();
   }
 
-  chatMessage(t: Transport, rawText: string): void {
+  /** A chat line: text, a GIF, or both. `rawGif` comes straight off the socket. */
+  chatMessage(t: Transport, rawText: string, rawGif?: unknown): void {
     const color = this.seatOf(t.userId);
     if (!color) throw new GameError('You are not a player in this game.');
-    const text = rawText.replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX_LEN);
-    if (!text) return;
+    const text = clipText(rawText, CHAT_MAX_LEN);
+    const gif = parseChatGif(rawGif);
+    if (!text && !gif) return;
     const now = Date.now();
     if (now - (this.lastChatAt.get(t.userId) ?? 0) < CHAT_MIN_INTERVAL_MS) return;
     this.lastChatAt.set(t.userId, now);
-    const msg: ChatMessage = { from: color, name: this.userName(t.userId), text, at: now };
+    const msg: ChatMessage = { from: color, name: this.userName(t.userId), text, ...(gif ? { gif } : {}), at: now };
     this.chat.push(msg);
     if (this.chat.length > CHAT_HISTORY) this.chat.shift();
     this.save(now, false); // chat does not change the home-page card
     for (const w of this.watchers) w.send({ type: 'chat', messages: [msg] });
     if (!this.solo) {
       const other = color === 'white' ? this.row.black_user_id : this.row.white_user_id;
-      if (other) this.onChat(this, t.userId, other, text);
+      if (other) this.onChat(this, t.userId, other, msg);
     }
   }
 
@@ -507,7 +546,7 @@ export class GameManager {
   /** Fired once per two-player game when it reaches a result. */
   onFinished: (game: LiveGame) => void = () => {};
   onYourTurn: (game: LiveGame, userId: string) => void = () => {};
-  onChat: (game: LiveGame, fromUserId: string, toUserId: string, text: string) => void = () => {};
+  onChat: (game: LiveGame, fromUserId: string, toUserId: string, msg: ChatMessage) => void = () => {};
 
   constructor(
     private db: Db,
@@ -520,7 +559,7 @@ export class GameManager {
     g.onChanged = (game) => this.onChanged(game);
     g.onFinished = (game) => this.onFinished(game);
     g.onYourTurn = (game, uid) => this.onYourTurn(game, uid);
-    g.onChat = (game, from, to, text) => this.onChat(game, from, to, text);
+    g.onChat = (game, from, to, msg) => this.onChat(game, from, to, msg);
     // A practice game vanishes as soon as its player leaves; it was never on disk.
     g.onEmpty = (game) => {
       if (game.solo) this.live.delete(game.id);
