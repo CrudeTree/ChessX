@@ -74,7 +74,7 @@ function find(state: GameState, predicate: (a: Action) => boolean): Action {
 }
 
 describe('setup', () => {
-  it('uses a 6x8 board with Kings on d1 and d8, 3 Initiates in front of each King, 7 cards each, and White to move', () => {
+  it('uses a 6x8 board with Kings on d1 and d8, 3 Initiates in front of each King, 3 cards each, and White to move', () => {
     const state = game();
     const at = (color: Color) => state.pieces.filter((p) => p.owner === color).map((p) => `${p.def.name}@${p.square}`).sort();
     expect(at('white')).toEqual([`King@${S('d1')}`, `Initiate@${S('c2')}`, `Initiate@${S('d2')}`, `Initiate@${S('e2')}`].sort());
@@ -83,9 +83,9 @@ describe('setup', () => {
     expect(state.phase).toBe('play');
     expect(state.active).toBe('white');
     expect(state.turns).toEqual({ white: 1, black: 0 });
-    // 7-card hands, then White's turn 1 draws one more and adds the normal +1 to the starting 2 mana.
-    expect(state.hand.white).toHaveLength(8);
-    expect(state.hand.black).toHaveLength(7);
+    // 3-card hands (Djabooty, 2026-10-10), then White's turn 1 draws one more and adds the normal +1 to the starting 2 mana.
+    expect(state.hand.white).toHaveLength(4);
+    expect(state.hand.black).toHaveLength(3);
     expect(state.mana).toEqual({ white: 3, black: 2 });
     expect(() => S('g1')).toThrow();
     expect(() => S('a9')).toThrow();
@@ -633,8 +633,8 @@ describe('full games', () => {
   it('every game starts straight in play with full hands and both starting rows', () => {
     for (let seed = 1; seed <= 30; seed++) {
       const state = game(seed);
-      expect(state.hand.white).toHaveLength(8);
-      expect(state.hand.black).toHaveLength(7);
+      expect(state.hand.white).toHaveLength(4);
+      expect(state.hand.black).toHaveLength(3);
       expect(state.phase).toBe('play');
       expect(state.pieces).toHaveLength(8);
     }

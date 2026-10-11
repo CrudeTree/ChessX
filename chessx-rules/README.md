@@ -12,7 +12,7 @@ npm run typecheck
 ## What is implemented
 
 - 6x8 board (6 files, 8 ranks). Kings start on d1 and d8, each with 3 Initiates in front.
-- Deck, discard, hand of 7, one draw per turn.
+- Deck, discard, opening hand of 3, one draw per turn.
 - Mana: starts at 2, +1 at the start of each of your turns, no cap.
 - Setup: each side starts with 3 Initiates from outside the deck in front of its King (c2, d2, e2 / c7, d7, e7). They can act immediately. White moves first.
 - Each turn: one action (move, summon, or seal) and one spell. No passing.

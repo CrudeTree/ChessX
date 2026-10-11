@@ -21,7 +21,7 @@ import {
   type Square,
 } from './types.js';
 
-export const HAND_SIZE = 7;
+export const HAND_SIZE = 3;
 export const START_MANA = 2;
 /** Deploy phase of games saved before the 2026-10-08 setup ruling; new games skip it. */
 export const SETUP_PIECES = 3;

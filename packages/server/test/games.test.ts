@@ -62,8 +62,8 @@ describe('rules 2 games', () => {
     // Bob sees his own hand and only a count for Alice's. White has already drawn for turn 1.
     const bobColor: Color = game.row.white_user_id === bob.id ? 'white' : 'black';
     expect(stateMsg.view.you).toBe(bobColor);
-    expect(stateMsg.view.hand).toHaveLength(bobColor === 'white' ? 8 : 7);
-    expect(stateMsg.view.handCount).toEqual({ white: 8, black: 7 });
+    expect(stateMsg.view.hand).toHaveLength(bobColor === 'white' ? 4 : 3);
+    expect(stateMsg.view.handCount).toEqual({ white: 4, black: 3 });
     expect(game.summaryFor(alice.id)).toMatchObject({ rules: 2, waitingForOpponent: false });
   });
 
