@@ -197,7 +197,7 @@ export class GameScreen {
   private readonly inspectEl = el('div', 'g2-inspect hidden');
   /** Wide screens: the column left of the board that holds the card viewer. */
   private readonly detailEl = el('aside', 'g2-detail');
-  /** "Spell, then one action" on the board's top edge during your turn. */
+  /** "Cards, then move" on the board's top edge during your turn. */
   private readonly cueEl = el('div', 'g2-cue hidden');
   private readonly sideEl = el('aside', 'g2-side');
   private readonly codeBlock = el('div', 'side-block');
@@ -544,7 +544,10 @@ export class GameScreen {
     const tok = el('div', `g2-piece ${piece.owner}${piece.king ? ' king' : ''}${piece.active ? '' : ' sick'}${boardArt ? ' art' : ''}`);
     if (boardArt) tok.style.backgroundImage = `url("${boardArt}")`;
     else tok.append(el('span', 'g2-piece-glyph', glyphFor(piece.kind, piece.name)));
-    tok.title = `${piece.name}${piece.active ? '' : ' (summoning sickness: cannot capture yet, but still gives check)'}`;
+    const resting = piece.justSummoned
+      ? ' (just summoned: cannot move or capture until its owner\'s next turn, but still gives check)'
+      : piece.active ? '' : ' (summoning sickness: cannot capture yet, but still gives check)';
+    tok.title = `${piece.name}${resting}`;
     return tok;
   }
 
@@ -837,7 +840,8 @@ export class GameScreen {
       } else {
         frame = this.frameFor(card, piece.kind, owner, piece.name);
       }
-      if (!piece.active) notes.push('Summoning sickness: cannot capture yet, but still gives check.');
+      if (piece.justSummoned) notes.push('Just summoned: cannot move or capture until its owner\'s next turn, but still gives check.');
+      else if (!piece.active) notes.push('Summoning sickness: cannot capture yet, but still gives check.');
     } else if (seal) {
       card = view.cards[seal.cardId];
       owner = seal.owner;
@@ -891,7 +895,7 @@ export class GameScreen {
       info.append(
         el('div', 'g2-inspect-label', 'What it does'),
         el('p', 'g2-inspect-spell', card.text),
-        el('p', 'g2-inspect-note', 'Play it before your action: one spell a turn, and none while your King is in check.'),
+        el('p', 'g2-inspect-note', 'Cast it any time before you move; it does not end your turn. Not while your King is in check.'),
       );
     }
     for (const n of notes) info.append(el('p', 'g2-inspect-note', n));
@@ -903,7 +907,7 @@ export class GameScreen {
       const targeted = this.legal().some((a) => a.type === 'spell' && a.cardUid === uid && a.target !== undefined);
       return `Drag it ${targeted ? 'onto a glowing target' : 'onto the board'} to cast it. Casting does not end your turn.`;
     }
-    return 'Drag it to a free square on your back row to summon it, or onto one of your pieces (not the King) to seal it. Either one ends your turn.';
+    return 'Drag it to a free square on your back row to summon it, or onto one of your pieces (not the King) to seal it. Neither ends your turn: play more cards, then move a piece.';
   }
 
   /** The frame for a card, or for a piece whose card is missing from the view (name only). */
@@ -1198,7 +1202,7 @@ export class GameScreen {
   private renderHand(view: v2.PlayerView): void {
     const scroll = this.handEl.querySelector('.g2-handrow')?.scrollLeft ?? 0;
     this.handEl.innerHTML = '';
-    // The action ends the turn, so once it is taken the hand rests until the next turn.
+    // Off turn, the hand rests until your next one.
     const spent = view.phase === 'play' && view.status.kind === 'playing' && !this.solo && view.active !== view.you;
     this.handEl.classList.toggle('spent', spent);
     const label = el('div', 'g2-handlabel');
@@ -1378,18 +1382,19 @@ export class GameScreen {
       s.textContent = `Opponent's turn (${turn}).`;
       return;
     }
-    const check = view.inCheck ? ' You are in CHECK — get your King out of it.' : '';
     if (view.actionTaken) {
       s.textContent = `${who}: action done. End the turn.`;
       return;
     }
     const mana = `${view.mana[view.active]} mana`;
-    s.textContent = view.spellPlayed
-      ? `${who}: spell played, ${mana} left. Now move, summon or seal.${check}`
-      : view.inCheck
-        ? `${who}: turn ${turn}, ${mana}. No spell while in check: move, summon or seal to answer it.${check}`
-        : `${who}: turn ${turn}, ${mana}. Play a spell first if you want one, then move, summon or seal.${check}`;
-    s.append(el('span', 'g2-status-more', ' Your action ends the turn.'));
+    if (canEnd) {
+      s.textContent = `${who}: no move left, ${mana}. Play more cards if you like, then End turn.`;
+      return;
+    }
+    s.textContent = view.inCheck
+      ? `${who}: turn ${turn}, ${mana}. You are in CHECK: move out of it, or summon a piece that blocks it. No spells until your King is safe.`
+      : `${who}: turn ${turn}, ${mana}. Play any cards you can afford, then move a piece.`;
+    s.append(el('span', 'g2-status-more', ' The move ends your turn.'));
   }
 
   private renderCue(view: v2.PlayerView): void {
@@ -1398,15 +1403,13 @@ export class GameScreen {
     const show = mine && view.status.kind === 'playing' && view.phase === 'play' && !view.actionTaken;
     cue.classList.toggle('hidden', !show);
     if (!show) return;
-    const canCast = !view.spellPlayed && view.legalActions.some((a) => a.type === 'spell');
-    const spell = el('span', `g2-cue-step${view.spellPlayed ? ' done' : canCast ? '' : ' off'}`, view.spellPlayed ? '✓ Spell' : 'Spell');
-    const action = el('span', 'g2-cue-step now', 'one action');
-    spell.title = view.spellPlayed
-      ? 'Spell played'
-      : canCast ? 'Optional: play one spell before you act'
-      : view.inCheck ? 'No spell while your King is in check' : 'No spell you can play now';
-    action.title = 'Move, summon or seal. It ends your turn.';
-    cue.replaceChildren(spell, el('span', 'g2-cue-then', ', then '), action);
+    const canPlay = view.legalActions.some((a) => a.type === 'summon' || a.type === 'seal' || a.type === 'spell');
+    const canEnd = view.legalActions.some((a) => a.type === 'endTurn');
+    const cards = el('span', `g2-cue-step${canPlay ? '' : ' off'}`, 'Cards');
+    const finish = el('span', 'g2-cue-step now', canEnd ? 'End turn' : 'move');
+    cards.title = canPlay ? 'Optional: play any cards you can afford' : 'No card you can play now';
+    finish.title = canEnd ? 'No move left: End turn closes your turn.' : 'Move a piece. It ends your turn.';
+    cue.replaceChildren(cards, el('span', 'g2-cue-then', ', then '), finish);
   }
 
   private appendLog(view: v2.PlayerView): void {

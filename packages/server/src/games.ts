@@ -306,14 +306,14 @@ export class LiveGame {
     if (current.state.active !== color) throw new GameError('It is not your turn.');
     const before = current.state.active;
     let result: v2.ApplyResult;
-    // The engine ends the turn with the move, summon or seal itself (msg-034); a spell keeps it open.
+    // The engine ends the turn with the move itself, or End turn when no move is left; cards keep it open.
     try {
       result = v2.applyLegalAction(current.state, action);
     } catch {
       throw new GameError('That is not a legal action.');
     }
     const next = result.state;
-    if (action.type === 'spell') this.cardsThisTurn++;
+    if (action.type === 'spell' || action.type === 'summon' || action.type === 'seal') this.cardsThisTurn++;
     if (next.active !== before || next.status.kind !== 'playing') {
       this.settleClock(now, next.active !== before ? this.replayGrace() : 0);
       this.cardsThisTurn = 0;

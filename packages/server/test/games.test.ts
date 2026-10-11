@@ -127,30 +127,31 @@ describe('rules 2 games', () => {
   });
 });
 
-describe('spell, then one action that ends the turn (msg-034)', () => {
-  it('passes to the opponent with the action, in the same update', () => {
+describe('cards, then a move that ends the turn (Djabooty, 2026-10-10)', () => {
+  it('passes to the opponent with the move, in the same update', () => {
     const { game, white } = seatedGame(['squire', 'tower']);
     game.actV2(white, pick(game.record!.state, (a) => a.type === 'move'));
     expect(game.record!.state.active).toBe('black');
     expect(game.record!.events.map((e) => e.type)).toEqual(expect.arrayContaining(['moved', 'turnStarted']));
   });
 
-  it('an affordable spell in hand does not hold the turn open after the action', () => {
+  it('an affordable spell in hand does not hold the turn open after the move', () => {
     const { game, white } = seatedGame(['insight']);
     game.actV2(white, pick(game.record!.state, (a) => a.type === 'move'));
     expect(game.record!.state.active).toBe('black');
     expect(game.record!.state.hand.white.map((c) => c.cardId)).toContain('insight');
   });
 
-  it('a spell played before the action does not end the turn; the action then does', () => {
-    const { game, white } = seatedGame(['insight']);
+  it('cards played before the move do not end the turn; the move then does', () => {
+    const { game, white } = seatedGame(['insight', 'squire']);
     game.actV2(white, { type: 'spell', cardUid: 'h0' });
+    game.actV2(white, pick(game.record!.state, (a) => a.type === 'summon' && a.cardUid === 'h1'));
     expect(game.record!.state.active).toBe('white');
     game.actV2(white, pick(game.record!.state, (a) => a.type === 'move'));
     expect(game.record!.state.active).toBe('black');
   });
 
-  it('there is no End turn press and no pass', () => {
+  it('End turn is refused while a move is left, even after a card', () => {
     const { game, white } = seatedGame(['insight']);
     expect(() => game.actV2(white, { type: 'endTurn' })).toThrow(GameError);
     game.actV2(white, { type: 'spell', cardUid: 'h0' });

@@ -90,6 +90,8 @@ export interface Piece {
    * appears on owner turn N has activeFromTurn N + 1. Pieces deployed in setup use 0.
    */
   activeFromTurn: number;
+  /** Owner turn on which the piece was summoned. Until the owner's next turn it cannot move either. */
+  summonedOnTurn?: number;
 }
 
 export interface Seal {
@@ -119,7 +121,8 @@ export interface GameState {
   seals: Seal[];
   setupDeployed: Record<Color, number>;
   actionTaken: boolean;
-  spellPlayed: boolean;
+  /** A card (summon, seal or spell) was played this turn, so End turn may close it once no move is left. */
+  cardPlayed: boolean;
   status: GameStatus;
   nextId: number;
   rng: number;

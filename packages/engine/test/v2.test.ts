@@ -56,7 +56,7 @@ function bare(mana = 3): GameState {
   state.mana = { white: mana, black: mana };
   state.active = 'white';
   state.actionTaken = false;
-  state.spellPlayed = false;
+  state.cardPlayed = false;
   return state;
 }
 
@@ -154,7 +154,7 @@ describe('setup', () => {
 });
 
 describe('turn flow and resources', () => {
-  it('the action ends the turn: the other side gains +1 mana (no cap) and draws a card at once (msg-034)', () => {
+  it('a move ends the turn: the other side gains +1 mana (no cap) and draws a card at once', () => {
     let state = bare(40);
     state.deck.black = [{ uid: 'dk1', cardId: 'squire' }];
     expect(legalActions(state).some((a) => a.type === 'endTurn')).toBe(false);
@@ -166,29 +166,42 @@ describe('turn flow and resources', () => {
     expect(legalActions(state).some((a) => a.type === 'endTurn')).toBe(false);
   });
 
-  it('summoning and sealing end the turn too', () => {
-    const state = bare(10);
+  it('cards do not end the turn: play as many as the mana pays for, then the move ends it (Djabooty, 2026-10-10)', () => {
+    let state = bare(8);
     piece(state, 'white', 'initiate', 'c3');
     const squire = give(state, 'white', 'squire');
-    expect(act(state, find(state, (a) => a.type === 'summon' && a.cardUid === squire)).active).toBe('black');
-    expect(act(state, find(state, (a) => a.type === 'seal' && a.cardUid === squire)).active).toBe('black');
+    const page = give(state, 'white', 'page');
+    const insight = give(state, 'white', 'insight');
+    state.deck.white = [{ uid: 'a', cardId: 'tower' }, { uid: 'b', cardId: 'tower' }];
+    state = act(state, find(state, (a) => a.type === 'summon' && a.cardUid === squire && a.to === S('a1')));
+    state = act(state, find(state, (a) => a.type === 'seal' && a.cardUid === page && a.target === S('c3')));
+    state = act(state, { type: 'spell', cardUid: insight });
+    expect(state.active).toBe('white');
+    expect(state.mana.white).toBe(4);
+    expect(state.hand.white.map((c) => c.cardId)).toEqual(['tower', 'tower']);
+    // A Tower costs 5, so the cards are done; the move is all that is left.
+    expect(legalActions(state).every((a) => a.type === 'move')).toBe(true);
+    state = act(state, find(state, (a) => a.type === 'move'));
+    expect(state.active).toBe('black');
   });
 
-  it('allows one spell, then one action; the spell does not end the turn (msg-034)', () => {
+  it('casts more than one spell in a turn (Djabooty, 2026-10-10)', () => {
     const state = bare(10);
-    const insight = give(state, 'white', 'insight');
-    give(state, 'white', 'insight');
+    const first = give(state, 'white', 'insight');
+    const second = give(state, 'white', 'insight');
     state.deck.white = [{ uid: 'a', cardId: 'squire' }, { uid: 'b', cardId: 'squire' }, { uid: 'c', cardId: 'squire' }, { uid: 'd', cardId: 'squire' }];
-    let next = act(state, { type: 'spell', cardUid: insight });
+    let next = act(state, { type: 'spell', cardUid: first });
     expect(next.active).toBe('white');
     expect(next.hand.white.length).toBe(3);
-    expect(legalActions(next).some((a) => a.type === 'spell')).toBe(false);
-    expect(legalActions(next).some((a) => a.type === 'move')).toBe(true);
+    next = act(next, { type: 'spell', cardUid: second });
+    expect(next.active).toBe('white');
+    expect(next.hand.white.map((c) => c.uid)).toEqual(['a', 'b', 'c', 'd']);
+    expect(next.mana.white).toBe(6);
     next = act(next, find(next, (a) => a.type === 'move'));
     expect(next.active).toBe('black');
   });
 
-  it('no spell after the action: an affordable spell in hand does not hold the turn open (msg-034)', () => {
+  it('the move ends the turn even with affordable cards still in hand', () => {
     const state = bare(10);
     const insight = give(state, 'white', 'insight');
     state.deck.white = [{ uid: 'a', cardId: 'squire' }, { uid: 'b', cardId: 'squire' }];
@@ -198,7 +211,7 @@ describe('turn flow and resources', () => {
     expect(next.discard.white).toHaveLength(0);
   });
 
-  it('a King in check gets no spell first, only the action that answers the check (msg-036)', () => {
+  it('a King in check must be answered first: no spell, only a move or a summon that blocks', () => {
     let state = bare(10);
     piece(state, 'black', 'initiate', 'f7');
     state.seals.push({ id: 'sw', owner: 'white', square: S('d6'), card: STARTER_CATALOG.wyrmling as PieceCard, timer: 1 });
@@ -223,6 +236,25 @@ describe('turn flow and resources', () => {
     const quiet = legalActions(state).filter((a) => a.type === 'spell');
     expect(quiet.some((a) => a.type === 'spell' && state.hand.black.find((c) => c.uid === a.cardUid)?.cardId === 'insight')).toBe(true);
     expect(quiet.some((a) => a.type === 'spell' && a.target === S('a5'))).toBe(true);
+  });
+
+  it('a summon that blocks a check answers it, and the turn goes on until the move (Djabooty, 2026-10-10)', () => {
+    let state = bare(10);
+    piece(state, 'black', 'tower', 'a1');
+    const squire = give(state, 'white', 'squire');
+    const insight = give(state, 'white', 'insight');
+    state.deck.white = [{ uid: 'a', cardId: 'page' }, { uid: 'b', cardId: 'page' }];
+    expect(isInCheck(state, 'white')).toBe(true);
+    const blocks = legalActions(state).filter((a): a is Extract<Action, { type: 'summon' }> => a.type === 'summon');
+    expect(blocks.map((a) => a.to).sort((x, y) => x - y)).toEqual([S('b1'), S('c1')]);
+    expect(legalActions(state).some((a) => a.type === 'spell')).toBe(false);
+    state = act(state, find(state, (a) => a.type === 'summon' && a.cardUid === squire && a.to === S('c1')));
+    expect(isInCheck(state, 'white')).toBe(false);
+    expect(state.active).toBe('white');
+    state = act(state, { type: 'spell', cardUid: insight });
+    expect(state.active).toBe('white');
+    state = act(state, find(state, (a) => a.type === 'move'));
+    expect(state.active).toBe('black');
   });
 
   it('a game saved while an older rule held the turn open after the action can only end the turn', () => {
@@ -265,11 +297,27 @@ describe('summoning', () => {
     state = act(state, find(state, (a) => a.type === 'summon' && a.cardUid === tower && a.to === S('a1')));
     expect(pieceAt(state, S('a1'))!.activeFromTurn).toBe(2);
     expect(isInCheck(state, 'black')).toBe(true);
+    expect(state.active).toBe('white');
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('d1') && a.to === S('e1')));
     expect(state.active).toBe('black');
     expect(isInCheck(state, 'black')).toBe(true);
     const kingSteps = legalActions(state).filter((a) => a.type === 'move' && a.from === S('a8'));
     expect(kingSteps.some((a) => a.type === 'move' && a.to === S('a7'))).toBe(false);
     expect(kingSteps.some((a) => a.type === 'move' && a.to === S('b8'))).toBe(true);
+  });
+
+  it('a summoned piece cannot move until its owner\'s next turn (Djabooty, 2026-10-10)', () => {
+    let state = bare(10);
+    piece(state, 'black', 'initiate', 'f7');
+    const squire = give(state, 'white', 'squire');
+    state = act(state, find(state, (a) => a.type === 'summon' && a.cardUid === squire && a.to === S('a1')));
+    expect(legalActions(state).some((a) => a.type === 'move' && a.from === S('a1'))).toBe(false);
+    const fresh = (s: GameState) => viewFor({ state: s, seq: 0, events: [] }, 'white').pieces.find((p) => p.square === S('a1'))!.justSummoned;
+    expect(fresh(state)).toBe(true);
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('d1')));
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('f7')));
+    expect(legalActions(state).some((a) => a.type === 'move' && a.from === S('a1') && a.to === S('a2'))).toBe(true);
+    expect(fresh(state)).toBe(false);
   });
 });
 
@@ -337,9 +385,10 @@ describe('Dawnfang', () => {
     const dawnfang = give(state, 'white', 'dawnfang');
     state = act(state, find(state, (a) => a.type === 'seal' && a.cardUid === dawnfang && a.target === S('c3')));
     expect(sealAt(state, S('c3'))?.timer).toBe(2);
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('d1') && a.to === S('c1')));
     state = act(state, find(state, (a) => a.type === 'move' && a.from === S('a7') && a.to === S('a6')));
     expect(sealAt(state, S('c3'))?.timer).toBe(1);
-    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('d1') && a.to === S('c1')));
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('c1') && a.to === S('b1')));
     state = act(state, find(state, (a) => a.type === 'move' && a.from === S('a6') && a.to === S('a5')));
     expect(sealAt(state, S('c3'))).toBeUndefined();
     expect(pieceAt(state, S('c3'))?.cardId).toBe('dawnfang');
@@ -412,7 +461,7 @@ describe('Wyrmling', () => {
 });
 
 describe('sealing', () => {
-  it('seals only own non-King pieces, consumes the piece, and costs mana and the action', () => {
+  it('seals only own non-King pieces, consumes the piece, and costs mana; the turn goes on', () => {
     const state = bare(5);
     const mine = piece(state, 'white', 'initiate', 'c3');
     piece(state, 'black', 'initiate', 'c6');
@@ -425,7 +474,7 @@ describe('sealing', () => {
     expect(sealAt(next, mine.square)?.card.id).toBe('tower');
     expect(next.mana.white).toBe(0);
     expect(next.hand.white.some((c) => c.uid === tower)).toBe(false);
-    expect(next.active).toBe('black');
+    expect(next.active).toBe('white');
   });
 
   it('a timer-1 seal hatches at the start of its owner\'s next turn, after exactly one enemy move', () => {
@@ -434,12 +483,15 @@ describe('sealing', () => {
     const squire = give(state, 'white', 'squire');
     state = act(state, find(state, (a) => a.type === 'seal' && a.cardUid === squire));
     expect(sealAt(state, S('c3'))?.timer).toBe(1);
+    state = act(state, find(state, (a) => a.type === 'move'));
     expect(state.active).toBe('black');
     state = act(state, find(state, (a) => a.type === 'move'));
     expect(sealAt(state, S('c3'))).toBeUndefined();
     const hatched = pieceAt(state, S('c3'))!;
     expect(hatched.def.kind).toBe('squire');
     expect(hatched.activeFromTurn).toBe(state.turns.white + 1);
+    // Unlike a summoned piece, a hatched one may move at once; it only cannot capture yet.
+    expect(legalActions(state).some((a) => a.type === 'move' && a.from === S('c3'))).toBe(true);
   });
 
   it('a timer-3 seal waits three of its owner\'s turns', () => {
@@ -447,6 +499,7 @@ describe('sealing', () => {
     piece(state, 'white', 'initiate', 'c3');
     const tower = give(state, 'white', 'tower');
     state = act(state, find(state, (a) => a.type === 'seal' && a.cardUid === tower));
+    state = act(state, find(state, (a) => a.type === 'move'));
     for (let round = 1; round <= 3; round++) {
       state = act(state, find(state, (a) => a.type === 'move'));
       if (round < 3) {
@@ -473,6 +526,7 @@ describe('sealing', () => {
     piece(state, 'black', 'initiate', 'c4');
     const squire = give(state, 'white', 'squire');
     state = act(state, find(state, (a) => a.type === 'seal' && a.cardUid === squire));
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('d1')));
     state = act(state, find(state, (a) => a.type === 'move' && a.to === S('c3')));
     expect(sealAt(state, S('c3'))).toBeUndefined();
     expect(state.discard.white.map((c) => c.cardId)).toContain('squire');
@@ -548,7 +602,8 @@ describe('starter deck', () => {
     expect(legalActions(state).some((a) => a.type === 'spell' && a.cardUid === insight)).toBe(true);
     const sealed = act(state, find(state, (a) => a.type === 'seal' && a.cardUid === wyrmling));
     expect(sealed.mana.white).toBe(1);
-    expect(sealed.active).toBe('black');
+    expect(sealed.active).toBe('white');
+    expect(legalActions(sealed).some((a) => a.type === 'spell' && a.cardUid === insight)).toBe(false);
     const cast = act(state, { type: 'spell', cardUid: insight });
     expect(cast.mana.white).toBe(1);
     expect(legalActions(cast).some((a) => a.type === 'seal' && a.cardUid === wyrmling)).toBe(false);
@@ -581,10 +636,22 @@ describe('endgame', () => {
     expect(state.status).toEqual({ kind: 'checkmate', winner: 'white' });
   });
 
-  it('there is no pass: endTurn needs an action first', () => {
-    const state = bare(0);
+  it('there is no pass: End turn only once no move is left, and only after a card (Djabooty, 2026-10-10)', () => {
+    let state = bare(1);
     expect(legalActions(state).some((a) => a.type === 'endTurn')).toBe(false);
     expect(() => applyLegalAction(state, { type: 'endTurn' })).toThrow();
+    // Boxed in by its own seals, the King has no move, but a Squire can still be summoned.
+    state.pieces.find((p) => p.owner === 'white')!.square = S('a1');
+    for (const [id, square] of [['s1', 'a2'], ['s2', 'b1'], ['s3', 'b2']] as const) {
+      state.seals.push({ id, owner: 'white', square: S(square), card: STARTER_CATALOG.tower as PieceCard, timer: 5 });
+    }
+    const squire = give(state, 'white', 'squire');
+    expect(legalActions(state).some((a) => a.type === 'move')).toBe(false);
+    expect(legalActions(state).some((a) => a.type === 'endTurn')).toBe(false);
+    state = act(state, find(state, (a) => a.type === 'summon' && a.cardUid === squire));
+    expect(legalActions(state)).toEqual([{ type: 'endTurn' }]);
+    state = act(state, { type: 'endTurn' });
+    expect(state.active).toBe('black');
   });
 
   it('an empty deck skips the draw with no deck-out loss; checkmate stays the only win (msg-033)', () => {
@@ -629,7 +696,7 @@ describe('full games', () => {
       for (let step = 0; step < 500 && state.status.kind === 'playing'; step++) {
         const actions = legalActions(state);
         expect(actions.length).toBeGreaterThan(0);
-        expect(actions.some((a) => a.type === 'endTurn')).toBe(false);
+        if (actions.some((a) => a.type === 'endTurn')) expect(actions.some((a) => a.type === 'move')).toBe(false);
         pick = (pick * 1103515245 + 12345) & 0x7fffffff;
         state = act(state, actions[pick % actions.length]!);
       }

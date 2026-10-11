@@ -49,6 +49,8 @@ export interface ViewPiece {
   king: boolean;
   /** False while the piece has summoning sickness: it cannot capture yet (it still gives check). */
   active: boolean;
+  /** Summoned during its owner's current turn: it cannot move until the owner's next turn either. */
+  justSummoned: boolean;
 }
 
 export interface ViewSeal {
@@ -80,7 +82,7 @@ export interface PlayerView {
   setupDeployed: Record<Color, number>;
   setupTotal: number;
   actionTaken: boolean;
-  spellPlayed: boolean;
+  cardPlayed: boolean;
   inCheck: boolean;
   /** Legal actions for the side to move when it is you (or both sides, in a practice game). */
   legalActions: Action[];
@@ -154,12 +156,13 @@ export function viewFor(record: GameRecord, you: Color, opts: ViewOptions = {}):
       square: p.square,
       king: !!p.def.king,
       active: isActive(state, p),
+      justSummoned: p.summonedOnTurn === state.turns[p.owner],
     })),
     seals: state.seals.map((s) => ({ id: s.id, owner: s.owner, square: s.square, cardId: s.card.id, timer: s.timer })),
     setupDeployed: state.setupDeployed,
     setupTotal: SETUP_PIECES,
     actionTaken: state.actionTaken,
-    spellPlayed: state.spellPlayed,
+    cardPlayed: state.cardPlayed === true,
     inCheck: playing && state.phase === 'play' && isInCheck(state, state.active),
     legalActions: playing && state.active === viewer ? legalActions(state) : [],
     cards: Object.fromEntries(Object.values(state.catalog).map((c) => [c.id, viewCard(c)])),

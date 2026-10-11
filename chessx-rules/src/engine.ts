@@ -102,7 +102,7 @@ export function newGame(options: NewGameOptions): GameState {
     seals: [],
     setupDeployed: { white: 0, black: 0 },
     actionTaken: false,
-    spellPlayed: false,
+    cardPlayed: false,
     status: { kind: 'playing' },
     nextId: 0,
     rng: options.seed | 0,
@@ -272,9 +272,10 @@ function applyAction(state: GameState, action: Action, events: GameEvent[]): voi
         cardId: card.id,
         square: action.to,
         activeFromTurn: state.turns[color] + 1,
+        summonedOnTurn: state.turns[color],
       };
       state.pieces.push(piece);
-      state.actionTaken = true;
+      state.cardPlayed = true;
       events.push({ type: 'summoned', color, pieceId: piece.id, square: piece.square });
       return;
     }
@@ -287,7 +288,7 @@ function applyAction(state: GameState, action: Action, events: GameEvent[]): voi
       state.pieces = state.pieces.filter((p) => p.id !== consumed.id);
       const seal: Seal = { id: newId(state, 's'), owner: color, square: action.target, card, timer: card.sealTimer };
       state.seals.push(seal);
-      state.actionTaken = true;
+      state.cardPlayed = true;
       events.push({ type: 'sealed', color, sealId: seal.id, square: seal.square, consumedPieceId: consumed.id, timer: seal.timer });
       return;
     }
@@ -297,7 +298,7 @@ function applyAction(state: GameState, action: Action, events: GameEvent[]): voi
       if (!card || card.type !== 'spell') throw new Error('Not a spell');
       state.mana[color] -= card.cost;
       state.discard[color].push(instance);
-      state.spellPlayed = true;
+      state.cardPlayed = true;
       events.push({ type: 'spellPlayed', color, cardId: card.id, target: action.target });
       if (card.effect.kind === 'draw') {
         draw(state, color, card.effect.count, events);
@@ -361,7 +362,7 @@ function moveActions(state: GameState): Action[] {
   const color = state.active;
   const out: Action[] = [];
   for (const piece of state.pieces) {
-    if (piece.owner !== color) continue;
+    if (piece.owner !== color || piece.summonedOnTurn === state.turns[color]) continue;
     const sick = !isActive(state, piece);
     for (const reach of reaches(state, piece)) {
       const empty = reach.occupant === null;
@@ -404,10 +405,6 @@ function sealActions(state: GameState): Action[] {
   return out;
 }
 
-function mainActions(state: GameState): Action[] {
-  return [...moveActions(state), ...summonActions(state), ...sealActions(state)];
-}
-
 function spellActions(state: GameState): Action[] {
   const color = state.active;
   const out: Action[] = [];
@@ -417,32 +414,33 @@ function spellActions(state: GameState): Action[] {
     const candidates: Action[] = card.effect.kind === 'destroySeal'
       ? state.seals.map((s) => ({ type: 'spell', cardUid: instance.uid, target: s.square }) as Action)
       : [{ type: 'spell', cardUid: instance.uid }];
-    for (const action of candidates) {
-      const after = tryAction(state, action);
-      if (isInCheck(after, color)) continue;
-      // The action still has to follow the spell, so a spell that leaves none is not playable.
-      if (mainActions(after).length === 0) continue;
-      out.push(action);
-    }
+    for (const action of candidates) if (safe(state, action)) out.push(action);
   }
   return out;
 }
 
+function cardActions(state: GameState): Action[] {
+  return [...summonActions(state), ...sealActions(state), ...spellActions(state)];
+}
+
 /**
- * A turn is: optionally one spell, then one action, and the action ends the turn (msg-034). There is no
- * pass. A King in check gets no spell first, only the action that answers the check (msg-036).
- * `endTurn` is only legal in a game saved while an older rule kept the turn open after the action.
+ * A turn is: play any cards the mana pays for (summon, seal, spell), then move a piece, and the move ends the
+ * turn (Djabooty, 2026-10-10). Nothing may leave your own King in check, so a King in check is answered first,
+ * by a move or by a summon that blocks; no spell can do it. End turn closes a turn only when no move is left,
+ * and only after a card, so there is still no pass. `actionTaken` is a game saved while an older rule kept the
+ * turn open after the action.
  */
 export function legalActions(state: GameState): Action[] {
   if (state.status.kind !== 'playing') return [];
   if (state.phase === 'setup') return deployActions(state);
   if (state.actionTaken) return [{ type: 'endTurn' }];
-  const out = mainActions(state);
-  if (!state.spellPlayed && !isInCheck(state, state.active)) out.push(...spellActions(state));
+  const moves = moveActions(state);
+  const out = [...moves, ...cardActions(state)];
+  if (moves.length === 0 && state.cardPlayed) out.push({ type: 'endTurn' });
   return out;
 }
 
-const ENDS_TURN: ReadonlySet<Action['type']> = new Set(['move', 'summon', 'seal']);
+const ENDS_TURN: ReadonlySet<Action['type']> = new Set(['move']);
 
 // ---------------------------------------------------------------------------
 // Turn flow
@@ -452,7 +450,7 @@ function startTurn(state: GameState, color: Color, events: GameEvent[]): void {
   state.turns[color] += 1;
   state.mana[color] += 1;
   state.actionTaken = false;
-  state.spellPlayed = false;
+  state.cardPlayed = false;
   events.push({ type: 'turnStarted', color, turn: state.turns[color], mana: state.mana[color] });
   draw(state, color, 1, events);
 
@@ -474,7 +472,7 @@ function startTurn(state: GameState, color: Color, events: GameEvent[]): void {
   }
 
   if (isInCheck(state, color)) events.push({ type: 'check', color });
-  if (mainActions(state).length === 0) {
+  if (moveActions(state).length === 0 && cardActions(state).length === 0) {
     state.status = isInCheck(state, color)
       ? { kind: 'checkmate', winner: opposite(color) }
       : { kind: 'stalemate' };

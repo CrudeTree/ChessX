@@ -4729,10 +4729,6 @@ button,
   text-decoration: line-through;
 }
 
-.g2-cue-step.done {
-  color: #7fd18b;
-}
-
 .g2-cue-step.now {
   color: var(--accent);
 }
