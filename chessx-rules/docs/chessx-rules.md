@@ -18,13 +18,20 @@ Source: Djabooty, 2026-10-05. This is the rules baseline to design, playtest, an
 
 The rook, bishop, knight and queen are the top of a line, never a card you summon. Level 1 is summoned or sacrificed for like any piece; levels 2 and 3 only evolve from the level below. The weaker the first level, the stronger the last. Costs are placeholders to playtest.
 
-- **Warrior (the rook):** Recruit (1 mana, steps 1 square straight), then Warrior (3, slides up to 3 squares straight), then Warlord (5, slides straight any distance).
-- **Mage (the bishop):** Apprentice (1, steps 1 square diagonally), then Mage (2, slides up to 3 squares diagonally), then Archmage (3, slides diagonally any distance).
-- **Paladin (the knight):** Colt (1, knight leaps that go forward), then Paladin (2, leaps like a knight), then Dawn Paladin (6, a knight leap or 1 square straight) or Eclipse Knight (6, a knight leap or 1 square diagonally).
-- **Dragon (the queen):** Wyrmling (2, leaps exactly 2 squares straight), then Mystic Dragon (5, slides any direction up to 3 squares), then Ancient Mystic Dragon (9, slides any direction any distance).
+**Costs (changed by Djabooty, 2026-10-11):** Pieces were too easy to get, so the costs went up and a Paladin now costs at least 4. Every level costs more than the one below it. A first level that leaps off the back row (Colt, Wyrmling) costs 2; one that steps (Recruit, Apprentice) costs 1.
+
+- **Warrior (the rook):** Recruit (1 mana, steps 1 square straight), then Warrior (4, slides up to 3 squares straight), then Warlord (6, slides straight any distance).
+- **Mage (the bishop):** Apprentice (1, steps 1 square diagonally), then Mage (3, slides up to 3 squares diagonally), then Archmage (4, slides diagonally any distance).
+- **Paladin (the knight):** Colt (2, knight leaps that go forward), then Paladin (4, leaps like a knight), then Dawn Paladin (7, a knight leap or 1 square straight) or Eclipse Knight (7, a knight leap or 1 square diagonally).
+- **Dragon (the queen):** Wyrmling (2, leaps exactly 2 squares straight), then Mystic Dragon (6, slides any direction up to 3 squares), then Ancient Mystic Dragon (10, slides any direction any distance).
+- **How soon:** A player who saves for nothing else can have a Paladin on turn 4 at the earliest, an Archmage on turn 6, a Warlord on turn 9, a Dawn Paladin or Eclipse Knight on turn 11 and an Ancient Mystic Dragon on turn 16.
 - **No line:** Initiate and Squire are the pawns and do not evolve. Duskfang has no line, so it costs 15 to make up for it.
 - **Where the old cards went:** Page became the Recruit, Hopper the Paladin, Cathedral Runner the Archmage and Tower the Warlord. Dawnfang moved exactly like Eclipse Knight and was folded into it. Games already in progress keep the cards they started with.
 - **Starter deck:** 24 cards: 2 Initiates and 1 Squire; for each line two level 1 cards and one of every higher level (both Paladin final forms); 1 Duskfang; 2 Insight and 1 Dispel.
+
+## Card faces (Djabooty, 2026-10-11)
+
+Every card has two faces: a light face for the player with White and a dark face for the player with Black. Owning a card gives you both. The light face looks holy, majestic and noble (think Gandalf the White); the dark face looks mighty, powerful and dark (think Sauron). The Paladin is the first card with both faces. A card that has only one picture shows it to both sides until it gets its second face.
 
 ## What was removed
 
@@ -45,7 +52,7 @@ The rook, bishop, knight and queen are the top of a line, never a card you summo
 - **Check is a board fact (changed by Djabooty, 2026-10-08):** A sick piece cannot capture, but it still attacks the squares it reaches. It gives check the moment it appears, and the enemy King cannot step into its reach. Example: a Wyrmling arrives on d6, Black must answer check on d8 at once, and no King step into the Wyrmling's reach is legal. The same holds for back-row summons and for evolved pieces. This replaces the 10-05 ruling that sick pieces cannot give check.
 - **Starting pieces (changed by Djabooty, 2026-10-08):** Each side gets 3 Initiates from outside the deck, placed on c2, d2 and e2 (White) or c7, d7 and e7 (Black) before turn 1, with no summoning sickness. They shield the King from instant check and leave the back row free for summoning. Players keep their whole opening hand. The starter deck keeps 2 Initiates as mid-game free bodies. This replaces the opening where players deployed 3 zero-cost pieces from their hand to the back row.
 - **Opening hand (changed by Djabooty, 2026-10-10):** Players draw 3 cards before the game instead of 7. The draw of 1 card at the start of every turn is unchanged, so White holds 4 cards on its first turn. Hands were piling up: a player who kept every card held 17 on their 10th turn, and now holds 13.
-- **Costs (changed by Djabooty, 2026-10-11):** Any piece card in hand can be summoned or sacrificed for, except an evolution card, which can only evolve a piece. The cost is the mana value printed on the card. Mana grows by only +1 per turn, so that growth is the pacing of the game. A 3-cost piece is a mid-game investment and a 5-cost piece is a game-defining play that takes several turns of saving. A line spreads its top piece over several turns: a Wyrmling, a Mystic Dragon and an Ancient Mystic Dragon cost 16 mana in all.
+- **Costs (changed by Djabooty, 2026-10-11):** Any piece card in hand can be summoned or sacrificed for, except an evolution card, which can only evolve a piece. The cost is the mana value printed on the card. Mana grows by only +1 per turn, so that growth is the pacing of the game. A 3-cost piece is a mid-game investment and a 5-cost piece is a game-defining play that takes several turns of saving. A line spreads its top piece over several turns: a Wyrmling, a Mystic Dragon and an Ancient Mystic Dragon cost 18 mana in all.
 - **No legal action (changed by Djabooty, 2026-10-10):** Stalemate. A player cannot pass. If a player has no legal move and no card they can play when their turn starts, and their King is not in check, the game is a draw by stalemate. If the King is in check and nothing resolves it, that is checkmate. A player who can still play a card is not stalemated: they play it, and End turn closes the turn if no move is left.
 - **Where a sacrifice can go:** Only on one of your own non-King pieces. A King can never be sacrificed, because it is your win condition and cannot be used as a resource.
 - **Timer length:** The timer is printed on the card. It is a core balancing lever. A cheap, low-impact piece might have a timer of 1, while a game-changing piece might have a timer of 3, giving the opponent more time to respond. Evolution cards have no timer (Djabooty, 2026-10-11).

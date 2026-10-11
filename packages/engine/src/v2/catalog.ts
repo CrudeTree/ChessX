@@ -87,26 +87,43 @@ const DUSKFANG: PieceDef = {
  * on its square. Sliders reach 1 square, then up to 3, then any distance. Evolution cards are never sealed, so their
  * `sealTimer` is 0. Page, Tower, Cathedral Runner and Hopper became the Recruit, Warlord, Archmage and Paladin;
  * Dawnfang moved exactly like Eclipse Knight and was folded into it.
+ *
+ * Costs raised so strong pieces come later (Djabooty, 2026-10-11): a Paladin costs at least 4. Every level costs
+ * more than the one below it, and a first level that leaps off the back row (Colt, Wyrmling) costs 2, not 1.
  */
 export const STARTER_CATALOG: Record<string, Card> = {
   initiate: { type: 'piece', id: 'initiate', name: 'Initiate', cost: 0, sealTimer: 1, piece: INITIATE },
   squire: { type: 'piece', id: 'squire', name: 'Squire', cost: 1, sealTimer: 1, piece: SQUIRE },
 
   recruit: { type: 'piece', id: 'recruit', name: 'Recruit', cost: 1, sealTimer: 1, piece: RECRUIT, line: 'Warrior', level: 1 },
-  warrior: { type: 'piece', id: 'warrior', name: 'Warrior', cost: 3, sealTimer: 0, piece: WARRIOR, line: 'Warrior', level: 2, evolvesFrom: 'recruit' },
-  warlord: { type: 'piece', id: 'warlord', name: 'Warlord', cost: 5, sealTimer: 0, piece: WARLORD, line: 'Warrior', level: 3, evolvesFrom: 'warrior' },
+  warrior: { type: 'piece', id: 'warrior', name: 'Warrior', cost: 4, sealTimer: 0, piece: WARRIOR, line: 'Warrior', level: 2, evolvesFrom: 'recruit' },
+  warlord: { type: 'piece', id: 'warlord', name: 'Warlord', cost: 6, sealTimer: 0, piece: WARLORD, line: 'Warrior', level: 3, evolvesFrom: 'warrior' },
 
   apprentice: { type: 'piece', id: 'apprentice', name: 'Apprentice', cost: 1, sealTimer: 1, piece: APPRENTICE, line: 'Mage', level: 1 },
-  mage: { type: 'piece', id: 'mage', name: 'Mage', cost: 2, sealTimer: 0, piece: MAGE, line: 'Mage', level: 2, evolvesFrom: 'apprentice' },
-  archmage: { type: 'piece', id: 'archmage', name: 'Archmage', cost: 3, sealTimer: 0, piece: ARCHMAGE, line: 'Mage', level: 3, evolvesFrom: 'mage' },
+  mage: { type: 'piece', id: 'mage', name: 'Mage', cost: 3, sealTimer: 0, piece: MAGE, line: 'Mage', level: 2, evolvesFrom: 'apprentice' },
+  archmage: { type: 'piece', id: 'archmage', name: 'Archmage', cost: 4, sealTimer: 0, piece: ARCHMAGE, line: 'Mage', level: 3, evolvesFrom: 'mage' },
 
-  colt: { type: 'piece', id: 'colt', name: 'Colt', cost: 1, sealTimer: 1, piece: COLT, line: 'Paladin', level: 1 },
-  paladin: { type: 'piece', id: 'paladin', name: 'Paladin', cost: 2, sealTimer: 0, piece: PALADIN, line: 'Paladin', level: 2, evolvesFrom: 'colt' },
+  colt: { type: 'piece', id: 'colt', name: 'Colt', cost: 2, sealTimer: 1, piece: COLT, line: 'Paladin', level: 1 },
+  paladin: {
+    type: 'piece',
+    id: 'paladin',
+    name: 'Paladin',
+    cost: 4,
+    sealTimer: 0,
+    piece: PALADIN,
+    line: 'Paladin',
+    level: 2,
+    evolvesFrom: 'colt',
+    art: '/art/paladin_white.png',
+    boardArt: '/art/paladin_white.png',
+    darkArt: '/art/paladin_dark.png',
+    darkBoardArt: '/art/paladin_dark.png',
+  },
   dawn_paladin: {
     type: 'piece',
     id: 'dawn_paladin',
     name: 'Dawn Paladin',
-    cost: 6,
+    cost: 7,
     sealTimer: 0,
     piece: DAWN_PALADIN,
     line: 'Paladin',
@@ -119,7 +136,7 @@ export const STARTER_CATALOG: Record<string, Card> = {
     type: 'piece',
     id: 'eclipse_knight',
     name: 'Eclipse Knight',
-    cost: 6,
+    cost: 7,
     sealTimer: 0,
     piece: ECLIPSE_KNIGHT,
     line: 'Paladin',
@@ -130,12 +147,12 @@ export const STARTER_CATALOG: Record<string, Card> = {
   },
 
   wyrmling: { type: 'piece', id: 'wyrmling', name: 'Wyrmling', cost: 2, sealTimer: 1, piece: WYRMLING, line: 'Dragon', level: 1, art: '/art/pic-002.png', boardArt: '/art/pic-002.png' },
-  mystic_dragon: { type: 'piece', id: 'mystic_dragon', name: 'Mystic Dragon', cost: 5, sealTimer: 0, piece: MYSTIC_DRAGON, line: 'Dragon', level: 2, evolvesFrom: 'wyrmling' },
+  mystic_dragon: { type: 'piece', id: 'mystic_dragon', name: 'Mystic Dragon', cost: 6, sealTimer: 0, piece: MYSTIC_DRAGON, line: 'Dragon', level: 2, evolvesFrom: 'wyrmling' },
   ancient_mystic_dragon: {
     type: 'piece',
     id: 'ancient_mystic_dragon',
     name: 'Ancient Mystic Dragon',
-    cost: 9,
+    cost: 10,
     sealTimer: 0,
     piece: ANCIENT_MYSTIC_DRAGON,
     line: 'Dragon',

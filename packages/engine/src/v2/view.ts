@@ -37,6 +37,9 @@ export interface ViewCard {
   art?: string;
   /** Pieces: picture for the board token, when the card has one. */
   boardArt?: string;
+  /** Black's face of the card, when it has one; draw a copy through `faceArt` to get its owner's face. */
+  darkArt?: string;
+  darkBoardArt?: string;
   /** Pieces: the card this one evolves from; it can only be played onto a piece of that card. */
   evolvesFrom?: string;
   /** Pieces: the evolution line and the level in it, 1 to 3. */
@@ -127,6 +130,15 @@ export function describeMovement(def: PieceDef): string {
   return def.rules.map(describeRule).join('. ') + '.';
 }
 
+/** The pictures on `owner`'s copy of a card: Black gets the card's dark face when it has one. */
+export function faceArt(
+  card: Pick<ViewCard, 'art' | 'boardArt' | 'darkArt' | 'darkBoardArt'>,
+  owner: Color,
+): { art?: string; boardArt?: string } {
+  if (owner === 'black') return { art: card.darkArt ?? card.art, boardArt: card.darkBoardArt ?? card.boardArt };
+  return { art: card.art, boardArt: card.boardArt };
+}
+
 function viewCard(card: Card): ViewCard {
   const out: ViewCard =
     card.type === 'piece'
@@ -142,8 +154,10 @@ function viewCard(card: Card): ViewCard {
         }
       : { id: card.id, type: 'spell', name: card.name, cost: card.cost, text: card.text };
   if (card.art) out.art = card.art;
+  if (card.darkArt) out.darkArt = card.darkArt;
   if (card.type === 'piece') {
     if (card.boardArt) out.boardArt = card.boardArt;
+    if (card.darkBoardArt) out.darkBoardArt = card.darkBoardArt;
     if (card.evolvesFrom) out.evolvesFrom = card.evolvesFrom;
     if (card.line) out.line = card.line;
     if (card.level) out.level = card.level;

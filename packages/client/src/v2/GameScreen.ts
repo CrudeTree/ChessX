@@ -708,7 +708,7 @@ export class GameScreen {
 
   private pieceToken(piece: v2.ViewPiece, view: v2.PlayerView): HTMLElement {
     const card = piece.cardId ? view.cards[piece.cardId] : undefined;
-    const boardArt = card?.boardArt;
+    const boardArt = card ? v2.faceArt(card, piece.owner).boardArt : undefined;
     const tok = el('div', `g2-piece ${piece.owner}${piece.king ? ' king' : ''}${piece.active ? '' : ' sick'}${boardArt ? ' art' : ''}`);
     if (boardArt) tok.style.backgroundImage = `url("${boardArt}")`;
     else tok.append(el('span', 'g2-piece-glyph', glyphFor(piece.kind, piece.name)));
@@ -1077,7 +1077,7 @@ export class GameScreen {
     info.append(head);
 
     if (frame.rules) {
-      const boardArt = card?.type === 'piece' ? card.boardArt : undefined;
+      const boardArt = card?.type === 'piece' ? v2.faceArt(card, owner).boardArt : undefined;
       info.append(
         el('div', 'g2-inspect-label', 'How it moves'),
         movementPanel({ rules: frame.rules, owner, glyph: frame.glyph, art: boardArt }, this.seat === 'black'),
@@ -1124,7 +1124,7 @@ export class GameScreen {
       level: card.level,
       evolvesFrom: card.evolvesFrom ? (this.view?.cards[card.evolvesFrom]?.name ?? card.evolvesFrom) : undefined,
       text: card.text,
-      art: card.art,
+      art: v2.faceArt(card, owner).art,
       glyph: card.type === 'spell' ? SPELL_GLYPH : glyphFor(card.id, card.name),
       owner,
       rules: card.rules,

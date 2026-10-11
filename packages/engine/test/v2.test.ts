@@ -4,6 +4,7 @@ import {
   KING,
   STARTER_CATALOG,
   applyLegalAction,
+  faceArt,
   isInCheck,
   legalActions,
   newGame,
@@ -324,9 +325,9 @@ describe('summoning', () => {
 });
 
 describe('Dawn Paladin', () => {
-  it('costs 6 (Djabooty, 2026-10-10), ends the Paladin line, and leaps like a knight or steps one square straight', () => {
+  it('costs 7 (Djabooty, 2026-10-11), ends the Paladin line, and leaps like a knight or steps one square straight', () => {
     const card = STARTER_CATALOG.dawn_paladin!;
-    expect(card).toMatchObject({ type: 'piece', cost: 6, line: 'Paladin', level: 3, evolvesFrom: 'paladin' });
+    expect(card).toMatchObject({ type: 'piece', cost: 7, line: 'Paladin', level: 3, evolvesFrom: 'paladin' });
     expect(starterDeck().filter((id) => id === 'dawn_paladin')).toHaveLength(1);
     const state = bare(0);
     piece(state, 'white', 'dawn_paladin', 'c4');
@@ -364,9 +365,9 @@ describe('Duskfang', () => {
 });
 
 describe('Eclipse Knight', () => {
-  it('costs 6, is the Paladin line\'s other final form (it took in Dawnfang, which moved the same), and leaps like a knight or steps one square diagonally', () => {
+  it('costs 7, is the Paladin line\'s other final form (it took in Dawnfang, which moved the same), and leaps like a knight or steps one square diagonally', () => {
     const card = STARTER_CATALOG.eclipse_knight!;
-    expect(card).toMatchObject({ type: 'piece', cost: 6, line: 'Paladin', level: 3, evolvesFrom: 'paladin' });
+    expect(card).toMatchObject({ type: 'piece', cost: 7, line: 'Paladin', level: 3, evolvesFrom: 'paladin' });
     expect(starterDeck().filter((id) => id === 'eclipse_knight')).toHaveLength(1);
     expect(STARTER_CATALOG.dawnfang).toBeUndefined();
     const state = bare(0);
@@ -534,7 +535,7 @@ describe('evolving (Djabooty, 2026-10-11)', () => {
     expect(evolved).toMatchObject({ owner: 'white', cardId: 'warrior' });
     expect(evolved.def.kind).toBe('warrior');
     expect(next.pieces.some((p) => p.id === recruit.id)).toBe(false);
-    expect(next.mana.white).toBe(2);
+    expect(next.mana.white).toBe(1);
     expect(next.hand.white).toHaveLength(0);
     expect(next.active).toBe('white');
     expect(next.cardPlayed).toBe(true);
@@ -628,7 +629,7 @@ describe('evolving (Djabooty, 2026-10-11)', () => {
     state = act(state, find(state, (a) => a.type === 'move' && a.from === S('a8') && a.to === S('b8')));
     expect(moveTargets(state, 'd4')).toHaveLength(24);
     state = act(state, find(state, (a) => a.type === 'evolve' && a.cardUid === ancient));
-    expect(state.mana.white).toBe(20 - 5 + 1 - 9);
+    expect(state.mana.white).toBe(20 - 6 + 1 - 10);
     state = act(state, find(state, (a) => a.type === 'move' && a.from === S('e1') && a.to === S('f1')));
     state = act(state, find(state, (a) => a.type === 'move' && a.from === S('b8') && a.to === S('a8')));
     expect(pieceAt(state, S('d4'))?.def.kind).toBe('ancient_mystic_dragon');
@@ -711,6 +712,19 @@ describe('starter deck', () => {
       expect(deck.has(card.evolvesFrom)).toBe(true);
       expect(from).toMatchObject({ type: 'piece', line: card.line, level: card.level! - 1 });
     }
+  });
+
+  it('prices strong pieces late (Djabooty, 2026-10-11): a Paladin costs at least 4, and every level costs more than the one below', () => {
+    expect(STARTER_CATALOG.paladin!.cost).toBeGreaterThanOrEqual(4);
+    for (const card of Object.values(STARTER_CATALOG)) {
+      if (card.type !== 'piece' || !card.evolvesFrom) continue;
+      expect(card.cost, card.id).toBeGreaterThan(STARTER_CATALOG[card.evolvesFrom]!.cost);
+    }
+    const lineCost = (top: string): number => {
+      const card = STARTER_CATALOG[top]!;
+      return card.cost + (card.type === 'piece' && card.evolvesFrom ? lineCost(card.evolvesFrom) : 0);
+    };
+    expect([lineCost('paladin'), lineCost('archmage'), lineCost('warlord'), lineCost('dawn_paladin'), lineCost('ancient_mystic_dragon')]).toEqual([6, 8, 11, 13, 18]);
   });
 
   it('holds at most four cost-2 piece cards', () => {
@@ -926,6 +940,19 @@ describe('port additions', () => {
     expect(cards.squire!.art).toBeUndefined();
     expect(cards.squire!.boardArt).toBeUndefined();
     expect(cards.insight!.art).toBeUndefined();
+  });
+
+  it('gives each side its own face of a two-faced card: light for White, dark for Black (Djabooty, 2026-10-11)', () => {
+    const cards = viewFor({ state: bare(), seq: 0, events: [] }, 'white').cards;
+    const light = { art: '/art/paladin_white.png', boardArt: '/art/paladin_white.png' };
+    const dark = { art: '/art/paladin_dark.png', boardArt: '/art/paladin_dark.png' };
+    expect(cards.paladin).toMatchObject({ ...light, darkArt: dark.art, darkBoardArt: dark.boardArt });
+    expect(faceArt(cards.paladin!, 'white')).toEqual(light);
+    expect(faceArt(cards.paladin!, 'black')).toEqual(dark);
+    // A card with one picture shows it to both sides.
+    expect(cards.wyrmling).not.toHaveProperty('darkArt');
+    expect(faceArt(cards.wyrmling!, 'black')).toEqual(faceArt(cards.wyrmling!, 'white'));
+    expect(faceArt(cards.squire!, 'black')).toEqual({ art: undefined, boardArt: undefined });
   });
 
   it('resigned and timeout results end the game with no legal actions', () => {

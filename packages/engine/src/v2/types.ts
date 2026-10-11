@@ -70,6 +70,12 @@ export interface PieceCard {
   art?: string;
   /** Picture drawn inside the piece token on the board. */
   boardArt?: string;
+  /**
+   * Black's face of the card (Djabooty, 2026-10-11): a card has a light face for White and a dark one for Black,
+   * and owning it gives you both. Without these, both sides see `art` and `boardArt`.
+   */
+  darkArt?: string;
+  darkBoardArt?: string;
 }
 
 export type SpellEffect = { kind: 'destroySeal' } | { kind: 'draw'; count: number };
@@ -82,6 +88,8 @@ export interface SpellCard {
   effect: SpellEffect;
   text: string;
   art?: string;
+  /** Black's face of the card, as for pieces. */
+  darkArt?: string;
 }
 
 export type Card = PieceCard | SpellCard;
