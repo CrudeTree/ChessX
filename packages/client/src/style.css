@@ -4816,6 +4816,46 @@ button,
   width: 100%;
 }
 
+/* Sound switches (sound.ts) and the music's credit. */
+.g2-sound-switches {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.g2-sound-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 10px;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.g2-sound-btn svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+
+.g2-sound-btn.on {
+  color: var(--accent);
+  border-color: rgba(212, 162, 76, 0.55);
+}
+
+.g2-credit {
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.g2-credit a {
+  color: inherit;
+}
+
 /* ------------------------------------------------------------ effects (fx.ts) */
 .g2-fx {
   position: absolute;

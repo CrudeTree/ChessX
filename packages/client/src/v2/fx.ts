@@ -14,9 +14,9 @@ export type Vanish = 'capture' | 'consume' | 'shatter';
 /** How long a summon's card takes to dive into its square before the circle opens. */
 export const CARD_DIVE_MS = 320;
 /** From the circle opening to the burst as the piece lands (the burst's delay in style.css). */
-const BURST_MS = 250;
+export const BURST_MS = 250;
 /** How long a hatching seal cracks before its circle opens (--t0 of .g2-fx-spot.hatch). */
-const HATCH_T0_MS = 230;
+export const HATCH_T0_MS = 230;
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 

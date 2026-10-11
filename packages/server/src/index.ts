@@ -5,7 +5,7 @@
 
 import { allCards, currentBalance, hasCard, hasPieceDef, STANDARD_KINDS, type ArenaOp } from '@chessx/engine';
 import { PROTOCOL_VERSION, decode, encode, levelFor, type ClientMessage, type PlayerInfo, type ServerMessage, type SiteStats } from '@chessx/protocol';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { dirname, extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -150,7 +150,17 @@ const MIME: Record<string, string> = {
   '.ico': 'image/x-icon',
   '.woff2': 'font/woff2',
   '.webmanifest': 'application/manifest+json',
+  '.mp3': 'audio/mpeg',
 };
+
+/** The bytes asked for by a `Range: bytes=…` header (its first range only), 'invalid' if none of them exist. */
+function byteRange(header: string | undefined, size: number): [number, number] | 'invalid' | null {
+  const m = header ? /^bytes=(\d*)-(\d*)$/.exec(header.trim()) : null;
+  if (!m || (!m[1] && !m[2])) return null;
+  const start = m[1] ? Number(m[1]) : Math.max(0, size - Number(m[2]));
+  const end = m[1] && m[2] ? Math.min(Number(m[2]), size - 1) : size - 1;
+  return start > end ? 'invalid' : [start, end];
+}
 
 function serveStatic(req: IncomingMessage, res: ServerResponse, url: URL): void {
   if (!existsSync(clientDist)) {
@@ -167,11 +177,31 @@ function serveStatic(req: IncomingMessage, res: ServerResponse, url: URL): void 
   // Vite names bundles by content hash, so they can be cached forever; everything else
   // (index.html, sw.js, art) must be re-checked so a deploy is picked up on the next load.
   const hashed = /\/assets\/[^/]+-[A-Za-z0-9_-]{8,}\.[a-z0-9]+$/.test(path.replace(/\\/g, '/'));
-  res.writeHead(200, {
+  const size = statSync(path).size;
+  const headers = {
     'content-type': MIME[extname(path)] ?? 'application/octet-stream',
     'cache-control': hashed ? 'public, max-age=31536000, immutable' : 'no-cache',
+    'accept-ranges': 'bytes',
+  };
+  // Safari only plays audio that it can fetch a piece at a time.
+  const range = byteRange(req.headers.range, size);
+  if (range === 'invalid') {
+    res.writeHead(416, { 'content-range': `bytes */${size}` }).end();
+    return;
+  }
+  const [start, end] = range ?? [0, size - 1];
+  res.writeHead(range ? 206 : 200, {
+    ...headers,
+    'content-length': size === 0 ? 0 : end - start + 1,
+    ...(range ? { 'content-range': `bytes ${start}-${end}/${size}` } : {}),
   });
-  res.end(readFileSync(path));
+  if (size === 0 || req.method === 'HEAD') {
+    res.end();
+    return;
+  }
+  createReadStream(path, { start, end })
+    .on('error', () => res.destroy())
+    .pipe(res);
 }
 
 // ---------------------------------------------------------------------------

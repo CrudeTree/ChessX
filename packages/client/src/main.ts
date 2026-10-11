@@ -1222,7 +1222,8 @@ net.onMessage = async (msg: ServerMessage) => {
       currentClocks = msg.clocks;
       screen2.sync(msg.view);
       const myTurn = screen2.myTurn;
-      if (myTurn && !wasMyTurn && msg.view.seq > 1) attention('Your move');
+      // In view, the game's own turn horn says it; the chime is for a hidden tab.
+      if (myTurn && !wasMyTurn && msg.view.seq > 1) attention('Your move', { sound: document.hidden });
       wasMyTurn = myTurn;
       return;
     }

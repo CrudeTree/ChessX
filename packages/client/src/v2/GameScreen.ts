@@ -7,6 +7,7 @@ import { cardBack, fillFrame, tiltWithPointer, type FrameCard } from './cardFram
 import { BoardFx, CARD_DIVE_MS, type BannerTone } from './fx.js';
 import { describeEvents, type PieceMemory } from './log.js';
 import { movementPanel } from './movement.js';
+import { sound } from './sound.js';
 
 type Color = v2.Color;
 type Action = v2.Action;
@@ -113,6 +114,33 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''):
 
 const sideName = (c: Color): string => (c === 'white' ? 'White' : 'Black');
 
+/** When the next turn's effects start after an action's own, and when a spell's effect lands (ms). */
+function fxDelays(view: v2.PlayerView): { turnAt: number; spellAt: number } {
+  const acted = view.events.some((e) => e.type === 'moved' || e.type === 'summoned' || e.type === 'sealed' || e.type === 'deployed');
+  return { turnAt: acted ? TURN_FX_DELAY : 0, spellAt: view.events.some((e) => e.type === 'spellPlayed') ? SPELL_HIT_DELAY : 0 };
+}
+
+const link = (text: string, href: string): HTMLAnchorElement => {
+  const a = el('a', '', text);
+  a.href = href;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  return a;
+};
+
+/** Icons for the sound switches; a slash goes through them while they are off. */
+const SPEAKER = '<path d="M4 9.5v5h3.5l4.5 4v-13l-4.5 4z" fill="currentColor"/>';
+const WAVES = '<path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>';
+const NOTE = '<path d="M9.5 17V6.5l9-2V15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="7.3" cy="17" r="2.3" fill="currentColor"/><circle cx="16.3" cy="15" r="2.3" fill="currentColor"/>';
+const SLASH = '<path d="M4 4l16 16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>';
+
+function paintSwitch(btn: HTMLButtonElement, on: boolean, name: string, icon: string): void {
+  btn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icon}${on ? '' : SLASH}</svg><span>${name}</span>`;
+  btn.classList.toggle('on', on);
+  btn.setAttribute('aria-pressed', String(on));
+  btn.title = `Turn ${name.toLowerCase()} ${on ? 'off' : 'on'}`;
+}
+
 export class GameScreen {
   private view: v2.PlayerView | null = null;
   private room: RoomInfo | null = null;
@@ -168,6 +196,10 @@ export class GameScreen {
   private readonly sideEl = el('aside', 'g2-side');
   private readonly codeBlock = el('div', 'side-block');
   private readonly statusBlock = el('div', 'side-block g2-statusblock');
+  private readonly effectsBtn = el('button', 'g2-sound-btn');
+  private readonly musicBtn = el('button', 'g2-sound-btn');
+  /** The music's licence asks for this credit wherever it plays. */
+  private readonly creditEl = el('div', 'g2-credit');
   private readonly menuBtn = el('button', 'g2-menu', '☰');
   private readonly sheetShade = el('div', 'g2-sheet-shade hidden');
   /**
@@ -199,17 +231,27 @@ export class GameScreen {
     sheetClose.onclick = () => this.toggleSheet(false);
     this.codeBlock.append(el('div', 'label', 'Invite code'), this.codeEl, this.hintEl);
     this.menuBtn.type = 'button';
-    this.menuBtn.title = 'Log, chat, invite code and resign';
+    this.menuBtn.title = 'Log, sound, chat, invite code and resign';
     this.menuBtn.onclick = () => this.toggleSheet();
     this.statusBlock.append(this.statusEl, this.endBtn, this.menuBtn);
     const logBlock = el('div', 'side-block grow');
     logBlock.append(el('div', 'label', 'Log'), this.logEl);
+    const soundBlock = el('div', 'side-block g2-sound');
+    const switches = el('div', 'g2-sound-switches');
+    this.effectsBtn.type = 'button';
+    this.musicBtn.type = 'button';
+    this.effectsBtn.onclick = () => sound.setEffects(!sound.effectsOn);
+    this.musicBtn.onclick = () => sound.setMusic(!sound.musicOn);
+    switches.append(this.effectsBtn, this.musicBtn);
+    soundBlock.append(el('div', 'label', 'Sound'), switches, this.creditEl);
+    sound.onChange(() => this.renderSound());
+    this.renderSound();
     const buttons = el('div', 'side-block actions');
     const leave = el('button', '', 'Back to games');
     leave.onclick = () => this.hooks.leave();
     this.resignBtn.onclick = () => this.hooks.resign();
     buttons.append(this.resignBtn, leave);
-    side.append(sheetClose, this.codeBlock, this.statusBlock, logBlock, buttons, this.chatSlot);
+    side.append(sheetClose, this.codeBlock, this.statusBlock, logBlock, soundBlock, buttons, this.chatSlot);
     this.sheetShade.onclick = () => this.toggleSheet(false);
 
     root.append(this.detailEl, main, side, this.sheetShade);
@@ -311,6 +353,18 @@ export class GameScreen {
     this.sheetShade.classList.toggle('hidden', !open);
   }
 
+  private renderSound(): void {
+    paintSwitch(this.effectsBtn, sound.effectsOn, 'Effects', sound.effectsOn ? SPEAKER + WAVES : SPEAKER);
+    paintSwitch(this.musicBtn, sound.musicOn, 'Music', NOTE);
+    this.creditEl.classList.toggle('hidden', !sound.musicOn);
+    this.creditEl.replaceChildren(
+      `Music: “${sound.track.title}” by Kevin MacLeod (`,
+      link('incompetech.com', 'https://incompetech.com'),
+      '), licensed under ',
+      link('CC BY 4.0', 'https://creativecommons.org/licenses/by/4.0/'),
+    );
+  }
+
   // ------------------------------------------------------------------ lifecycle
 
   open(opts: { code: string; solo: boolean; you: Color }): void {
@@ -327,6 +381,7 @@ export class GameScreen {
 
   reset(): void {
     this.cancelDrag();
+    sound.setBattle(false);
     this.view = null;
     this.room = null;
     this.selectedSquare = null;
@@ -371,6 +426,11 @@ export class GameScreen {
       this.clearSelection();
       this.cancelDrag();
     }
+    const playing = view.status.kind === 'playing';
+    // Before queueFx, which takes the cards just dropped on squares (see `takeLanding`).
+    if (changed && prev) this.queueSounds(view);
+    else if (!prev && playing) sound.sfx?.battle();
+    sound.setBattle(playing);
     if (changed && prev && this.fx.enabled) this.queueFx(prev, view);
     this.appendLog(view);
     this.render();
@@ -433,8 +493,12 @@ export class GameScreen {
     // A card floating over the board would hide the squares the piece can move to (see `startHold`).
     if (movable && !this.docked) this.inspected = null;
     else if (quick) this.toggleInspect(view, square);
-    if (movable && this.selectedSquare !== square) this.selectedSquare = square;
-    else this.clearSelection();
+    if (movable && this.selectedSquare !== square) {
+      this.selectedSquare = square;
+      sound.sfx?.select();
+    } else {
+      this.clearSelection();
+    }
     this.render();
   }
 
@@ -506,15 +570,72 @@ export class GameScreen {
     return card ? fillFrame(el('div'), this.frameFor(card, cardId, owner)) : null;
   }
 
+  /** Sounds for what the last action did, in step with the effects `queueFx` shows for it. */
+  private queueSounds(view: v2.PlayerView): void {
+    const sfx = sound.sfx;
+    if (!sfx) return;
+    const now = performance.now();
+    const { turnAt, spellAt } = fxDelays(view);
+    let ticked = false;
+    for (const e of view.events) {
+      switch (e.type) {
+        case 'summoned':
+        case 'deployed': {
+          const cardId = view.pieces.find((p) => p.id === e.pieceId)?.cardId;
+          const cost = cardId ? (view.cards[cardId]?.cost ?? 0) : 0;
+          sfx.summon(e.color, !this.wasDropped(e.square, now), Math.min(1, cost / 5));
+          break;
+        }
+        case 'moved':
+          sfx.move();
+          break;
+        case 'captured':
+          sfx.capture(150);
+          break;
+        case 'sealDestroyed':
+          sfx.shatter(spellAt || 150);
+          break;
+        case 'sealed':
+          sfx.seal(this.wasDropped(e.square, now));
+          break;
+        case 'spellPlayed':
+          sfx.spell(e.cardId);
+          break;
+        case 'sealTick':
+          // Several seals counting down at once still make one tick.
+          if (!ticked) sfx.tick(turnAt);
+          ticked = true;
+          break;
+        case 'hatched':
+          sfx.hatch(e.color, turnAt);
+          break;
+        default:
+          break;
+      }
+    }
+    // With the banner (see `queueBanner`).
+    const at = turnAt + 150;
+    const over = view.events.find((e): e is Extract<v2.GameEvent, { type: 'gameOver' }> => e.type === 'gameOver');
+    if (over) {
+      const tone = this.resultBanner(over.status, view)[1];
+      if (tone === 'win') sfx.victory(at);
+      else if (tone === 'lose') sfx.defeat(at);
+      else sfx.stalemate(at);
+      return;
+    }
+    const started = view.events.find((e): e is Extract<v2.GameEvent, { type: 'turnStarted' }> => e.type === 'turnStarted');
+    if (!started) return;
+    if (view.events.some((e) => e.type === 'check')) sfx.check(at);
+    else if (this.solo || started.color === view.you) sfx.turn(started.color, at);
+  }
+
   /** Effects for what the last action did: its own first, then the next turn's (hatching, the banner). */
   private queueFx(prev: v2.PlayerView, view: v2.PlayerView): void {
     const now = performance.now();
     for (const [id, fx] of this.tokenFx) if (now - fx.at > 5000) this.tokenFx.delete(id);
     const pieceBefore = new Map(prev.pieces.map((p) => [p.id, p]));
     const sealBefore = new Map(prev.seals.map((s) => [s.id, s]));
-    const acted = view.events.some((e) => e.type === 'moved' || e.type === 'summoned' || e.type === 'sealed' || e.type === 'deployed');
-    const turnAt = acted ? TURN_FX_DELAY : 0;
-    const spellAt = view.events.some((e) => e.type === 'spellPlayed') ? SPELL_HIT_DELAY : 0;
+    const { turnAt, spellAt } = fxDelays(view);
     for (const e of view.events) {
       switch (e.type) {
         case 'summoned':
@@ -633,10 +754,15 @@ export class GameScreen {
     setTimeout(() => ghost.remove(), 300);
   }
 
-  private takeLanding(square: v2.Square, now: number): boolean {
+  private wasDropped(square: v2.Square, now: number): boolean {
     const at = this.landed.get(square);
-    this.landed.delete(square);
     return at !== undefined && now - at < 4000;
+  }
+
+  private takeLanding(square: v2.Square, now: number): boolean {
+    const dropped = this.wasDropped(square, now);
+    this.landed.delete(square);
+    return dropped;
   }
 
   // ------------------------------------------------------------------- inspect
@@ -938,6 +1064,7 @@ export class GameScreen {
       ghost.style.animationDelay = '';
       document.body.appendChild(ghost);
       drag.ghost = ghost;
+      sound.sfx?.cardLift();
       this.hoverCard = null;
       if (this.inspected?.kind === 'card') this.inspected = null;
       this.clearSelection();
@@ -1009,8 +1136,13 @@ export class GameScreen {
     const action = this.dropAction(drag.uid, square);
     this.drag = null;
     if (action && square !== null) {
-      if (action.type === 'spell') this.castAway(ghost);
-      else this.land(ghost, square);
+      if (action.type === 'spell') {
+        this.castAway(ghost);
+        sound.sfx?.cardCast();
+      } else {
+        this.land(ghost, square);
+        sound.sfx?.cardDrop();
+      }
       this.hooks.act(action);
       this.clearSelection();
       this.render();
@@ -1024,6 +1156,7 @@ export class GameScreen {
   private snapBack(ghost: HTMLElement, uid: string): void {
     const home = this.tileFor(uid)?.getBoundingClientRect();
     if (!home) return ghost.remove();
+    sound.sfx?.cardReturn();
     ghost.classList.add('returning');
     ghost.style.left = `${home.left}px`;
     ghost.style.top = `${home.top}px`;
@@ -1073,6 +1206,7 @@ export class GameScreen {
     if (this.seenCards) {
       let k = 0;
       for (const c of hand) if (!this.seenCards.has(c.uid) && !this.drawnAt.has(c.uid)) this.drawnAt.set(c.uid, now + Math.min(k++, 6) * 90);
+      if (k) sound.sfx?.deal(k);
     }
     this.seenCards = new Set(hand.map((c) => c.uid));
 
