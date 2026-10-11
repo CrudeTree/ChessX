@@ -246,6 +246,26 @@ export class Sfx {
     this.boom(open + BURST_MS / 1000, 0.6);
   }
 
+  /**
+   * A piece evolves: its card dives in (unless the player dropped it there), the old piece cracks and the new one
+   * rises on the owner's chord an octave up, landing as heavy as `force` (0 to 1). A final form brings a braam.
+   */
+  evolve(owner: Color, dive: boolean, force: number): void {
+    let at = 0;
+    if (dive) {
+      this.whoosh(0, CARD_DIVE_MS / 1000, 2800, 600, 0.15);
+      at = CARD_DIVE_MS / 1000;
+    }
+    const open = at + HATCH_T0_MS / 1000;
+    const land = open + BURST_MS / 1000;
+    this.crackle(at, HATCH_T0_MS / 1000, 0.3);
+    this.glass(open, 0.35, 12);
+    this.whoosh(open, 0.35, 300, 3600, 0.13);
+    this.bells(open, CHORDS[owner].map((n) => n + 12), 0.04, 0.05);
+    this.boom(land, force);
+    if (force >= 0.75) this.braam(land, 2, 0.3 * force);
+  }
+
   /** A seal is destroyed. */
   shatter(delayMs: number): void {
     const at = delayMs / 1000;

@@ -1,5 +1,5 @@
 // The one card frame every rules-2 card is drawn in: the mana cost gem, the name plate, the picture window,
-// the type line, the printed text and the seal timer. Every size is in em, so the hand, the card viewer and
+// the type line, the printed text and the sacrifice (seal) timer. Every size is in em, so the hand, the card viewer and
 // the board effects draw the same card at different font sizes. How a piece moves is drawn beside the card
 // (movement.ts), never on it.
 
@@ -15,6 +15,10 @@ export interface FrameCard {
   name: string;
   cost?: number;
   sealTimer?: number;
+  /** Pieces in an evolution line: the line, the level in it, and the name of the card it evolves from. */
+  line?: string;
+  level?: number;
+  evolvesFrom?: string;
   text: string;
   art?: string;
   glyph: string;
@@ -24,11 +28,21 @@ export interface FrameCard {
 
 const TYPE_LINE: Record<FrameCard['kind'], string> = { piece: 'Piece', spell: 'Spell', king: 'King · not a card' };
 
-/** Hue of the sigil for cards without a picture; any other card gets one from its id. */
+/** Hue of the sigil for cards without a picture; any other card gets one from its id. A line shares one hue. */
 const SIGIL_HUE: Record<string, number> = {
   king: 44,
   initiate: 36,
   squire: 212,
+  recruit: 12,
+  warrior: 12,
+  warlord: 12,
+  apprentice: 268,
+  mage: 268,
+  archmage: 268,
+  colt: 52,
+  paladin: 52,
+  mystic_dragon: 152,
+  ancient_mystic_dragon: 152,
   page: 172,
   hopper: 138,
   cathedral_runner: 348,
@@ -53,8 +67,8 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''):
   return e;
 };
 
-/** The picture window: the card's picture, or a glowing sigil of its glyph until it has one. */
-export function cardArt(card: Pick<FrameCard, 'id' | 'art' | 'glyph'>, cls = 'g2-frame-art'): HTMLElement {
+/** The picture window: the card's picture, or a glowing sigil of its glyph until it has one (bigger at higher levels). */
+export function cardArt(card: Pick<FrameCard, 'id' | 'art' | 'glyph' | 'level'>, cls = 'g2-frame-art'): HTMLElement {
   const art = el('div', cls);
   if (card.art) {
     const img = el('img');
@@ -65,18 +79,32 @@ export function cardArt(card: Pick<FrameCard, 'id' | 'art' | 'glyph'>, cls = 'g2
   } else {
     art.classList.add('sigil');
     art.style.setProperty('--hue', String(sigilHue(card.id)));
+    if (card.level) art.dataset.level = String(card.level);
     art.append(el('span', 'g2-frame-glyph', card.glyph));
   }
   return art;
+}
+
+/** The printed text; an evolution card first says what it evolves from. */
+function frameText(card: FrameCard): HTMLElement {
+  const text = el('div', 'g2-frame-text');
+  if (!card.evolvesFrom) {
+    text.textContent = card.text;
+    return text;
+  }
+  text.classList.add('evolves');
+  text.append(el('b', 'g2-frame-evolves', `Evolves from ${card.evolvesFrom}`), el('span', '', card.text));
+  return text;
 }
 
 /** Draw `card` into `root`. */
 export function fillFrame(root: HTMLElement, card: FrameCard): HTMLElement {
   root.classList.add('g2-frame', `g2-frame-${card.kind}`);
   const inner = el('div', 'g2-frame-inner');
-  const name = el('div', card.name.length > 11 ? 'g2-frame-name long' : 'g2-frame-name');
+  const name = el('div', card.name.length > 16 ? 'g2-frame-name longer' : card.name.length > 11 ? 'g2-frame-name long' : 'g2-frame-name');
   name.append(el('span', '', card.name));
-  inner.append(name, cardArt(card), el('div', 'g2-frame-type', TYPE_LINE[card.kind]), el('div', 'g2-frame-text', card.text));
+  const type = card.kind === 'piece' && card.line ? `${card.line} · Level ${card.level ?? 1}` : TYPE_LINE[card.kind];
+  inner.append(name, cardArt(card), el('div', 'g2-frame-type', type), frameText(card));
   root.append(inner);
 
   if (card.cost !== undefined) {
@@ -87,14 +115,14 @@ export function fillFrame(root: HTMLElement, card: FrameCard): HTMLElement {
   }
   if (card.kind === 'piece' && card.sealTimer !== undefined) {
     const timer = el('span', 'g2-frame-timer', `⧗${card.sealTimer}`);
-    timer.title = `Seal timer ${card.sealTimer}: a seal of this card hatches after ${card.sealTimer} of its owner's turn${card.sealTimer === 1 ? '' : 's'}`;
+    timer.title = `Sacrifice timer ${card.sealTimer}: sacrifice one of your pieces for this card and it arrives after ${card.sealTimer} of your turn${card.sealTimer === 1 ? '' : 's'}`;
     root.append(timer);
   }
   root.append(el('span', 'g2-frame-shine'));
   return root;
 }
 
-/** The back of a card: seals, the opponent's hand and the empty card viewer. */
+/** The back of a card: sacrifices, the opponent's hand and the empty card viewer. */
 export function cardBack(cls = ''): HTMLElement {
   const back = el('div', `g2-back${cls ? ` ${cls}` : ''}`);
   back.append(el('span', 'g2-back-mark', 'X'));

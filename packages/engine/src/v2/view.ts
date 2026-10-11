@@ -37,6 +37,11 @@ export interface ViewCard {
   art?: string;
   /** Pieces: picture for the board token, when the card has one. */
   boardArt?: string;
+  /** Pieces: the card this one evolves from; it can only be played onto a piece of that card. */
+  evolvesFrom?: string;
+  /** Pieces: the evolution line and the level in it, 1 to 3. */
+  line?: string;
+  level?: number;
 }
 
 export interface ViewPiece {
@@ -105,13 +110,15 @@ const SETS: Record<string, string> = {
   [sortKey([[1, 2], [2, 1], [-1, 2], [-2, 1], [1, -2], [2, -1], [-1, -2], [-2, -1]])]: 'like a knight',
   [sortKey([[0, 1]])]: 'forward',
   [sortKey([[1, 1], [-1, 1]])]: 'diagonally forward',
+  [sortKey([[1, 2], [-1, 2], [2, 1], [-2, 1]])]: 'like a knight, forward only',
+  [sortKey([[2, 0], [-2, 0], [0, 2], [0, -2]])]: '2 squares straight',
 };
 
 function describeRule(rule: MoveRule): string {
   const where = SETS[sortKey(rule.dirs)] ?? `along ${rule.dirs.length} fixed direction${rule.dirs.length === 1 ? '' : 's'}`;
   const reach = rule.leap ? `Leaps ${where}` : rule.range >= 7 ? `Slides ${where}, any distance` : rule.range === 1 ? `Steps ${where}, 1 square` : `Slides ${where}, up to ${rule.range} squares`;
   if (rule.mode === 'move') return `${reach} (cannot capture that way)`;
-  if (rule.mode === 'capture') return `Captures ${where}, 1 square (cannot move there otherwise)`;
+  if (rule.mode === 'capture') return `Captures ${where}${rule.leap ? '' : ', 1 square'} (cannot move there otherwise)`;
   return reach;
 }
 
@@ -123,10 +130,24 @@ export function describeMovement(def: PieceDef): string {
 function viewCard(card: Card): ViewCard {
   const out: ViewCard =
     card.type === 'piece'
-      ? { id: card.id, type: 'piece', name: card.name, cost: card.cost, sealTimer: card.sealTimer, text: describeMovement(card.piece), rules: card.piece.rules }
+      ? {
+          id: card.id,
+          type: 'piece',
+          name: card.name,
+          cost: card.cost,
+          // Evolution cards are never sealed, so their timer means nothing.
+          ...(card.evolvesFrom ? {} : { sealTimer: card.sealTimer }),
+          text: describeMovement(card.piece),
+          rules: card.piece.rules,
+        }
       : { id: card.id, type: 'spell', name: card.name, cost: card.cost, text: card.text };
   if (card.art) out.art = card.art;
-  if (card.type === 'piece' && card.boardArt) out.boardArt = card.boardArt;
+  if (card.type === 'piece') {
+    if (card.boardArt) out.boardArt = card.boardArt;
+    if (card.evolvesFrom) out.evolvesFrom = card.evolvesFrom;
+    if (card.line) out.line = card.line;
+    if (card.level) out.level = card.level;
+  }
   return out;
 }
 

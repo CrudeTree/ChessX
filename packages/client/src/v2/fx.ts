@@ -166,6 +166,26 @@ export class BoardFx {
     this.quake(0.6, delay + HATCH_T0_MS + BURST_MS);
   }
 
+  /**
+   * A piece evolves: the evolution `card` dives into its square (null when the player dropped it there), then the
+   * old piece cracks like a hatching seal and the new one rises in a pillar of light, shaking the board as hard
+   * as `force` (0 to 1).
+   */
+  evolve(square: v2.Square, owner: Color, oldToken: HTMLElement | null, card: HTMLElement | null, force: number): void {
+    const spot = this.spot(square, `evolve ${owner}${card ? ' with-card' : ''}`, 1900, 0);
+    if (!spot) return;
+    if (card) {
+      card.classList.add('g2-fx-card');
+      spot.append(card);
+    }
+    if (oldToken) {
+      oldToken.classList.add('g2-fx-ghost', 'crack');
+      spot.append(oldToken);
+    }
+    spot.append(rune(), el('div', 'g2-fx-pillar'), el('div', 'g2-fx-burst'), el('div', 'g2-fx-shock'), sparks(18));
+    this.quake(force, (card ? CARD_DIVE_MS : 0) + HATCH_T0_MS + BURST_MS);
+  }
+
   /** A token that just left the board (a copy of it) breaks apart, fades into its seal, or shatters. */
   vanish(square: v2.Square, token: HTMLElement, how: Vanish, delay = 0): void {
     const spot = this.spot(square, `vanish ${how}`, 900, delay);

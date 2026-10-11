@@ -41,20 +41,32 @@ export function describeEvents(view: v2.PlayerView, names: Record<v2.Color, stri
         break;
       }
       case 'sealDestroyed':
-        lines.push({ text: `The seal on ${v2.squareName(e.square)} (${cardName(e.cardId)}) is destroyed.`, important: true });
+        lines.push({ text: `The sacrifice on ${v2.squareName(e.square)} (${cardName(e.cardId)}) is destroyed.`, important: true });
         break;
       case 'summoned':
         lines.push({ text: `${names[e.color]} summons ${pieceName(e.pieceId)} on ${v2.squareName(e.square)}`, color: e.color });
         break;
-      case 'sealed':
+      case 'sealed': {
+        const cardId = view.seals.find((s) => s.id === e.sealId)?.cardId;
         lines.push({
-          text: `${names[e.color]} seals ${pieceName(e.consumedPieceId)} on ${v2.squareName(e.square)} — hatches in ${e.timer} turn${e.timer > 1 ? 's' : ''}`,
+          text: `${names[e.color]} sacrifices ${pieceName(e.consumedPieceId)} on ${v2.squareName(e.square)}${cardId ? ` for ${cardName(cardId)}` : ''} — it arrives in ${e.timer} turn${e.timer > 1 ? 's' : ''}`,
           color: e.color,
         });
         break;
+      }
       case 'hatched':
-        lines.push({ text: `${pieceName(e.pieceId)} hatches on ${v2.squareName(e.square)}!`, color: e.color, important: true });
+        lines.push({ text: `${pieceName(e.pieceId)} arrives on ${v2.squareName(e.square)}!`, color: e.color, important: true });
         break;
+      case 'evolved': {
+        const cardId = view.pieces.find((p) => p.id === e.pieceId)?.cardId;
+        const final = (cardId ? view.cards[cardId]?.level : undefined) === 3;
+        lines.push({
+          text: `${names[e.color]} evolves ${pieceName(e.fromPieceId)} into ${pieceName(e.pieceId)} on ${v2.squareName(e.square)}${final ? '!' : ''}`,
+          color: e.color,
+          important: final,
+        });
+        break;
+      }
       case 'spellPlayed':
         lines.push({
           text: `${names[e.color]} plays ${cardName(e.cardId)}${e.target !== undefined ? ` on ${v2.squareName(e.target)}` : ''}`,

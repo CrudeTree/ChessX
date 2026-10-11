@@ -1,6 +1,7 @@
-// ChessX v2 rules (the live game): 8x8 board, Kings only at the start, mana-based summoning and sealing.
+// ChessX v2 rules (the live game): 8x8 board, Kings only at the start, mana-based summoning, sealing and evolving.
 // Ported from the standalone `chessx-rules/` reference engine. Everything here is namespaced
 // under `v2` when imported from `@chessx/engine`, so the original (v1) engine is untouched.
+// Players know a seal as a "sacrifice" (Djabooty, 2026-10-11); the code keeps the old name, which saved games use.
 
 export type Color = 'white' | 'black';
 export const opposite = (c: Color): Color => (c === 'white' ? 'black' : 'white');
@@ -49,7 +50,7 @@ export interface PieceDef {
   king?: boolean;
 }
 
-/** A piece card. `cost` is the mana to summon or seal it. `sealTimer` is printed on the card. */
+/** A piece card. `cost` is the mana to summon, seal or evolve into it. `sealTimer` is printed on the card. */
 export interface PieceCard {
   type: 'piece';
   id: string;
@@ -57,6 +58,14 @@ export interface PieceCard {
   cost: number;
   sealTimer: number;
   piece: PieceDef;
+  /**
+   * The card this one evolves from. Such a card is only ever played onto one of your pieces of that card, which
+   * changes into it on its square; it cannot be summoned or sealed.
+   */
+  evolvesFrom?: string;
+  /** The evolution line it belongs to (e.g. "Dragon") and its level in it, 1 to 3. */
+  line?: string;
+  level?: number;
   /** Card face picture, a path under the client's public folder. */
   art?: string;
   /** Picture drawn inside the piece token on the board. */
@@ -128,7 +137,7 @@ export interface GameState {
   seals: Seal[];
   setupDeployed: Record<Color, number>;
   actionTaken: boolean;
-  /** A card (summon, seal or spell) was played this turn, so End turn may close it once no move is left. */
+  /** A card (summon, seal, evolution or spell) was played this turn, so End turn may close it once no move is left. */
   cardPlayed: boolean;
   status: GameStatus;
   nextId: number;
@@ -140,6 +149,8 @@ export type Action =
   | { type: 'move'; from: Square; to: Square }
   | { type: 'summon'; cardUid: string; to: Square }
   | { type: 'seal'; cardUid: string; target: Square }
+  /** Play an evolution card onto the piece it evolves from, which changes into it on its square. */
+  | { type: 'evolve'; cardUid: string; target: Square }
   | { type: 'spell'; cardUid: string; target?: Square }
   | { type: 'endTurn' };
 
@@ -154,6 +165,8 @@ export type GameEvent =
   | { type: 'sealed'; color: Color; sealId: string; square: Square; consumedPieceId: string; timer: number }
   | { type: 'sealTick'; sealId: string; timer: number }
   | { type: 'hatched'; color: Color; pieceId: string; square: Square }
+  /** `fromPieceId` is the piece that evolved; `pieceId` is what it became. */
+  | { type: 'evolved'; color: Color; pieceId: string; fromPieceId: string; square: Square }
   | { type: 'spellPlayed'; color: Color; cardId: string; target?: Square }
   | { type: 'check'; color: Color }
   | { type: 'gameOver'; status: GameStatus };

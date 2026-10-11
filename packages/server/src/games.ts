@@ -350,7 +350,7 @@ export class LiveGame {
       throw new GameError('That is not a legal action.');
     }
     const next = result.state;
-    if (action.type === 'spell' || action.type === 'summon' || action.type === 'seal') this.cardsThisTurn++;
+    if (action.type === 'spell' || action.type === 'summon' || action.type === 'seal' || action.type === 'evolve') this.cardsThisTurn++;
     if (next.active !== before || next.status.kind !== 'playing') {
       this.settleClock(now, next.active !== before ? this.replayGrace() : 0);
       this.cardsThisTurn = 0;

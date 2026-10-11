@@ -31,22 +31,39 @@ export interface GameScreenHooks {
   chatShown(): void;
 }
 
-/** Glyphs for the placeholder cards; any other piece falls back to its initial. */
+/**
+ * Glyphs for the placeholder cards; any other piece falls back to its initial. An evolution line shares the glyph
+ * of the chess piece it ends in. Page, Hopper, Cathedral Runner, Tower and Dawnfang live on in saved games.
+ */
 const GLYPHS: Record<string, string> = {
   king: '♚',
   initiate: '✚',
   squire: '♟',
+  recruit: '♜',
+  warrior: '♜',
+  warlord: '♜',
+  apprentice: '♝',
+  mage: '♝',
+  archmage: '♝',
+  colt: '♞',
+  paladin: '♞',
+  dawn_paladin: '☀\uFE0E',
+  eclipse_knight: '◐\uFE0E',
+  wyrmling: '§',
+  mystic_dragon: '♛',
+  ancient_mystic_dragon: '♛',
+  duskfang: '☾\uFE0E',
   page: '¶',
   hopper: '♞',
   cathedral_runner: '♝',
-  dawn_paladin: '☀\uFE0E',
-  duskfang: '☾\uFE0E',
-  dawnfang: '☼\uFE0E',
-  wyrmling: '§',
-  eclipse_knight: '◐\uFE0E',
   tower: '♜',
+  dawnfang: '☼\uFE0E',
 };
 export const glyphFor = (kind: string, name: string): string => GLYPHS[kind] ?? (name[0] ?? '?').toUpperCase();
+/** A piece's level in its evolution line, as printed on its token. */
+const LEVEL_MARK = ['', 'I', 'II', 'III'];
+/** How hard an evolution lands (0 to 1): the final forms slam. */
+const evolveForce = (card: v2.ViewCard | undefined): number => ((card?.level ?? 2) >= 3 ? 1 : 0.6);
 /** Picture window of a spell card that has no picture yet. */
 const SPELL_GLYPH = '✦\uFE0E';
 
@@ -139,7 +156,9 @@ const sideName = (c: Color): string => (c === 'white' ? 'White' : 'Black');
 
 /** When the next turn's effects start after an action's own, and when a spell's effect lands (ms). */
 function fxDelays(view: v2.PlayerView): { turnAt: number; spellAt: number } {
-  const acted = view.events.some((e) => e.type === 'moved' || e.type === 'summoned' || e.type === 'sealed' || e.type === 'deployed');
+  const acted = view.events.some(
+    (e) => e.type === 'moved' || e.type === 'summoned' || e.type === 'sealed' || e.type === 'evolved' || e.type === 'deployed',
+  );
   return { turnAt: acted ? TURN_FX_DELAY : 0, spellAt: view.events.some((e) => e.type === 'spellPlayed') ? SPELL_HIT_DELAY : 0 };
 }
 
@@ -688,14 +707,17 @@ export class GameScreen {
   // ------------------------------------------------------------------- tokens
 
   private pieceToken(piece: v2.ViewPiece, view: v2.PlayerView): HTMLElement {
-    const boardArt = piece.cardId ? view.cards[piece.cardId]?.boardArt : undefined;
+    const card = piece.cardId ? view.cards[piece.cardId] : undefined;
+    const boardArt = card?.boardArt;
     const tok = el('div', `g2-piece ${piece.owner}${piece.king ? ' king' : ''}${piece.active ? '' : ' sick'}${boardArt ? ' art' : ''}`);
     if (boardArt) tok.style.backgroundImage = `url("${boardArt}")`;
     else tok.append(el('span', 'g2-piece-glyph', glyphFor(piece.kind, piece.name)));
+    if (card?.level) tok.append(el('span', 'g2-piece-level', LEVEL_MARK[card.level] ?? String(card.level)));
     const resting = piece.justSummoned
-      ? ' (just summoned: cannot move or capture until its owner\'s next turn, but still gives check)'
+      ? ' (just arrived: cannot move or capture until its owner\'s next turn, but still gives check)'
       : piece.active ? '' : ' (summoning sickness: cannot capture yet, but still gives check)';
-    tok.title = `${piece.name}${resting}`;
+    const line = card?.line ? ` · ${card.line} level ${card.level}` : '';
+    tok.title = `${piece.name}${line}${resting}`;
     return tok;
   }
 
@@ -703,7 +725,7 @@ export class GameScreen {
     const name = view.cards[seal.cardId]?.name ?? seal.cardId;
     const tok = el('div', `g2-seal ${seal.owner}`);
     tok.append(cardBack('g2-seal-back'), el('span', 'g2-seal-timer', `⧗${seal.timer}`), el('span', 'g2-seal-name', name));
-    tok.title = `Seal: ${name} hatches in ${seal.timer} of ${seal.owner === view.you ? 'your' : "its owner's"} turn${seal.timer === 1 ? '' : 's'}`;
+    tok.title = `Sacrifice: ${name} arrives in ${seal.timer} of ${seal.owner === view.you ? 'your' : "its owner's"} turn${seal.timer === 1 ? '' : 's'}`;
     return tok;
   }
 
@@ -757,6 +779,11 @@ export class GameScreen {
         case 'sealed':
           sfx.seal(this.wasDropped(e.square, now));
           break;
+        case 'evolved': {
+          const cardId = view.pieces.find((p) => p.id === e.pieceId)?.cardId;
+          sfx.evolve(e.color, !this.wasDropped(e.square, now), evolveForce(cardId ? view.cards[cardId] : undefined));
+          break;
+        }
         case 'spellPlayed':
           sfx.spell(e.cardId);
           break;
@@ -831,6 +858,16 @@ export class GameScreen {
           if (consumed) this.fx.vanish(e.square, this.pieceToken(consumed, prev), 'consume', 80);
           this.fx.seal(e.square, e.color, this.takeLanding(e.square, now) ? null : cardBack());
           this.tokenFx.set(e.sealId, { kind: 'fx-seal-in', at: now });
+          break;
+        }
+        case 'evolved': {
+          const piece = view.pieces.find((p) => p.id === e.pieceId);
+          if (!piece) break;
+          const old = pieceBefore.get(e.fromPieceId);
+          const card = this.takeLanding(e.square, now) ? null : this.cardFace(piece.cardId, piece.owner, view);
+          const force = evolveForce(piece.cardId ? view.cards[piece.cardId] : undefined);
+          this.fx.evolve(e.square, e.color, old ? this.pieceToken(old, prev) : null, card, force);
+          this.tokenFx.set(piece.id, { kind: 'fx-rise', at: now + (card ? CARD_DIVE_MS : 0) + HATCH_RISE_DELAY });
           break;
         }
         case 'spellPlayed': {
@@ -950,7 +987,7 @@ export class GameScreen {
     const info = el('div', 'g2-inspect-info');
     info.append(
       el('div', 'g2-inspect-title', 'Card viewer'),
-      el('p', 'g2-inspect-hint', 'Point at a card in your hand, or at a piece or seal on the board, to see its card and how it moves. Click one to keep it here.'),
+      el('p', 'g2-inspect-hint', 'Point at a card in your hand, or at a piece or sacrifice on the board, to see its card and how it moves. Click one to keep it here.'),
     );
     box.replaceChildren(cardBack('g2-inspect-card'), info);
   }
@@ -980,24 +1017,28 @@ export class GameScreen {
       card = view.cards[handCard.cardId];
       frame = this.frameFor(card, handCard.cardId, owner);
       notes.push(this.solo ? `In ${sideName(view.you)}'s hand.` : 'In your hand.', this.howToPlay(handCard.uid, card));
+      const next = this.evolvesInto(handCard.cardId, view);
+      if (next) notes.push(next);
     } else if (piece) {
       card = piece.cardId ? view.cards[piece.cardId] : undefined;
       owner = piece.owner;
       if (piece.king) {
         frame = { kind: 'king', id: 'king', name: piece.name, text: v2.describeMovement(v2.KING), glyph: glyphFor(piece.kind, piece.name), owner, rules: v2.KING.rules };
-        notes.push('No card: the King cannot be summoned or sealed.');
+        notes.push('No card: the King cannot be summoned, sacrificed or evolved.');
       } else {
         frame = this.frameFor(card, piece.kind, owner, piece.name);
       }
-      if (piece.justSummoned) notes.push('Just summoned: cannot move or capture until its owner\'s next turn, but still gives check.');
+      if (piece.justSummoned) notes.push('Just arrived: cannot move or capture until its owner\'s next turn, but still gives check.');
       else if (!piece.active) notes.push('Summoning sickness: cannot capture yet, but still gives check.');
+      const next = piece.cardId ? this.evolvesInto(piece.cardId, view) : null;
+      if (next) notes.push(next);
     } else if (seal) {
       card = view.cards[seal.cardId];
       owner = seal.owner;
       frame = this.frameFor(card, seal.cardId, owner);
       const whose = this.solo ? `${sideName(owner)}'s` : owner === view.you ? 'your' : "your opponent's";
       const when = seal.timer <= 1 ? `at the start of ${whose} next turn` : `in ${seal.timer} of ${whose} turns`;
-      notes.push(`Sealed. Hatches into this piece ${when}.`);
+      notes.push(`A sacrifice: this piece arrives ${when}.`);
     } else {
       this.renderEmptyInspect();
       return;
@@ -1019,11 +1060,12 @@ export class GameScreen {
 
     const info = el('div', 'g2-inspect-info');
     const head = el('div', 'g2-inspect-head');
-    const title = el('div', 'g2-inspect-title', seal ? `Seal: ${frame.name}` : frame.name);
+    const title = el('div', 'g2-inspect-title', seal ? `Sacrifice: ${frame.name}` : frame.name);
     const chips = el('div', 'g2-inspect-chips');
     if (!handCard) chips.append(el('span', `g2-chip owner ${owner}`, this.ownerLabel(owner, view)));
     if (card) chips.append(el('span', 'g2-chip mana', `◆ ${card.cost} mana`));
-    if (card?.type === 'piece') chips.append(el('span', 'g2-chip timer', `⧗ seal timer ${card.sealTimer}`));
+    if (card?.line) chips.append(el('span', 'g2-chip line', `${card.line} · level ${card.level}`));
+    if (card?.type === 'piece' && card.sealTimer !== undefined) chips.append(el('span', 'g2-chip timer', `⧗ sacrifice timer ${card.sealTimer}`));
     head.append(title, chips);
     const pinned = !this.hoverCard && !this.hoverBoard && this.inspected !== null;
     if (pinned || !this.docked) {
@@ -1056,7 +1098,17 @@ export class GameScreen {
       const targeted = this.legal().some((a) => a.type === 'spell' && a.cardUid === uid && a.target !== undefined);
       return `Drag it ${targeted ? 'onto a glowing target' : 'onto the board'} to cast it. Casting does not end your turn.`;
     }
-    return 'Drag it to a free square on your back row to summon it, or onto one of your pieces (not the King) to seal it. Neither ends your turn: play more cards, then move a piece.';
+    if (card?.evolvesFrom) {
+      const from = this.view?.cards[card.evolvesFrom]?.name ?? 'earlier form';
+      return `Drag it onto your ${from} to evolve it, if that piece was already on the board when your turn began. The new piece can move from your next turn. Evolving does not end your turn.`;
+    }
+    return 'Drag it to a free square on your back row to summon it, or onto one of your pieces (not the King) to sacrifice that piece for it. Neither ends your turn: play more cards, then move a piece.';
+  }
+
+  /** "Evolves into Mystic Dragon." for a card with a next level in this game's cards. */
+  private evolvesInto(cardId: string, view: v2.PlayerView): string | null {
+    const next = Object.values(view.cards).filter((c) => c.evolvesFrom === cardId).map((c) => c.name);
+    return next.length ? `Evolves into ${next.join(' or ')}.` : null;
   }
 
   /** The frame for a card, or for a piece whose card is missing from the view (name only). */
@@ -1068,6 +1120,9 @@ export class GameScreen {
       name: card.name,
       cost: card.cost,
       sealTimer: card.sealTimer,
+      line: card.line,
+      level: card.level,
+      evolvesFrom: card.evolvesFrom ? (this.view?.cards[card.evolvesFrom]?.name ?? card.evolvesFrom) : undefined,
       text: card.text,
       art: card.art,
       glyph: card.type === 'spell' ? SPELL_GLYPH : glyphFor(card.id, card.name),
@@ -1152,14 +1207,15 @@ export class GameScreen {
 
   /**
    * Squares a held card can be dropped on: a free square on your back row summons (or deploys) it, one of your
-   * pieces seals it, a spell's target casts it. A spell with no target goes anywhere (`untargetedSpell`).
+   * pieces seals (sacrifices) it or, for an evolution card, evolves it, a spell's target casts it. A spell with no
+   * target goes anywhere (`untargetedSpell`).
    */
   private dropTargets(uid: string): Map<v2.Square, Action> {
     const out = new Map<v2.Square, Action>();
     for (const a of this.legal()) {
       if (!('cardUid' in a) || a.cardUid !== uid) continue;
       if (a.type === 'deploy' || a.type === 'summon') out.set(a.to, a);
-      else if (a.type === 'seal') out.set(a.target, a);
+      else if (a.type === 'seal' || a.type === 'evolve') out.set(a.target, a);
       else if (a.type === 'spell' && a.target !== undefined) out.set(a.target, a);
     }
     return out;
@@ -1248,15 +1304,24 @@ export class GameScreen {
     }
   };
 
-  /** "seals Squire, gone for good" when the held card hovers one of your pieces; nothing for a summon. */
+  /**
+   * "sacrifices Squire, gone for good" when the held card hovers one of your pieces, "evolves Recruit into Warrior"
+   * for an evolution card; nothing for a summon.
+   */
   private sealWarning(action: Action | undefined): string | null {
-    if (action?.type !== 'seal') return null;
+    if (action?.type !== 'seal' && action?.type !== 'evolve') return null;
     const target = this.view?.pieces.find((p) => p.square === action.target);
-    return `seals ${target?.name ?? 'this piece'}, gone for good`;
+    if (action.type === 'seal') return `sacrifices ${target?.name ?? 'this piece'}, gone for good`;
+    const cardId = this.view?.hand?.find((c) => c.uid === action.cardUid)?.cardId;
+    const into = cardId ? this.view?.cards[cardId]?.name : undefined;
+    return `evolves ${target?.name ?? 'this piece'}${into ? ` into ${into}` : ''}`;
   }
 
   private showSealWarning(drag: CardDrag): void {
-    const text = drag.hover === null ? null : this.sealWarning(this.dropTargets(drag.uid).get(drag.hover));
+    const action = drag.hover === null ? undefined : this.dropTargets(drag.uid).get(drag.hover);
+    const text = this.sealWarning(action);
+    this.dropNoteEl.classList.toggle('evolve', action?.type === 'evolve');
+    this.dropTagEl.classList.toggle('evolve', action?.type === 'evolve');
     const mouse = drag.pointerType === 'mouse';
     this.dropNoteEl.textContent = text ?? '';
     this.dropNoteEl.classList.toggle('hidden', !text || mouse);
@@ -1511,7 +1576,13 @@ export class GameScreen {
     label.textContent = this.solo ? `${this.name(view.you)}'s hand` : spent ? 'Your hand · opponent\'s turn' : 'Your hand';
     if (view.hand?.some((c) => this.canLift(view, c.cardId))) {
       const read = this.docked ? 'tap a card to read it' : 'tap a card or hold a piece to read it';
-      label.append(el('span', 'g2-handtip', ` · drag a piece to your back row to summon it, or onto your piece to seal it · drag a spell onto the board to cast it · ${read}`));
+      label.append(
+        el(
+          'span',
+          'g2-handtip',
+          ` · drag a piece to your back row to summon it, or onto your piece to sacrifice that piece for it · drag an evolution onto the piece it evolves from · drag a spell onto the board to cast it · ${read}`,
+        ),
+      );
     }
     this.handEl.append(label, this.dropNoteEl);
 
@@ -1584,7 +1655,10 @@ export class GameScreen {
       if (movers.has(square) && square !== away) classes.push('movable');
       if (targets.has(square)) classes.push(this.pieceDrag?.hover === square ? 'target drag-over' : 'target');
       const drop = drops.get(square);
-      if (drop) classes.push(drop.type === 'seal' ? 'drop drop-seal' : drop.type === 'spell' ? 'drop drop-spell' : 'drop');
+      if (drop) {
+        const kind = drop.type === 'seal' ? ' drop-seal' : drop.type === 'evolve' ? ' drop-evolve' : drop.type === 'spell' ? ' drop-spell' : '';
+        classes.push(`drop${kind}`);
+      }
       if (drop && held?.hover === square) classes.push('drop-hover');
       const warning = this.sealWarning(drop);
       if (warning) cell.title = warning;
@@ -1712,7 +1786,7 @@ export class GameScreen {
     const show = mine && view.status.kind === 'playing' && view.phase === 'play' && !view.actionTaken;
     cue.classList.toggle('hidden', !show);
     if (!show) return;
-    const canPlay = view.legalActions.some((a) => a.type === 'summon' || a.type === 'seal' || a.type === 'spell');
+    const canPlay = view.legalActions.some((a) => a.type === 'summon' || a.type === 'seal' || a.type === 'evolve' || a.type === 'spell');
     const canEnd = view.legalActions.some((a) => a.type === 'endTurn');
     const cards = el('span', `g2-cue-step${canPlay ? '' : ' off'}`, 'Cards');
     const finish = el('span', 'g2-cue-step now', canEnd ? 'End turn' : 'move');

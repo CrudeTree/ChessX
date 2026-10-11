@@ -4833,6 +4833,24 @@ body.g2-grabbing * {
   box-shadow: 0 0 2cqw rgba(170, 130, 255, 0.95);
 }
 
+/* An evolution's target: gold, since the piece grows rather than goes. */
+.g2-cell.drop-evolve {
+  box-shadow: inset 0 0 0 3px rgba(255, 205, 90, 0.95), inset 0 0 2.4cqw rgba(255, 190, 70, 0.6);
+}
+
+.g2-cell.drop-evolve::after {
+  border-color: rgba(255, 232, 165, 0.9);
+}
+
+.g2-cell.drop-evolve.drop-hover {
+  box-shadow: inset 0 0 0 4px #ffd36b, inset 0 0 3.4cqw rgba(255, 190, 70, 0.95);
+}
+
+.g2-cell.drop-evolve.drop-hover::after {
+  border-color: #fff0c4;
+  box-shadow: 0 0 2cqw rgba(255, 200, 80, 0.95);
+}
+
 /* A spell's target (Dispel's seals): red, since the spell destroys what it lands on. */
 .g2-cell.drop-spell {
   box-shadow: inset 0 0 0 3px rgba(255, 110, 95, 0.95), inset 0 0 2.4cqw rgba(255, 90, 80, 0.55);
@@ -4944,6 +4962,29 @@ body.g2-grabbing * {
   background-position: 55% 52%;
   background-repeat: no-repeat;
   image-rendering: pixelated;
+}
+
+/* A piece's level in its evolution line: I, II or III. */
+.g2-piece-level {
+  position: absolute;
+  right: -0.12em;
+  bottom: -0.08em;
+  min-width: 1.6em;
+  height: 1.6em;
+  padding: 0 0.32em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.8em;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: max(8px, 0.3em);
+  font-weight: 700;
+  line-height: 1;
+  color: #fff6dc;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
+  background: radial-gradient(circle at 35% 30%, #d9a548, #7a4e12 75%);
+  border: 1px solid #fbe3a4;
+  box-shadow: 0 0.1em 0.25em rgba(0, 0, 0, 0.6);
 }
 
 /* Summoning sickness: cannot capture yet (still gives check). Dimmed, with a slowly turning ring. */
@@ -5245,6 +5286,15 @@ body.g2-grabbing * {
   letter-spacing: 0;
 }
 
+/* Names too long for one line (Ancient Mystic Dragon) wrap onto two. */
+.g2-frame-name.longer span {
+  font-size: 0.7em;
+  letter-spacing: 0;
+  line-height: 1;
+  white-space: normal;
+  text-align: center;
+}
+
 .g2-frame-art {
   flex: none;
   position: relative;
@@ -5290,6 +5340,16 @@ body.g2-grabbing * {
   text-shadow: 0 0 0.12em hsl(var(--hue) 100% 70%), 0 0 0.35em hsl(var(--hue) 100% 55% / 0.8), 0 0.04em 0 #000;
 }
 
+/* An evolution line's sigil grows with each level. */
+.g2-frame-art[data-level='1'] .g2-frame-glyph {
+  font-size: 2.7em;
+}
+
+.g2-frame-art[data-level='3'] .g2-frame-glyph {
+  font-size: 4.3em;
+  text-shadow: 0 0 0.12em hsl(var(--hue) 100% 75%), 0 0 0.45em hsl(var(--hue) 100% 60%), 0 0 0.9em hsl(var(--hue) 100% 55% / 0.7), 0 0.04em 0 #000;
+}
+
 .g2-frame-type {
   flex: none;
   display: flex;
@@ -5323,6 +5383,16 @@ body.g2-grabbing * {
   font-size: 0.64em;
   line-height: 1.25;
   text-align: center;
+}
+
+.g2-frame-text.evolves {
+  flex-direction: column;
+  gap: 0.3em;
+}
+
+.g2-frame-evolves {
+  color: #7a4a0e;
+  letter-spacing: 0.02em;
 }
 
 .g2-frame-cost {
@@ -5625,6 +5695,13 @@ body.g2-grabbing * {
   font-weight: 600;
 }
 
+.g2-droptag.evolve,
+.g2-dropnote.evolve {
+  background: #3a2a0c;
+  border-color: #f2c35a;
+  color: #fff1cf;
+}
+
 /* ------------------------------------------------------------ the card viewer */
 /*
  * The card under the pointer (or tapped) with how it moves beside it. Wide screens keep it in a column left of
@@ -5734,6 +5811,11 @@ body.g2-grabbing * {
 .g2-chip.timer {
   color: #d9ccff;
   border-color: rgba(170, 140, 255, 0.38);
+}
+
+.g2-chip.line {
+  color: #ffe1a0;
+  border-color: rgba(242, 195, 90, 0.45);
 }
 
 .g2-chip.owner.white {
@@ -6180,8 +6262,18 @@ body.g2-grabbing * {
   --t0: 320ms;
 }
 
-.g2-fx-spot.hatch {
+.g2-fx-spot.hatch,
+.g2-fx-spot.evolve {
   --t0: 230ms;
+}
+
+/* An evolution card dives in first (CARD_DIVE_MS), then the old piece cracks. */
+.g2-fx-spot.evolve.with-card {
+  --t0: 550ms;
+}
+
+.g2-fx-spot.evolve.with-card .g2-fx-ghost.crack {
+  animation-delay: calc(var(--delay, 0ms) + 320ms);
 }
 
 .g2-fx-spot.vanish {

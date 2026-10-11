@@ -34,12 +34,17 @@ function buildFan(fan: HTMLElement): void {
     slot.style.setProperty('--r', `${place.r}deg`);
     const float = el('div', 'hx-float');
     float.style.animationDelay = `${(-i * 1.9).toFixed(1)}s`;
+    const from = card.evolvesFrom ? v2.STARTER_CATALOG[card.evolvesFrom] : undefined;
     const frame = fillFrame(el('div', 'hx-card'), {
       kind: 'piece',
       id,
       name: card.name,
       cost: card.cost,
-      sealTimer: card.sealTimer,
+      // Evolution cards are never sacrificed, so they print no timer.
+      sealTimer: card.evolvesFrom ? undefined : card.sealTimer,
+      line: card.line,
+      level: card.level,
+      evolvesFrom: from?.name,
       text: v2.describeMovement(card.piece),
       art: card.art,
       glyph: glyphFor(id, card.name),

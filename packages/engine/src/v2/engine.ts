@@ -309,6 +309,28 @@ function applyAction(state: GameState, action: Action, events: GameEvent[]): voi
       events.push({ type: 'sealed', color, sealId: seal.id, square: seal.square, consumedPieceId: consumed.id, timer: seal.timer });
       return;
     }
+    case 'evolve': {
+      const instance = removeFromHand(state, color, action.cardUid);
+      const card = pieceCard(state, instance.cardId);
+      state.mana[color] -= card.cost;
+      const old = pieceAt(state, action.target);
+      if (!old) throw new Error('No piece to evolve');
+      state.pieces = state.pieces.filter((p) => p.id !== old.id);
+      // A new piece, so it waits like a summoned one: no move or capture until the owner's next turn (Djabooty, 2026-10-11).
+      const piece: Piece = {
+        id: newId(state, 'p'),
+        owner: color,
+        def: card.piece,
+        cardId: card.id,
+        square: action.target,
+        activeFromTurn: state.turns[color] + 1,
+        summonedOnTurn: state.turns[color],
+      };
+      state.pieces.push(piece);
+      state.cardPlayed = true;
+      events.push({ type: 'evolved', color, pieceId: piece.id, fromPieceId: old.id, square: piece.square });
+      return;
+    }
     case 'spell': {
       const instance = removeFromHand(state, color, action.cardUid);
       const card = state.catalog[instance.cardId];
@@ -399,7 +421,7 @@ function summonActions(state: GameState): Action[] {
   const free = backRowSquares(color).filter((s) => ownerAt(state, s) === null);
   const out: Action[] = [];
   for (const { instance, card } of handPieces(state, color)) {
-    if (card.cost > state.mana[color]) continue;
+    if (card.evolvesFrom || card.cost > state.mana[color]) continue;
     for (const to of free) {
       const action: Action = { type: 'summon', cardUid: instance.uid, to };
       if (safe(state, action)) out.push(action);
@@ -413,9 +435,28 @@ function sealActions(state: GameState): Action[] {
   const targets = state.pieces.filter((p) => p.owner === color && !p.def.king);
   const out: Action[] = [];
   for (const { instance, card } of handPieces(state, color)) {
-    if (card.cost > state.mana[color]) continue;
+    if (card.evolvesFrom || card.cost > state.mana[color]) continue;
     for (const target of targets) {
       const action: Action = { type: 'seal', cardUid: instance.uid, target: target.square };
+      if (safe(state, action)) out.push(action);
+    }
+  }
+  return out;
+}
+
+/**
+ * An evolution card goes onto one of your pieces of the card it evolves from. The piece must have been on the board
+ * since before this turn (no summoning sickness left), so each step of a line gives the opponent a turn to answer
+ * (Djabooty, 2026-10-11).
+ */
+function evolveActions(state: GameState): Action[] {
+  const color = state.active;
+  const out: Action[] = [];
+  for (const { instance, card } of handPieces(state, color)) {
+    if (!card.evolvesFrom || card.cost > state.mana[color]) continue;
+    for (const piece of state.pieces) {
+      if (piece.owner !== color || piece.cardId !== card.evolvesFrom || !isActive(state, piece)) continue;
+      const action: Action = { type: 'evolve', cardUid: instance.uid, target: piece.square };
       if (safe(state, action)) out.push(action);
     }
   }
@@ -437,11 +478,11 @@ function spellActions(state: GameState): Action[] {
 }
 
 function cardActions(state: GameState): Action[] {
-  return [...summonActions(state), ...sealActions(state), ...spellActions(state)];
+  return [...summonActions(state), ...sealActions(state), ...evolveActions(state), ...spellActions(state)];
 }
 
 /**
- * A turn is: play any cards the mana pays for (summon, seal, spell), then move a piece, and the move ends the
+ * A turn is: play any cards the mana pays for (summon, seal, evolve, spell), then move a piece, and the move ends the
  * turn (Djabooty, 2026-10-10). Nothing may leave your own King in check, so a King in check is answered first,
  * by a move or by a summon that blocks; no spell can do it. End turn closes a turn only when no move is left,
  * and only after a card, so there is still no pass. `actionTaken` is a game saved while an older rule kept the
