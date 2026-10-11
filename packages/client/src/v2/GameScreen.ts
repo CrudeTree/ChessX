@@ -172,6 +172,12 @@ export class GameScreen {
   /** Hand cards seen so far (null before the first hand), and when each newly drawn one starts sliding in. */
   private seenCards: Set<string> | null = null;
   private readonly drawnAt = new Map<string, number>();
+  /**
+   * Whose hand is showing, and whose hands have been shown this game. Practice shows the side to move, so each
+   * turn the other side's whole hand slides in again; only the first time it does is dealt with a sound.
+   */
+  private handOwner: Color | null = null;
+  private readonly shownHands = new Set<Color>();
 
   // DOM
   private readonly boardEl = el('div', 'g2-board');
@@ -398,6 +404,8 @@ export class GameScreen {
     this.landed.clear();
     this.seenCards = null;
     this.drawnAt.clear();
+    this.handOwner = null;
+    this.shownHands.clear();
     this.lastSeq = -1;
     this.logEl.innerHTML = '';
     this.handEl.innerHTML = '';
@@ -626,7 +634,7 @@ export class GameScreen {
     const started = view.events.find((e): e is Extract<v2.GameEvent, { type: 'turnStarted' }> => e.type === 'turnStarted');
     if (!started) return;
     if (view.events.some((e) => e.type === 'check')) sfx.check(at);
-    else if (this.solo || started.color === view.you) sfx.turn(started.color, at);
+    else if (!this.solo && started.color === view.you) sfx.chime(at);
   }
 
   /** Effects for what the last action did: its own first, then the next turn's (hatching, the banner). */
@@ -1206,9 +1214,12 @@ export class GameScreen {
     if (this.seenCards) {
       let k = 0;
       for (const c of hand) if (!this.seenCards.has(c.uid) && !this.drawnAt.has(c.uid)) this.drawnAt.set(c.uid, now + Math.min(k++, 6) * 90);
-      if (k) sound.sfx?.deal(k);
+      const reshown = view.you !== this.handOwner && this.shownHands.has(view.you);
+      if (k && !reshown) sound.sfx?.deal(k);
     }
     this.seenCards = new Set(hand.map((c) => c.uid));
+    this.handOwner = view.you;
+    this.shownHands.add(view.you);
 
     const row = el('div', 'g2-handrow');
     row.style.setProperty('--n', String(Math.max(hand.length, 1)));

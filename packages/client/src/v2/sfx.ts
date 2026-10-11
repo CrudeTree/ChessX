@@ -276,15 +276,6 @@ export class Sfx {
     for (const note of [38, 50, 57, 62]) this.horn(1.1, note, 0.5, 0.07);
   }
 
-  /** A war horn for the next turn: a rising call, answered lower when it is Black's. */
-  turn(color: Color, delayMs: number): void {
-    const at = delayMs / 1000;
-    const root = color === 'white' ? 50 : 45;
-    this.drum(at, 38, 0.4);
-    this.horn(at, root, 0.22, 0.14);
-    this.horn(at + 0.26, root + 7, 0.55, 0.16);
-  }
-
   /** Check: a braam over a drum and a cymbal. */
   check(delayMs: number): void {
     const at = delayMs / 1000;
@@ -336,10 +327,11 @@ export class Sfx {
     this.cymbal(at, 0.04);
   }
 
-  /** The notification chime: two quick notes. */
-  chime(): void {
-    this.tone({ at: 0, freq: 660, attack: 0.02, decay: 0.33, peak: 0.2 });
-    this.tone({ at: 0.14, freq: 880, attack: 0.02, decay: 0.33, peak: 0.2 });
+  /** The notification chime, also your turn in a game against someone: two quick notes. */
+  chime(delayMs = 0): void {
+    const at = delayMs / 1000;
+    this.tone({ at, freq: 660, attack: 0.02, decay: 0.33, peak: 0.2 });
+    this.tone({ at: at + 0.14, freq: 880, attack: 0.02, decay: 0.33, peak: 0.2 });
   }
 
   // ------------------------------------------------------------- instruments
