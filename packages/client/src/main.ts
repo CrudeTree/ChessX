@@ -15,6 +15,7 @@ import { initAttention, notice as attention } from './attention.js';
 import { Binder, cardElement } from './binder.js';
 import { BalanceEditor } from './editor.js';
 import { FriendsPanel } from './friends.js';
+import { initHome } from './home.js';
 import { initPush, onServiceWorkerMessage } from './push.js';
 import { ArenaPalette, ownedCardIds } from './arena.js';
 import { GameView } from './game/GameView.js';
@@ -439,7 +440,12 @@ $('logout').onclick = async () => {
 // Home screen
 
 const homeError = $('home-error');
+initHome();
 
+$('your-move').onclick = () => {
+  setHomeTab('active');
+  $('sec-games').scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
 $('new-game').onclick = () => {
   net.send({ type: 'createGame', deckSlot: chosenDeckSlot() });
 };
@@ -501,6 +507,10 @@ function renderHome(): void {
   const finished = games.filter((g) => g.status.kind !== 'playing');
   $('active-count').textContent = active.length ? `${active.length}` : '';
   $('finished-count').textContent = finished.length ? `${finished.length}` : '';
+  // Practice games are always "your move", so they do not count here.
+  const waiting = active.filter((g) => g.yourTurn && !g.waitingForOpponent && !g.solo).length;
+  $('your-move').classList.toggle('hidden', waiting === 0);
+  $('your-move').textContent = `It's your move in ${waiting} game${waiting === 1 ? '' : 's'}`;
 
   // Your move first, then games waiting on the other player, then invites without an opponent yet.
   const rank = (g: GameSummary) => (g.yourTurn && !g.waitingForOpponent ? 0 : g.waitingForOpponent ? 2 : 1);

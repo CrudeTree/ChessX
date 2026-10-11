@@ -59,51 +59,78 @@
         <button id="push-enable" class="primary">Turn on</button>
         <button id="push-dismiss" class="x">Not now</button>
       </div>
-      <header class="home-header">
-        <h1>Chess<span>X</span></h1>
-        <div class="home-actions">
-          <!-- Decks only apply to games under the original rules; new games use the starter deck for now. -->
-          <label class="deck-pick hidden">
-            Deck
-            <select id="deck-select"></select>
-          </label>
-          <button id="new-game" class="primary">New game</button>
-          <button id="practice">Practice</button>
-          <button id="arena-start">Arena</button>
-          <form id="join-form" class="row" autocomplete="off">
-            <input id="join-code" maxlength="5" placeholder="CODE" />
-            <button id="join" type="submit">Join</button>
-          </form>
-          <button id="open-binder" class="binder-btn">Binder <span id="binder-new" class="pill hidden"></span></button>
-          <button id="open-editor" class="binder-btn hidden" title="Admin: edit card and piece numbers">Card editor</button>
+      <section class="hx-hero">
+        <div class="hx-bg" aria-hidden="true">
+          <div class="hx-sky"></div>
+          <div class="hx-floor"><div class="hx-plane"><div class="hx-tiles"></div></div></div>
+          <div class="hx-horizon"></div>
+          <div id="hx-embers" class="hx-embers"></div>
         </div>
-        <div class="me">
-          <img id="avatar" class="avatar hidden" alt="" />
-          <div class="me-text">
-            <span id="me-name"></span>
-            <div class="xp"><span id="level-badge" class="level">Lv 1</span><div class="xp-bar"><div id="xp-fill"></div></div><span id="xp-text" class="xp-text"></span></div>
+        <header class="hx-top">
+          <div class="hx-me">
+            <img id="avatar" class="avatar hidden" alt="" />
+            <span class="hx-crest" aria-hidden="true">♛</span>
+            <div class="hx-me-text">
+              <span id="me-name" class="hx-name"></span>
+              <div class="xp"><span id="level-badge" class="level">Lv 1</span><div class="xp-bar"><div id="xp-fill"></div></div><span id="xp-text" class="xp-text"></span></div>
+            </div>
           </div>
-          <button id="logout">Sign out</button>
+          <nav class="hx-nav">
+            <!-- Decks only apply to games under the original rules; new games use the starter deck for now. -->
+            <label class="deck-pick hidden">
+              Deck
+              <select id="deck-select"></select>
+            </label>
+            <button id="open-binder" class="hx-navbtn">Binder <span id="binder-new" class="pill hidden"></span></button>
+            <button id="open-editor" class="hx-navbtn hidden" title="Admin: edit card and piece numbers">Card editor</button>
+            <button id="logout" class="hx-navbtn quiet">Sign out</button>
+          </nav>
+        </header>
+        <div class="hx-stage">
+          <div class="hx-pitch">
+            <p class="hx-eyebrow">The chess card game</p>
+            <h1 class="hx-title">Chess<span>X</span></h1>
+            <p class="hx-tagline">Summon. Seal. Checkmate.</p>
+            <p class="hx-lede">Your army waits in your hand. Spend mana to summon pieces and seal new ones onto the board, then strike with your move.</p>
+            <button id="your-move" class="hx-yourmove hidden"></button>
+            <div class="hx-modes">
+              <button id="new-game" class="hx-mode hx-play">
+                <span class="hx-mode-icon" aria-hidden="true">&#x2694;&#xFE0E;</span>
+                <span class="hx-mode-text"><b>New game</b><small>Invite a friend with a code</small></span>
+              </button>
+              <button id="practice" class="hx-mode">
+                <span class="hx-mode-icon" aria-hidden="true">♞</span>
+                <span class="hx-mode-text"><b>Practice</b><small>Play both sides</small></span>
+              </button>
+              <button id="arena-start" class="hx-mode">
+                <span class="hx-mode-icon" aria-hidden="true">&#x2726;&#xFE0E;</span>
+                <span class="hx-mode-text"><b>Arena</b><small>Test any card</small></span>
+              </button>
+            </div>
+            <form id="join-form" class="hx-join" autocomplete="off">
+              <span class="hx-join-label">Have an invite code?</span>
+              <input id="join-code" maxlength="5" placeholder="CODE" aria-label="Invite code" />
+              <button id="join" type="submit">Join</button>
+            </form>
+            <p id="home-error" class="error"></p>
+          </div>
+          <div id="hx-fan" class="hx-fan" aria-hidden="true"></div>
         </div>
-      </header>
-      <div class="hero-strip" aria-hidden="true">
-        <img src="/art/war_chariot.png" alt="" />
-        <img src="/art/shadow_panther.png" alt="" />
-        <img src="/art/the_ox.png" alt="" />
-        <img src="/art/storm_drake.png" alt="" />
-        <img src="/art/stone_sentinel.png" alt="" />
-        <img src="/art/elder_wyrm.png" alt="" />
-      </div>
-      <p id="home-error" class="error"></p>
+      </section>
+      <ol class="hx-steps" aria-label="How a turn works">
+        <li><span class="hx-step-icon mana" aria-hidden="true">&#x25C6;&#xFE0E;</span><b>Gain mana, draw a card</b><span>+1 mana every turn, and what you don't spend carries over.</span></li>
+        <li><span class="hx-step-icon cards" aria-hidden="true">&#x2726;&#xFE0E;</span><b>Play your cards</b><span>Summon, seal and cast as many as your mana pays for.</span></li>
+        <li><span class="hx-step-icon move" aria-hidden="true">♞</span><b>Make your move</b><span>Moving a piece ends your turn. Checkmate the King to win.</span></li>
+      </ol>
       <div class="home-body">
         <div class="home-games">
           <section id="sec-challenges" class="hidden">
             <h2 class="section-title">Challenges</h2>
             <div id="challenges" class="challenges"></div>
           </section>
-          <section>
+          <section id="sec-games">
             <div class="games-head">
-              <h2 class="section-title">Games</h2>
+              <h2 class="section-title">Your games</h2>
               <div class="tabs">
                 <button id="tab-active" class="active">Active <span id="active-count" class="tab-count"></span></button>
                 <button id="tab-finished">Finished <span id="finished-count" class="tab-count"></span></button>
