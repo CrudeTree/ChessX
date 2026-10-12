@@ -734,6 +734,164 @@ describe('spells', () => {
   });
 });
 
+describe('Mana Surge, Resurrect, Shield, Freeze and Smite (Djabooty, 2026-10-12)', () => {
+  type SpellAction = Extract<Action, { type: 'spell' }>;
+  const casts = (state: GameState, uid: string): SpellAction[] =>
+    legalActions(state).filter((a): a is SpellAction => a.type === 'spell' && a.cardUid === uid);
+  const viewed = (state: GameState, square: string) =>
+    viewFor({ state, seq: 0, events: [] }, 'white').pieces.find((p) => p.square === S(square));
+
+  it('Mana Surge costs 1 and gains 3 mana, leaving you 2 ahead', () => {
+    const state = bare(1);
+    const surge = give(state, 'white', 'mana_surge');
+    expect(casts(state, surge)).toEqual([{ type: 'spell', cardUid: surge }]);
+    const { state: next, events } = applyLegalAction(state, { type: 'spell', cardUid: surge });
+    expect(next.mana.white).toBe(3);
+    expect(events).toContainEqual({ type: 'manaGained', color: 'white', mana: 3 });
+    expect(next.discard.white.map((c) => c.cardId)).toEqual(['mana_surge']);
+  });
+
+  it('a captured piece goes on its captor\'s discard pile; a sacrificed one and the card a piece evolved from on its owner\'s', () => {
+    let state = bare(20);
+    piece(state, 'white', 'recruit', 'c3');
+    piece(state, 'white', 'initiate', 'f3');
+    piece(state, 'white', 'warlord', 'h1');
+    piece(state, 'black', 'apprentice', 'h6');
+    const warrior = give(state, 'white', 'warrior');
+    const colt = give(state, 'white', 'colt');
+    state = act(state, find(state, (a) => a.type === 'evolve' && a.cardUid === warrior && a.target === S('c3')));
+    state = act(state, find(state, (a) => a.type === 'seal' && a.cardUid === colt && a.target === S('f3')));
+    expect(state.discard.white.map((c) => c.cardId)).toEqual(['recruit', 'initiate']);
+    const { state: next, events } = applyLegalAction(state, find(state, (a) => a.type === 'move' && a.from === S('h1') && a.to === S('h6')));
+    expect(next.discard.white.map((c) => c.cardId)).toEqual(['recruit', 'initiate', 'apprentice']);
+    expect(next.discard.black).toEqual([]);
+    expect(events).toContainEqual(expect.objectContaining({ type: 'captured', cardId: 'apprentice', bounty: 1 }));
+  });
+
+  it('Resurrect raises a piece card costing 4 or less from your discard pile, as your piece, onto your first two rows', () => {
+    const state = bare(10);
+    state.discard.white = [
+      { uid: 'dw1', cardId: 'warrior' },
+      { uid: 'dw2', cardId: 'duskfang' },
+      { uid: 'dw3', cardId: 'insight' },
+      { uid: 'dw4', cardId: 'mage' },
+      { uid: 'dw5', cardId: 'mage' },
+    ];
+    state.discard.black = [{ uid: 'db1', cardId: 'colt' }];
+    const resurrect = give(state, 'white', 'resurrect');
+    // Duskfang costs 9, Insight is a spell, the Colt is in Black's pile, and of the two Mages the newest is offered.
+    expect([...new Set(casts(state, resurrect).map((a) => a.pick))].sort()).toEqual(['dw1', 'dw5']);
+    const squares = casts(state, resurrect).filter((a) => a.pick === 'dw5').map((a) => a.target);
+    expect(squares).toContain(S('a2'));
+    expect(squares).not.toContain(S('d1'));
+    expect(squares).not.toContain(S('a3'));
+    expect(() => act(state, { type: 'spell', cardUid: resurrect, target: S('a2'), pick: 'db1' })).toThrow();
+
+    const { state: next, events } = applyLegalAction(state, { type: 'spell', cardUid: resurrect, target: S('a2'), pick: 'dw5' });
+    expect(pieceAt(next, S('a2'))).toMatchObject({ owner: 'white', cardId: 'mage' });
+    expect(next.discard.white.map((c) => c.uid).slice(0, 4)).toEqual(['dw1', 'dw2', 'dw3', 'dw4']);
+    expect(next.discard.white.map((c) => c.cardId).slice(4)).toEqual(['resurrect']);
+    expect(next.discard.black.map((c) => c.uid)).toEqual(['db1']);
+    expect(events).toContainEqual(expect.objectContaining({ type: 'raised', color: 'white', cardId: 'mage', square: S('a2') }));
+    // It waits like a summoned piece.
+    expect(legalActions(next).some((a) => a.type === 'move' && a.from === S('a2'))).toBe(false);
+  });
+
+  it('an enemy piece you capture can rise again on your side', () => {
+    let state = bare(20);
+    piece(state, 'white', 'warlord', 'h1');
+    piece(state, 'black', 'apprentice', 'h6');
+    const resurrect = give(state, 'white', 'resurrect');
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('h1') && a.to === S('h6')));
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('d8') && a.to === S('e8')));
+    state = act(state, find(state, (a) => a.type === 'spell' && a.cardUid === resurrect && a.target === S('a1')));
+    expect(pieceAt(state, S('a1'))).toMatchObject({ owner: 'white', cardId: 'apprentice' });
+  });
+
+  it('Resurrect has nothing to cast with no piece card it can reach', () => {
+    const state = bare(10);
+    state.discard.white = [{ uid: 'dw1', cardId: 'duskfang' }];
+    state.discard.black = [{ uid: 'db1', cardId: 'initiate' }];
+    const resurrect = give(state, 'white', 'resurrect');
+    expect(casts(state, resurrect)).toEqual([]);
+  });
+
+  it('Shield: until your next turn the piece cannot be captured, and enemy spells cannot touch it', () => {
+    let state = bare(10);
+    piece(state, 'white', 'recruit', 'c4');
+    piece(state, 'black', 'warlord', 'c8');
+    give(state, 'black', 'smite');
+    give(state, 'black', 'freeze');
+    const shield = give(state, 'white', 'shield');
+    expect(casts(state, shield).map((a) => a.target)).toEqual([S('c4')]);
+    state = act(state, { type: 'spell', cardUid: shield, target: S('c4') });
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('d1') && a.to === S('e1')));
+    expect(viewed(state, 'c4')?.shielded).toBe(true);
+    expect(legalActions(state).some((a) => a.type === 'move' && a.to === S('c4'))).toBe(false);
+    expect(legalActions(state).some((a) => a.type === 'spell' && a.target === S('c4'))).toBe(false);
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('d8') && a.to === S('e8')));
+    expect(viewed(state, 'c4')?.shielded).toBeUndefined();
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('e1') && a.to === S('f1')));
+    expect(legalActions(state).some((a) => a.type === 'move' && a.from === S('c8') && a.to === S('c4'))).toBe(true);
+  });
+
+  it('Freeze: the enemy piece cannot move or capture on its owner\'s next turn, but still attacks', () => {
+    let state = bare(10);
+    piece(state, 'black', 'warlord', 'h2');
+    const freeze = give(state, 'white', 'freeze');
+    expect(casts(state, freeze).map((a) => a.target)).toEqual([S('h2')]);
+    state = act(state, { type: 'spell', cardUid: freeze, target: S('h2') });
+    expect(viewed(state, 'h2')?.frozen).toBe(true);
+    expect(legalActions(state).some((a) => a.type === 'move' && a.from === S('d1') && a.to === S('d2'))).toBe(false);
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('d1') && a.to === S('c1')));
+    expect(legalActions(state).some((a) => a.type === 'move' && a.from === S('h2'))).toBe(false);
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('d8') && a.to === S('e8')));
+    expect(viewed(state, 'h2')?.frozen).toBeUndefined();
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('c1') && a.to === S('b1')));
+    expect(legalActions(state).some((a) => a.type === 'move' && a.from === S('h2'))).toBe(true);
+  });
+
+  it('Smite destroys an enemy piece whose card costs 2 or less, for no bounty; its card goes to its owner\'s discard pile', () => {
+    const state = bare(10);
+    piece(state, 'black', 'colt', 'b6');
+    piece(state, 'black', 'mage', 'g6');
+    const smite = give(state, 'white', 'smite');
+    expect(casts(state, smite).map((a) => a.target)).toEqual([S('b6')]);
+    const { state: next, events } = applyLegalAction(state, { type: 'spell', cardUid: smite, target: S('b6') });
+    expect(pieceAt(next, S('b6'))).toBeUndefined();
+    expect(next.discard.black.map((c) => c.cardId)).toEqual(['colt']);
+    expect(next.mana.white).toBe(7);
+    expect(events).toContainEqual(expect.objectContaining({ type: 'destroyed', color: 'white', owner: 'black', cardId: 'colt', square: S('b6') }));
+    expect(events.some((e) => e.type === 'captured')).toBe(false);
+  });
+
+  it('Smite cannot remove a piece that blocks an enemy line onto your own King', () => {
+    const state = bare(10);
+    piece(state, 'black', 'warlord', 'd6');
+    piece(state, 'black', 'squire', 'd4');
+    const smite = give(state, 'white', 'smite');
+    expect(casts(state, smite)).toEqual([]);
+  });
+
+  it('no spell answers a check, not even a Smite on the checking piece', () => {
+    const state = bare(10);
+    piece(state, 'black', 'recruit', 'd2');
+    give(state, 'white', 'smite');
+    give(state, 'white', 'shield');
+    give(state, 'white', 'mana_surge');
+    expect(isInCheck(state, 'white')).toBe(true);
+    expect(legalActions(state).some((a) => a.type === 'spell')).toBe(false);
+  });
+
+  it('tells the client what each spell does', () => {
+    const cards = viewFor({ state: bare(), seq: 0, events: [] }, 'white').cards;
+    expect(cards.resurrect).toMatchObject({ spell: 'raise', maxCost: 4 });
+    expect(cards.smite).toMatchObject({ spell: 'destroyPiece', maxCost: 2 });
+    expect(cards.shield).toMatchObject({ spell: 'shield' });
+    expect(cards.lava_breath).toMatchObject({ spell: 'grant', grants: 'lavaBreath' });
+  });
+});
+
 describe('mana (Djabooty, 2026-10-11)', () => {
   /** Plays King shuffles until White has started `turn` turns, returning the turnStarted events White got. */
   function playTo(turn: number): { state: GameState; incomes: number[] } {
@@ -977,7 +1135,7 @@ describe('the game log (Djabooty, 2026-10-11)', () => {
 });
 
 describe('starter deck', () => {
-  it('is the agreed 25-card list', () => {
+  it('is the agreed 30-card list', () => {
     const counts: Record<string, number> = {};
     for (const id of starterDeck()) counts[id] = (counts[id] ?? 0) + 1;
     expect(counts).toEqual({
@@ -1000,8 +1158,13 @@ describe('starter deck', () => {
       insight: 2,
       dispel: 1,
       lava_breath: 1,
+      mana_surge: 1,
+      resurrect: 1,
+      shield: 1,
+      freeze: 1,
+      smite: 1,
     });
-    expect(starterDeck()).toHaveLength(25);
+    expect(starterDeck()).toHaveLength(30);
   });
 
   it('gives every card a type (Djabooty, 2026-10-11): a line\'s cards share its type', () => {
@@ -1026,6 +1189,11 @@ describe('starter deck', () => {
       insight: undefined,
       dispel: undefined,
       lava_breath: 'Dragon',
+      mana_surge: undefined,
+      resurrect: undefined,
+      shield: undefined,
+      freeze: undefined,
+      smite: undefined,
     });
     for (const card of Object.values(STARTER_CATALOG)) {
       if (card.type === 'piece' && card.line) expect(card.tribe, card.id).toBe(card.line);

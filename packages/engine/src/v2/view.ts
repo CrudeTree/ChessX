@@ -1,4 +1,4 @@
-import { incomeFor, isActive, isInCheck, LAVA_COST, LAVA_TURNS, legalActions, SETUP_PIECES } from './engine.js';
+import { incomeFor, isActive, isFrozen, isInCheck, isShielded, LAVA_COST, LAVA_TURNS, legalActions, SETUP_PIECES } from './engine.js';
 import {
   opposite,
   type Ability,
@@ -11,6 +11,7 @@ import {
   type GameStatus,
   type MoveRule,
   type PieceDef,
+  type SpellEffect,
   type Square,
 } from './types.js';
 
@@ -68,6 +69,9 @@ export interface ViewCard {
   anyPath?: boolean;
   /** Spells: the ability it teaches a piece. */
   grants?: Ability;
+  /** Spells: what it does, and for Resurrect and Smite the highest card cost it reaches. */
+  spell?: SpellEffect['kind'];
+  maxCost?: number;
   /** The longer rules for the card viewer. */
   detail?: string;
 }
@@ -86,6 +90,10 @@ export interface ViewPiece {
   justSummoned: boolean;
   /** Abilities spells taught it. */
   abilities?: Ability[];
+  /** Under a Shield until its owner's next turn: it cannot be captured or targeted by enemy spells. */
+  shielded?: boolean;
+  /** Frozen for its owner's turn being played or the next one: it cannot move or capture then. */
+  frozen?: boolean;
 }
 
 export interface ViewLava {
@@ -214,8 +222,10 @@ function viewCard(card: Card): ViewCard {
     if (card.level) out.level = card.level;
     if (card.abilityText) out.abilityText = card.abilityText;
     if (card.anyPath) out.anyPath = true;
-  } else if (card.effect.kind === 'grant') {
-    out.grants = card.effect.ability;
+  } else {
+    out.spell = card.effect.kind;
+    if (card.effect.kind === 'grant') out.grants = card.effect.ability;
+    if (card.effect.kind === 'raise' || card.effect.kind === 'destroyPiece') out.maxCost = card.effect.maxCost;
   }
   return out;
 }
@@ -255,6 +265,8 @@ export function viewFor(record: GameRecord, you: Color, opts: ViewOptions = {}):
       active: isActive(state, p),
       justSummoned: p.summonedOnTurn === state.turns[p.owner],
       ...(p.abilities?.length ? { abilities: p.abilities } : {}),
+      ...(isShielded(state, p) ? { shielded: true } : {}),
+      ...(isFrozen(state, p) ? { frozen: true } : {}),
     })),
     seals: state.seals.map((s) => ({ id: s.id, owner: s.owner, square: s.square, cardId: s.card.id, timer: s.timer })),
     lava: (state.lava ?? []).map((l) => ({ square: l.square, by: l.by, turnsLeft: lavaTurnsLeft(state, l.by, l.untilTurn) })),

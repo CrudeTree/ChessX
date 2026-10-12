@@ -33,7 +33,13 @@ function learn(events: v2.GameEvent[], memory: PieceMemory): void {
         if (e.consumedName) memory.set(e.consumedPieceId, { name: e.consumedName, owner: e.color });
         break;
       case 'lava':
+      case 'raised':
+      case 'shielded':
         memory.set(e.pieceId, { name: e.name, owner: e.color });
+        break;
+      case 'frozen':
+      case 'destroyed':
+        memory.set(e.pieceId, { name: e.name, owner: e.owner });
         break;
       default:
         break;
@@ -119,6 +125,21 @@ export function describeEvents(
         break;
       case 'learned':
         lines.push({ text: `${e.name} learns ${v2.ABILITIES[e.ability].name}!`, color: e.color, important: true });
+        break;
+      case 'manaGained':
+        lines.push({ text: `${names[e.color]} gains ${e.mana} mana.`, color: e.color });
+        break;
+      case 'raised':
+        lines.push({ text: `${names[e.color]} raises ${e.name} from their discard pile on ${v2.squareName(e.square)}!`, color: e.color, important: true });
+        break;
+      case 'shielded':
+        lines.push({ text: `${e.name} on ${v2.squareName(e.square)} is shielded until ${names[e.color]}'s next turn.`, color: e.color });
+        break;
+      case 'frozen':
+        lines.push({ text: `${names[e.owner]}'s ${e.name} on ${v2.squareName(e.square)} is frozen for a turn.`, color: e.color, important: true });
+        break;
+      case 'destroyed':
+        lines.push({ text: `${names[e.owner]}'s ${e.name} on ${v2.squareName(e.square)} is destroyed!`, color: e.color, important: true });
         break;
       case 'pitched':
         lines.push({ text: `${names[e.color]} pitches ${cardName(e.cardId)} for +${e.mana} mana.`, color: e.color });

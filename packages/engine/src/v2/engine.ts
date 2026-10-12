@@ -19,6 +19,7 @@ import {
   type Piece,
   type PieceCard,
   type Seal,
+  type SpellEffect,
   type Square,
 } from './types.js';
 
@@ -209,6 +210,17 @@ export function isActive(state: GameState, piece: Piece): boolean {
   return state.turns[piece.owner] >= piece.activeFromTurn;
 }
 
+/** Under a Shield: until its owner's next turn it cannot be captured or targeted by enemy spells. */
+export function isShielded(state: GameState, piece: Piece): boolean {
+  return piece.shieldOnTurn !== undefined && piece.shieldOnTurn === state.turns[piece.owner];
+}
+
+/** Frozen for the owner's turn being played, or for its next one while the other side plays. */
+export function isFrozen(state: GameState, piece: Piece): boolean {
+  const ownerTurn = state.turns[piece.owner] + (state.active === piece.owner ? 0 : 1);
+  return piece.frozenOnTurn !== undefined && piece.frozenOnTurn === ownerTurn;
+}
+
 interface Reach {
   to: Square;
   mode: 'both' | 'move' | 'capture';
@@ -279,10 +291,19 @@ function pieceCard(state: GameState, cardId: string): PieceCard {
   return card;
 }
 
+/**
+ * A piece leaving play puts its card on a discard pile, where Resurrect can find it (Djabooty, 2026-10-12): a captured
+ * piece goes on its captor's pile, and one that was sacrificed, destroyed or evolved on its owner's. Kings have no card.
+ */
+function discardPiece(state: GameState, piece: Piece, pile: Color = piece.owner): void {
+  if (piece.cardId) state.discard[pile].push({ uid: newId(state, 'c'), cardId: piece.cardId });
+}
+
 function capture(state: GameState, mover: Piece, to: Square, events: GameEvent[]): void {
   const victim = pieceAt(state, to);
   if (victim) {
     state.pieces = state.pieces.filter((p) => p.id !== victim.id);
+    discardPiece(state, victim, mover.owner);
     const bounty = bountyFor(victim.cardId ? state.catalog[victim.cardId] : undefined);
     state.mana[mover.owner] += bounty;
     events.push({
@@ -359,6 +380,7 @@ function applyAction(state: GameState, action: Action, events: GameEvent[]): voi
       const consumed = pieceAt(state, action.target);
       if (!consumed) throw new Error('No piece to seal');
       state.pieces = state.pieces.filter((p) => p.id !== consumed.id);
+      discardPiece(state, consumed);
       const seal: Seal = { id: newId(state, 's'), owner: color, square: action.target, card, timer: card.sealTimer };
       state.seals.push(seal);
       state.cardPlayed = true;
@@ -383,8 +405,9 @@ function applyAction(state: GameState, action: Action, events: GameEvent[]): voi
       if (cost === null) throw new Error('Cannot evolve that piece');
       state.mana[color] -= cost;
       state.pieces = state.pieces.filter((p) => p.id !== old.id);
+      discardPiece(state, old);
       // A new piece, so it waits like a summoned one: no move or capture until the owner's next turn (Djabooty, 2026-10-11).
-      // What spells taught it stays with it.
+      // What spells taught it stays with it, and so does a Shield.
       const piece: Piece = {
         id: newId(state, 'p'),
         owner: color,
@@ -394,6 +417,7 @@ function applyAction(state: GameState, action: Action, events: GameEvent[]): voi
         activeFromTurn: state.turns[color] + 1,
         summonedOnTurn: state.turns[color],
         ...(old.abilities ? { abilities: old.abilities } : {}),
+        ...(old.shieldOnTurn !== undefined ? { shieldOnTurn: old.shieldOnTurn } : {}),
       };
       state.pieces.push(piece);
       state.cardPlayed = true;
@@ -418,23 +442,7 @@ function applyAction(state: GameState, action: Action, events: GameEvent[]): voi
       state.discard[color].push(instance);
       state.cardPlayed = true;
       events.push({ type: 'spellPlayed', color, cardId: card.id, target: action.target });
-      const effect = card.effect;
-      if (effect.kind === 'draw') {
-        draw(state, color, effect.count, events);
-        state.mana[color] += effect.mana ?? 0;
-      } else if (effect.kind === 'grant') {
-        const target = action.target === undefined ? undefined : pieceAt(state, action.target);
-        if (!target) throw new Error('No piece to teach');
-        target.abilities = [...(target.abilities ?? []), effect.ability];
-        events.push({ type: 'learned', color, pieceId: target.id, name: target.def.name, square: target.square, ability: effect.ability });
-      } else if (action.target !== undefined) {
-        const seal = sealAt(state, action.target);
-        if (seal) {
-          state.seals = state.seals.filter((s) => s.id !== seal.id);
-          state.discard[seal.owner].push({ uid: newId(state, 'c'), cardId: seal.card.id });
-          events.push({ type: 'sealDestroyed', sealId: seal.id, by: card.id, square: seal.square, cardId: seal.card.id });
-        }
-      }
+      castSpell(state, card.id, card.effect, action, events);
       return;
     }
     case 'pitch': {
@@ -461,6 +469,88 @@ function applyAction(state: GameState, action: Action, events: GameEvent[]): voi
       return;
     }
   }
+}
+
+type SpellAction = Extract<Action, { type: 'spell' }>;
+
+function castSpell(state: GameState, cardId: string, effect: SpellEffect, action: SpellAction, events: GameEvent[]): void {
+  const color = state.active;
+  const target = action.target === undefined ? undefined : pieceAt(state, action.target);
+  switch (effect.kind) {
+    case 'draw':
+      draw(state, color, effect.count, events);
+      gainMana(state, color, effect.mana ?? 0, events);
+      return;
+    case 'mana':
+      gainMana(state, color, effect.amount, events);
+      return;
+    case 'grant':
+      if (!target) throw new Error('No piece to teach');
+      target.abilities = [...(target.abilities ?? []), effect.ability];
+      events.push({ type: 'learned', color, pieceId: target.id, name: target.def.name, square: target.square, ability: effect.ability });
+      return;
+    case 'shield':
+      if (!target) throw new Error('No piece to shield');
+      target.shieldOnTurn = state.turns[color];
+      events.push({ type: 'shielded', color, pieceId: target.id, name: target.def.name, square: target.square });
+      return;
+    case 'freeze':
+      if (!target) throw new Error('No piece to freeze');
+      target.frozenOnTurn = state.turns[target.owner] + 1;
+      events.push({ type: 'frozen', color, pieceId: target.id, name: target.def.name, square: target.square, owner: target.owner });
+      return;
+    case 'destroyPiece':
+      if (!target) throw new Error('No piece to destroy');
+      state.pieces = state.pieces.filter((p) => p.id !== target.id);
+      discardPiece(state, target);
+      events.push({
+        type: 'destroyed',
+        color,
+        pieceId: target.id,
+        name: target.def.name,
+        square: target.square,
+        owner: target.owner,
+        cardId: target.cardId,
+      });
+      return;
+    case 'raise':
+      raise(state, action, events);
+      return;
+    case 'destroySeal': {
+      const seal = action.target === undefined ? undefined : sealAt(state, action.target);
+      if (!seal) return;
+      state.seals = state.seals.filter((s) => s.id !== seal.id);
+      state.discard[seal.owner].push({ uid: newId(state, 'c'), cardId: seal.card.id });
+      events.push({ type: 'sealDestroyed', sealId: seal.id, by: cardId, square: seal.square, cardId: seal.card.id });
+      return;
+    }
+  }
+}
+
+function gainMana(state: GameState, color: Color, mana: number, events: GameEvent[]): void {
+  if (mana <= 0) return;
+  state.mana[color] += mana;
+  events.push({ type: 'manaGained', color, mana });
+}
+
+/** Resurrect: the picked card leaves the caster's discard pile and rises on the target square as their piece. */
+function raise(state: GameState, action: SpellAction, events: GameEvent[]): void {
+  const color = state.active;
+  const instance = state.discard[color].find((i) => i.uid === action.pick);
+  if (!instance || action.target === undefined) throw new Error('Nothing to raise');
+  state.discard[color] = state.discard[color].filter((i) => i !== instance);
+  const card = pieceCard(state, instance.cardId);
+  const piece: Piece = {
+    id: newId(state, 'p'),
+    owner: color,
+    def: card.piece,
+    cardId: card.id,
+    square: action.target,
+    activeFromTurn: state.turns[color] + 1,
+    summonedOnTurn: state.turns[color],
+  };
+  state.pieces.push(piece);
+  events.push({ type: 'raised', color, pieceId: piece.id, name: piece.def.name, square: piece.square, cardId: card.id });
 }
 
 // ---------------------------------------------------------------------------
@@ -511,11 +601,12 @@ function moveActions(state: GameState): Action[] {
   const color = state.active;
   const out: Action[] = [];
   for (const piece of state.pieces) {
-    if (piece.owner !== color || piece.summonedOnTurn === state.turns[color]) continue;
+    if (piece.owner !== color || piece.summonedOnTurn === state.turns[color] || isFrozen(state, piece)) continue;
     const sick = !isActive(state, piece);
     for (const reach of reaches(state, piece)) {
       const empty = reach.occupant === null;
-      const enemy = reach.occupant === opposite(color);
+      const victim = reach.occupant === opposite(color) ? pieceAt(state, reach.to) : undefined;
+      const enemy = reach.occupant === opposite(color) && !(victim && isShielded(state, victim));
       const canMove = empty && reach.mode !== 'capture' && !lavaAt(state, reach.to);
       const canCapture = enemy && reach.mode !== 'move' && !sick;
       if (!canMove && !canCapture) continue;
@@ -575,25 +666,70 @@ function evolveActions(state: GameState): Action[] {
   return out;
 }
 
+/**
+ * No spell is cast while your King is in check, not even one that would block it or remove the checking piece
+ * (Djabooty, 2026-10-12). Enemy spells cannot touch a shielded piece, and no spell touches a King.
+ */
 function spellActions(state: GameState): Action[] {
   const color = state.active;
+  if (isInCheck(state, color)) return [];
+  const enemy = opposite(color);
   const out: Action[] = [];
   for (const instance of state.hand[color]) {
     const card = state.catalog[instance.cardId];
     if (card?.type !== 'spell' || card.cost > state.mana[color]) continue;
     const effect = card.effect;
-    let candidates: Action[];
-    if (effect.kind === 'destroySeal') {
-      candidates = state.seals.map((s): Action => ({ type: 'spell', cardUid: instance.uid, target: s.square }));
-    } else if (effect.kind === 'grant') {
-      // Onto one of your pieces of the spell's type that does not know the ability yet.
-      candidates = state.pieces
-        .filter((p) => p.owner === color && !p.def.king && (!card.tribe || tribeOf(state, p) === card.tribe) && !p.abilities?.includes(effect.ability))
-        .map((p): Action => ({ type: 'spell', cardUid: instance.uid, target: p.square }));
-    } else {
-      candidates = [{ type: 'spell', cardUid: instance.uid }];
+    const onto = (pieces: Piece[]): Action[] =>
+      pieces.map((p): Action => ({ type: 'spell', cardUid: instance.uid, target: p.square }));
+    const own = state.pieces.filter((p) => p.owner === color && !p.def.king);
+    const enemies = state.pieces.filter((p) => p.owner === enemy && !p.def.king && !isShielded(state, p));
+    switch (effect.kind) {
+      case 'destroySeal':
+        for (const s of state.seals) {
+          const action: Action = { type: 'spell', cardUid: instance.uid, target: s.square };
+          if (safe(state, action)) out.push(action);
+        }
+        break;
+      case 'grant':
+        // Onto one of your pieces of the spell's type that does not know the ability yet.
+        out.push(...onto(own.filter((p) => (!card.tribe || tribeOf(state, p) === card.tribe) && !p.abilities?.includes(effect.ability))));
+        break;
+      case 'shield':
+        out.push(...onto(own.filter((p) => !isShielded(state, p))));
+        break;
+      case 'freeze':
+        out.push(...onto(enemies.filter((p) => !isFrozen(state, p))));
+        break;
+      case 'destroyPiece':
+        // Removing an enemy piece can open a line onto your own King, so this one is checked.
+        for (const action of onto(enemies.filter((p) => p.cardId !== null && pieceCard(state, p.cardId).cost <= effect.maxCost))) {
+          if (safe(state, action)) out.push(action);
+        }
+        break;
+      case 'raise':
+        out.push(...raiseActions(state, instance.uid, effect.maxCost));
+        break;
+      default:
+        out.push({ type: 'spell', cardUid: instance.uid });
     }
-    for (const action of candidates) if (safe(state, action)) out.push(action);
+  }
+  return out;
+}
+
+/**
+ * Resurrect: every piece card costing at most `maxCost` in your discard pile (the newest copy of each) onto every free
+ * square of your first two rows.
+ */
+function raiseActions(state: GameState, cardUid: string, maxCost: number): Action[] {
+  const color = state.active;
+  const free = homeSquares(color).filter((s) => ownerAt(state, s) === null && !lavaAt(state, s));
+  const out: Action[] = [];
+  const seen = new Set<string>();
+  for (const instance of [...state.discard[color]].reverse()) {
+    const card = state.catalog[instance.cardId];
+    if (card?.type !== 'piece' || card.cost > maxCost || seen.has(card.id)) continue;
+    seen.add(card.id);
+    for (const to of free) out.push({ type: 'spell', cardUid, target: to, pick: instance.uid });
   }
   return out;
 }
@@ -731,7 +867,7 @@ function settleSetup(state: GameState, events: GameEvent[], justDeployed = true)
 function sameAction(a: Action, b: Action): boolean {
   const x = a as Record<string, unknown>;
   const y = b as Record<string, unknown>;
-  return ['type', 'cardUid', 'from', 'to', 'target'].every((key) => x[key] === y[key]);
+  return ['type', 'cardUid', 'from', 'to', 'target', 'pick'].every((key) => x[key] === y[key]);
 }
 
 export interface ApplyResult {

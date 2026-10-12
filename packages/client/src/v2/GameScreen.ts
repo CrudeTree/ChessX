@@ -4,7 +4,7 @@
 import { v2 } from '@chessx/engine';
 import type { ChatMessage, RoomInfo } from '@chessx/protocol';
 import { cardBack, fillFrame, hourglass, tiltWithPointer, type FrameCard } from './cardFrame.js';
-import { BoardFx, CARD_DIVE_MS, LAVA_FLIGHT_MS, type BannerTone } from './fx.js';
+import { BoardFx, CARD_DIVE_MS, LAVA_FLIGHT_MS, SPELL_HOLD_MS, SPELL_LANDS_MS, type BannerTone } from './fx.js';
 import { describeEvents, type PieceMemory } from './log.js';
 import { movementPanel } from './movement.js';
 import { sound } from './sound.js';
@@ -111,12 +111,14 @@ const TAP_SLOP = 10;
 const TAP_MS = 450;
 
 /**
- * Whose card the card viewer shows: a piece or seal (followed as it moves), or a card in your hand
- * (tapped on a touch screen, or clicked while the viewer sits beside the board).
+ * Whose card the card viewer shows: a piece or seal (followed as it moves), a card in your hand (tapped on a touch
+ * screen, or clicked while the viewer sits beside the board), or a discard pile, `id` being whose: its newest card,
+ * or the one `pick` names.
  */
 interface Inspected {
-  kind: 'piece' | 'seal' | 'card';
+  kind: 'piece' | 'seal' | 'card' | 'discard';
   id: string;
+  pick?: string;
 }
 
 /** Token animations in style.css and how long each runs: a piece appearing, sliding, a seal settling or ticking. */
@@ -138,8 +140,8 @@ interface TokenFx {
 const TURN_FX_DELAY = 900;
 /** A hatched piece appears this long after its seal starts to crack. */
 const HATCH_RISE_DELAY = 260;
-/** A Dispel's seal breaks once the spell has been shown. */
-const SPELL_HIT_DELAY = 700;
+/** What a spell does lands on the board as its card leaves it for the discard pile. */
+const SPELL_HIT_DELAY = SPELL_HOLD_MS;
 /** A drawn card slides into the hand for this long (the g2-draw animation). */
 const DRAW_MS = 560;
 /** The card viewer sits beside the board from this width; narrower screens float it over the board. */
@@ -210,6 +212,12 @@ export class GameScreen {
   private hoverCard: string | null = null;
   /** Piece or seal under the mouse while the viewer is docked beside the board. */
   private hoverBoard: Inspected | null = null;
+  /** Discard pile under the mouse: its newest card is shown in the card viewer until the mouse leaves. */
+  private hoverPile: Color | null = null;
+  /** A cast spell's card is still flying to this discard pile: until `until`, it shows only its first `length` cards. */
+  private pileHeld: Partial<Record<Color, { length: number; until: number }>> = {};
+  /** Resurrect was dropped on a square: the cards it can raise there, to pick from. */
+  private readonly raiseEl = el('div', 'g2-raise hidden');
   /** What the viewer showed last, so it only plays its entrance when that changes. */
   private inspectKey = '';
   /** The press on the board so far; `held` once it was held long enough to open a card, `dragged` once it lifted a piece. */
@@ -289,8 +297,18 @@ export class GameScreen {
     const boardBox = this.boardBox;
     boardBox.append(this.boardEl, this.cueEl);
     this.fx = new BoardFx(this.boardEl, boardBox, (square) => this.cells[square]);
+    boardBox.append(this.raiseEl);
     boardWrap.append(this.oppEl, boardBox, this.meEl);
     main.append(boardWrap, this.handEl);
+    // The bars are rebuilt every second for the clocks, so a discard pile is pointed at through its bar.
+    for (const bar of [this.oppEl, this.meEl]) {
+      bar.addEventListener('pointerover', (e) => {
+        if (e.pointerType !== 'mouse' || this.drag?.ghost) return;
+        const pile = (e.target as HTMLElement).closest<HTMLElement>('.g2-pile:not(.empty)');
+        this.setPileHover((pile?.dataset.pile as Color | undefined) ?? null);
+      });
+      bar.addEventListener('pointerleave', () => this.setPileHover(null));
+    }
 
     const side = this.sideEl;
     const sheetClose = el('button', 'g2-sheet-close', 'Close');
@@ -548,6 +566,9 @@ export class GameScreen {
     this.inspected = null;
     this.hoverCard = null;
     this.hoverBoard = null;
+    this.hoverPile = null;
+    this.pileHeld = {};
+    this.closeRaise();
     this.inspectKey = '';
     this.renderEmptyInspect();
     this.cueEl.classList.add('hidden');
@@ -592,6 +613,7 @@ export class GameScreen {
       this.clearSelection();
       this.cancelDrag();
       this.cancelPieceDrag();
+      this.closeRaise();
     }
     const playing = view.status.kind === 'playing';
     // Before queueFx, which takes the cards just dropped on squares (see `takeLanding`).
@@ -743,19 +765,29 @@ export class GameScreen {
   private pieceToken(piece: v2.ViewPiece, view: v2.PlayerView): HTMLElement {
     const card = piece.cardId ? view.cards[piece.cardId] : undefined;
     const boardArt = card ? v2.faceArt(card, piece.owner).boardArt : undefined;
-    const tok = el('div', `g2-piece ${piece.owner}${piece.king ? ' king' : ''}${piece.active ? '' : ' sick'}${boardArt ? ' art' : ''}`);
+    const state = `${piece.active ? '' : ' sick'}${piece.shielded ? ' shielded' : ''}${piece.frozen ? ' frozen' : ''}`;
+    const tok = el('div', `g2-piece ${piece.owner}${piece.king ? ' king' : ''}${state}${boardArt ? ' art' : ''}`);
     if (boardArt) tok.style.backgroundImage = `url("${boardArt}")`;
     else tok.append(el('span', 'g2-piece-glyph', glyphFor(piece.kind, piece.name)));
     if (card?.level) tok.append(el('span', 'g2-piece-level', LEVEL_MARK[card.level] ?? String(card.level)));
     // An ember on a piece that has Lava Breath, burning bright while it can spit.
     if (piece.abilities?.includes('lavaBreath')) tok.append(el('span', `g2-piece-ember${this.canSpit(piece.square) ? ' ready' : ''}`));
+    if (piece.shielded) tok.append(el('span', 'g2-piece-shield'));
+    if (piece.frozen) tok.append(el('span', 'g2-piece-frost'));
     const resting = piece.justSummoned
       ? ' (just arrived: cannot move or capture until its owner\'s next turn, but still gives check)'
       : piece.active ? '' : ' (summoning sickness: cannot capture yet, but still gives check)';
     const line = card?.line ? ` · ${card.line} level ${card.level}` : '';
     const learned = piece.abilities?.length ? ` · ${piece.abilities.map((a) => v2.ABILITIES[a].name).join(', ')}` : '';
-    tok.title = `${piece.name}${line}${learned}${resting}`;
+    const shield = piece.shielded ? ' · Shielded: cannot be captured until its owner\'s next turn' : '';
+    const frozen = piece.frozen ? ` · Frozen: cannot move or capture ${this.frozenWhen(piece, view)}` : '';
+    tok.title = `${piece.name}${line}${learned}${shield}${frozen}${resting}`;
     return tok;
+  }
+
+  /** "this turn" while a frozen piece's owner plays, "on its owner's next turn" before that. */
+  private frozenWhen(piece: v2.ViewPiece, view: v2.PlayerView): string {
+    return view.active === piece.owner ? 'this turn' : "on its owner's next turn";
   }
 
   private sealToken(seal: v2.ViewSeal, view: v2.PlayerView): HTMLElement {
@@ -836,8 +868,13 @@ export class GameScreen {
           break;
         }
         case 'spellPlayed':
-          sfx.spell(e.cardId);
+          sfx.spell(e.cardId, spellAt);
           break;
+        case 'raised': {
+          const cost = view.cards[e.cardId]?.cost ?? 0;
+          sfx.summon(e.color, true, Math.min(1, cost / 5), spellAt);
+          break;
+        }
         case 'sealTick':
           // Several seals counting down at once still make one tick.
           if (!ticked) sfx.tick(turnAt);
@@ -944,9 +981,44 @@ export class GameScreen {
         }
         case 'spellPlayed': {
           const card = this.cardFace(e.cardId, e.color, view);
-          if (card) this.fx.spell(card, e.color);
+          if (!card) break;
+          const color = e.color;
+          const held = this.pileHeld[color];
+          const length = held && performance.now() < held.until ? held.length : prev.discard[color].length;
+          this.pileHeld[color] = { length, until: performance.now() + SPELL_LANDS_MS + 400 };
+          window.setTimeout(() => this.renderPlayers(), SPELL_LANDS_MS + 420);
+          this.fx.spell(
+            card,
+            color,
+            () => this.pileTarget(color),
+            () => {
+              delete this.pileHeld[color];
+              this.renderPlayers();
+            },
+          );
           break;
         }
+        case 'raised': {
+          const card = this.cardFace(e.cardId, e.color, view);
+          const cost = view.cards[e.cardId]?.cost ?? 0;
+          this.fx.summon(e.square, e.color, card, spellAt, Math.min(1, cost / 5));
+          this.tokenFx.set(e.pieceId, { kind: 'fx-rise', at: now + spellAt + (card ? CARD_DIVE_MS : 0) });
+          break;
+        }
+        case 'shielded':
+          this.fx.shield(e.square, spellAt);
+          break;
+        case 'frozen':
+          this.fx.freeze(e.square, spellAt);
+          break;
+        case 'destroyed': {
+          const victim = pieceBefore.get(e.pieceId);
+          if (victim) this.fx.smite(e.square, this.pieceToken(victim, prev), spellAt);
+          break;
+        }
+        case 'manaGained':
+          this.manaPop(e.color, `+${e.mana} mana`, spellAt);
+          break;
         case 'sealTick': {
           const seal = view.seals.find((s) => s.id === e.sealId);
           if (!seal) break;
@@ -1071,33 +1143,43 @@ export class GameScreen {
     const info = el('div', 'g2-inspect-info');
     info.append(
       el('div', 'g2-inspect-title', 'Card viewer'),
-      el('p', 'g2-inspect-hint', 'Point at a card in your hand, or at a piece or sacrifice on the board, to see its card and how it moves. Click one to keep it here.'),
+      el('p', 'g2-inspect-hint', 'Point at a card in your hand, a piece or sacrifice on the board, or a discard pile, to see its card. Click one to keep it here.'),
     );
     box.replaceChildren(cardBack('g2-inspect-card'), info);
   }
 
   private exists(view: v2.PlayerView, it: Inspected): boolean {
     if (it.kind === 'card') return !!view.hand?.some((c) => c.uid === it.id);
+    if (it.kind === 'discard') return (view.discard[it.id as Color]?.length ?? 0) > 0;
     if (it.kind === 'piece') return view.pieces.some((p) => p.id === it.id);
     return view.seals.some((s) => s.id === it.id);
   }
 
-  /** Shows, in order: the hand card under the mouse, the piece or seal under the mouse, the one tapped. */
+  /** Shows, in order: the hand card or discard pile under the mouse, the piece or seal under the mouse, the one tapped. */
   private renderInspect(view: v2.PlayerView): void {
     const box = this.inspectEl;
     if (this.hoverCard && !view.hand?.some((c) => c.uid === this.hoverCard)) this.hoverCard = null;
+    if (this.hoverPile && !view.discard[this.hoverPile].length) this.hoverPile = null;
     if (this.hoverBoard && !this.exists(view, this.hoverBoard)) this.hoverBoard = null;
     if (this.inspected && !this.exists(view, this.inspected)) this.inspected = null;
-    const shown: Inspected | null = this.hoverCard ? { kind: 'card', id: this.hoverCard } : this.hoverBoard ?? this.inspected;
+    const shown: Inspected | null = this.hoverCard
+      ? { kind: 'card', id: this.hoverCard }
+      : this.hoverPile
+        ? { kind: 'discard', id: this.hoverPile }
+        : (this.hoverBoard ?? this.inspected);
     const handCard = shown?.kind === 'card' ? view.hand?.find((c) => c.uid === shown.id) : undefined;
     const piece = shown?.kind === 'piece' ? view.pieces.find((p) => p.id === shown.id) : undefined;
     const seal = shown?.kind === 'seal' ? view.seals.find((s) => s.id === shown.id) : undefined;
+    const pileOf = shown?.kind === 'discard' ? (shown.id as Color) : undefined;
+    const pile = pileOf ? view.discard[pileOf] : [];
+    const discarded = pile.find((c) => c.uid === shown?.pick) ?? pile.at(-1);
 
     let frame: FrameCard;
     let card: v2.ViewCard | undefined;
     let owner: Color = view.you;
     const notes: string[] = [];
     const buttons: HTMLButtonElement[] = [];
+    let strip: HTMLElement | null = null;
     if (handCard) {
       card = view.cards[handCard.cardId];
       frame = this.frameFor(card, handCard.cardId, owner);
@@ -1124,6 +1206,8 @@ export class GameScreen {
       }
       if (piece.justSummoned) notes.push('Just arrived: cannot move or capture until its owner\'s next turn, but still gives check.');
       else if (!piece.active) notes.push('Summoning sickness: cannot capture yet, but still gives check.');
+      if (piece.shielded) notes.push('Shielded: cannot be captured, and enemy spells cannot touch it, until its owner\'s next turn.');
+      if (piece.frozen) notes.push(`Frozen: cannot move or capture ${this.frozenWhen(piece, view)}. It still gives check.`);
       for (const a of piece.abilities ?? []) notes.push(`${v2.ABILITIES[a].name}: ${v2.ABILITIES[a].text}`);
       if (card?.type === 'piece' && card.detail) notes.push(card.detail);
       const next = piece.cardId ? this.evolvesInto(piece.cardId, view) : null;
@@ -1147,12 +1231,22 @@ export class GameScreen {
       const whose = this.solo ? `${sideName(owner)}'s` : owner === view.you ? 'your' : "your opponent's";
       const when = seal.timer <= 1 ? `at the start of ${whose} next turn` : `in ${seal.timer} of ${whose} turns`;
       notes.push(`A sacrifice: this piece arrives ${when}.`);
+    } else if (pileOf && discarded) {
+      card = view.cards[discarded.cardId];
+      owner = pileOf;
+      frame = this.frameFor(card, discarded.cardId, owner);
+      const whose = this.solo ? `${sideName(owner)}'s` : owner === view.you ? 'your' : "your opponent's";
+      const count = `${pile.length} card${pile.length === 1 ? '' : 's'}`;
+      notes.push(`${discarded === pile.at(-1) ? 'The newest card in' : 'In'} ${whose} discard pile (${count}).`);
+      if (card?.type === 'piece' && card.detail) notes.push(card.detail);
+      // Kept here by a click: the whole pile, newest first, to look through.
+      if (shown === this.inspected) strip = this.pileStrip(pileOf, discarded.uid, view);
     } else {
       this.renderEmptyInspect();
       return;
     }
 
-    const key = handCard ? `card:${handCard.uid}` : piece ? `piece:${piece.id}` : `seal:${seal!.id}`;
+    const key = handCard ? `card:${handCard.uid}` : piece ? `piece:${piece.id}` : seal ? `seal:${seal.id}` : `discard:${pileOf}:${discarded!.uid}`;
     const entering = key !== this.inspectKey;
     this.inspectKey = key;
     // Floating over the board: over the half away from the piece; a hand card goes up top, clear of your back row.
@@ -1195,13 +1289,11 @@ export class GameScreen {
         movementPanel({ rules: frame.rules, owner, glyph: frame.glyph, art: boardArt }, this.seat === 'black'),
       );
     } else if (card?.type === 'spell') {
-      info.append(
-        el('div', 'g2-inspect-label', 'What it does'),
-        el('p', 'g2-inspect-spell', card.detail ?? card.text),
-        el('p', 'g2-inspect-note', 'Cast it any time before you move; it does not end your turn. Not while your King is in check.'),
-      );
+      info.append(el('div', 'g2-inspect-label', 'What it does'), el('p', 'g2-inspect-spell', card.detail ?? card.text));
+      if (handCard) info.append(el('p', 'g2-inspect-note', 'Cast it any time before you move; it does not end your turn. Not while your King is in check.'));
     }
     for (const n of notes) info.append(el('p', 'g2-inspect-note', n));
+    if (strip) info.append(el('div', 'g2-inspect-label', 'The whole pile, newest first'), strip);
     if (buttons.length) {
       const row = el('div', 'g2-inspect-actions');
       row.append(...buttons);
@@ -1227,12 +1319,25 @@ export class GameScreen {
 
   private howToPlay(uid: string, card: v2.ViewCard | undefined): string {
     if (card?.type === 'spell') {
+      const goOn = 'Casting does not end your turn.';
       if (card.grants) {
         const who = card.tribe ? `one of your ${card.tribe}s` : 'one of your pieces';
-        return `Drag it onto ${who} to teach it ${v2.ABILITIES[card.grants].name}. Casting does not end your turn.`;
+        return `Drag it onto ${who} to teach it ${v2.ABILITIES[card.grants].name}. ${goOn}`;
+      }
+      switch (card.spell) {
+        case 'raise':
+          return `Drag it onto a free square of your first two rows, then pick a piece card that costs ${card.maxCost} or less from your discard pile, where the pieces you capture go too: it rises there as your piece. ${goOn}`;
+        case 'shield':
+          return `Drag it onto one of your pieces (not the King): nothing can capture it until your next turn. ${goOn}`;
+        case 'freeze':
+          return `Drag it onto an enemy piece (not the King): it cannot move or capture on its owner's next turn. ${goOn}`;
+        case 'destroyPiece':
+          return `Drag it onto an enemy piece (not the King) that costs ${card.maxCost} or less to destroy it. ${goOn}`;
+        default:
+          break;
       }
       const targeted = this.legal().some((a) => a.type === 'spell' && a.cardUid === uid && a.target !== undefined);
-      return `Drag it ${targeted ? 'onto a glowing target' : 'onto the board'} to cast it. Casting does not end your turn.`;
+      return `Drag it ${targeted ? 'onto a glowing target' : 'onto the board'} to cast it. ${goOn}`;
     }
     if (card?.evolvesFrom) {
       const cards = this.view?.cards ?? {};
@@ -1469,9 +1574,28 @@ export class GameScreen {
    */
   private sealWarning(action: Action | undefined): string | null {
     if (action?.type === 'spell' && action.target !== undefined) {
-      const grants = this.heldCard(action.cardUid)?.grants;
-      const target = this.view?.pieces.find((p) => p.square === action.target);
-      return grants ? `teaches ${target?.name ?? 'this piece'} ${v2.ABILITIES[grants].name}` : null;
+      const spell = this.heldCard(action.cardUid);
+      const name = this.view?.pieces.find((p) => p.square === action.target)?.name ?? 'this piece';
+      if (spell?.grants) return `teaches ${name} ${v2.ABILITIES[spell.grants].name}`;
+      switch (spell?.spell) {
+        case 'shield':
+          return `shields ${name} until your next turn`;
+        case 'freeze':
+          return `freezes ${name} for a turn`;
+        case 'destroyPiece':
+          return `destroys ${name}`;
+        case 'destroySeal': {
+          const seal = this.view?.seals.find((s) => s.square === action.target);
+          return `destroys the ${(seal && this.view?.cards[seal.cardId]?.name) ?? 'sacrifice'} sacrifice`;
+        }
+        case 'raise': {
+          const picks = this.raiseOptions(action.cardUid, action.target);
+          const only = picks.length === 1 ? picks[0]!.card?.name : undefined;
+          return only ? `raises ${only} here` : `raises one of ${picks.length} pieces here: pick it next`;
+        }
+        default:
+          return null;
+      }
     }
     if (action?.type !== 'seal' && action?.type !== 'evolve') return null;
     const target = this.view?.pieces.find((p) => p.square === action.target);
@@ -1545,6 +1669,12 @@ export class GameScreen {
       this.render();
       return;
     }
+    if (action?.type === 'spell' && action.pick !== undefined && square !== null && this.raiseOptions(drag.uid, square).length > 1) {
+      this.render();
+      this.snapBack(ghost, drag.uid);
+      this.openRaise(drag.uid, square);
+      return;
+    }
     if (action && square !== null) {
       if (action.type === 'spell') {
         this.castAway(ghost);
@@ -1561,6 +1691,65 @@ export class GameScreen {
     this.render();
     this.snapBack(ghost, drag.uid);
   };
+
+  /** What Resurrect (`uid`) could raise onto `square` from the caster's discard pile: one card per name, newest first. */
+  private raiseOptions(uid: string, square: v2.Square): { action: Action; card: v2.ViewCard | undefined; cardId: string }[] {
+    const view = this.view;
+    if (!view) return [];
+    const out: { action: Action; card: v2.ViewCard | undefined; cardId: string }[] = [];
+    for (const a of this.legal()) {
+      if (a.type !== 'spell' || a.cardUid !== uid || a.target !== square || a.pick === undefined) continue;
+      const found = view.discard[view.active].find((c) => c.uid === a.pick);
+      if (found) out.push({ action: a, card: view.cards[found.cardId], cardId: found.cardId });
+    }
+    return out;
+  }
+
+  /** Resurrect was dropped on `square`: show the cards it can raise there, in the caster's colours, to pick one. */
+  private openRaise(uid: string, square: v2.Square): void {
+    const view = this.view;
+    const options = this.raiseOptions(uid, square);
+    if (!view || !options.length) return;
+    const me = view.active;
+    const panel = el('div', 'g2-raise-panel');
+    const head = el('div', 'g2-raise-head');
+    const whose = this.solo ? `${sideName(me)}'s discard pile` : 'your discard pile';
+    head.append(el('b', '', `Resurrect onto ${v2.squareName(square)}`), el('span', '', `Pick a piece from ${whose}. It rises there as yours.`));
+    const row = el('div', 'g2-raise-row');
+    for (const option of options) {
+      const pick = el('button', 'g2-raise-card');
+      pick.type = 'button';
+      fillFrame(pick, this.frameFor(option.card, option.cardId, me));
+      pick.title = `Raise ${option.card?.name ?? option.cardId} on ${v2.squareName(square)}`;
+      pick.onclick = () => {
+        this.closeRaise();
+        sound.sfx?.cardCast();
+        this.hooks.act(option.action);
+      };
+      row.append(pick);
+    }
+    panel.append(head, row);
+    const cancel = el('button', 'g2-raise-cancel', 'Cancel');
+    cancel.type = 'button';
+    cancel.onclick = () => this.closeRaise();
+    panel.append(cancel);
+    this.raiseEl.replaceChildren(panel);
+    this.raiseEl.classList.remove('hidden');
+    this.raiseEl.onclick = (e) => {
+      if (e.target === this.raiseEl) this.closeRaise();
+    };
+    window.addEventListener('keydown', this.onRaiseKey);
+  }
+
+  private readonly onRaiseKey = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') this.closeRaise();
+  };
+
+  private closeRaise(): void {
+    this.raiseEl.classList.add('hidden');
+    this.raiseEl.replaceChildren();
+    window.removeEventListener('keydown', this.onRaiseKey);
+  }
 
   /** Slide an illegally dropped card back to its place in the hand. */
   private snapBack(ghost: HTMLElement, uid: string): void {
@@ -1845,9 +2034,17 @@ export class GameScreen {
       if (aiming && targets.has(square)) classes.push('lava-aim');
       const drop = drops.get(square);
       if (drop) {
-        const grant = drop.type === 'spell' && held !== null && this.heldCard(held.uid)?.grants !== undefined;
+        // Resurrect's squares light up like a summon's; Smite and Dispel like a threat.
+        const spell = drop.type === 'spell' && held !== null ? this.heldCard(held.uid) : undefined;
         const kind =
-          drop.type === 'seal' ? ' drop-seal' : drop.type === 'evolve' ? ' drop-evolve' : grant ? ' drop-grant' : drop.type === 'spell' ? ' drop-spell' : '';
+          drop.type === 'seal' ? ' drop-seal'
+          : drop.type === 'evolve' ? ' drop-evolve'
+          : spell?.grants !== undefined ? ' drop-grant'
+          : spell?.spell === 'shield' ? ' drop-shield'
+          : spell?.spell === 'freeze' ? ' drop-freeze'
+          : spell?.spell === 'raise' ? ''
+          : drop.type === 'spell' ? ' drop-spell'
+          : '';
         classes.push(`drop${kind}`);
       }
       if (drop && held?.hover === square) classes.push('drop-hover');
@@ -1923,14 +2120,90 @@ export class GameScreen {
           for (let i = 0; i < Math.min(view.handCount[color], 8); i++) backs.append(cardBack());
           hand.prepend(backs);
         }
-        const discard = el('span', 'g2-count', `Discard ${view.discard[color].length}`);
-        if (view.discard[color].length) {
-          discard.title = view.discard[color].map((c) => view.cards[c.cardId]?.name ?? c.cardId).join(', ');
-        }
-        stats.append(mana, hand, el('span', 'g2-count', `Deck ${view.deckCount[color]}`), discard);
+        stats.append(mana, hand, el('span', 'g2-count', `Deck ${view.deckCount[color]}`), this.discardPile(color, view));
         elx.appendChild(stats);
       }
     }
+  }
+
+  /**
+   * A player's discard pile: its newest card face up and how many it holds. Point at it to read that card in the
+   * card viewer; click it to keep it there with the whole pile.
+   */
+  private discardPile(color: Color, view: v2.PlayerView): HTMLElement {
+    const held = this.pileHeld[color];
+    const pile = held && performance.now() < held.until ? view.discard[color].slice(0, held.length) : view.discard[color];
+    const top = pile.at(-1);
+    const card = top ? view.cards[top.cardId] : undefined;
+    const open = this.inspected?.kind === 'discard' && this.inspected.id === color;
+    const btn = el('button', `g2-pile${top ? '' : ' empty'}${open ? ' open' : ''}`);
+    btn.type = 'button';
+    btn.dataset.pile = color;
+    const thumb = el('span', 'g2-pile-card');
+    if (top) this.paintThumb(thumb, card, top.cardId, color);
+    btn.append(thumb, el('span', 'g2-pile-count', `Discard ${pile.length}`));
+    if (!top) {
+      btn.disabled = true;
+      btn.title = 'Discard pile: empty';
+      return btn;
+    }
+    btn.title = `Discard pile, ${pile.length} card${pile.length === 1 ? '' : 's'}. Newest: ${card?.name ?? top.cardId}. Click to see them all.`;
+    btn.onclick = () => {
+      this.inspected = open ? null : { kind: 'discard', id: color };
+      this.hoverPile = null;
+      this.render();
+    };
+    return btn;
+  }
+
+  /** Every card in a discard pile, newest first; click one to show it. */
+  private pileStrip(color: Color, current: string, view: v2.PlayerView): HTMLElement {
+    const strip = el('div', 'g2-pile-strip');
+    for (const c of [...view.discard[color]].reverse()) {
+      const card = view.cards[c.cardId];
+      const thumb = el('button', `g2-pile-thumb${c.uid === current ? ' on' : ''}`);
+      thumb.type = 'button';
+      thumb.title = card?.name ?? c.cardId;
+      this.paintThumb(thumb, card, c.cardId, color);
+      thumb.onclick = (e) => {
+        e.stopPropagation();
+        this.inspected = { kind: 'discard', id: color, pick: c.uid };
+        this.render();
+      };
+      strip.append(thumb);
+    }
+    return strip;
+  }
+
+  /** A card's picture, or its glyph, on a small thumbnail. */
+  private paintThumb(thumb: HTMLElement, card: v2.ViewCard | undefined, cardId: string, owner: Color): void {
+    const art = card ? v2.faceArt(card, owner).art : undefined;
+    if (art) thumb.style.backgroundImage = `url("${art}")`;
+    else thumb.append(el('span', 'g2-thumb-glyph', card?.type === 'spell' ? SPELL_GLYPH : glyphFor(cardId, card?.name ?? cardId)));
+  }
+
+  /** Where a cast spell's card flies to: the top of its caster's discard pile. */
+  private pileTarget(color: Color): HTMLElement | null {
+    return this.root.querySelector<HTMLElement>(`.g2-pile[data-pile="${color}"] .g2-pile-card`);
+  }
+
+  private setPileHover(color: Color | null): void {
+    if (color === this.hoverPile) return;
+    this.hoverPile = color;
+    if (this.view) this.renderInspect(this.view);
+  }
+
+  /** Mana a spell gave floats up off its player's mana gem. */
+  private manaPop(color: Color, text: string, delay: number): void {
+    window.setTimeout(() => {
+      const gem = this.root.querySelector(`.g2-player.${color} .g2-gem`)?.getBoundingClientRect();
+      if (!gem?.width) return;
+      const pop = el('div', 'g2-mana-pop', text);
+      pop.style.left = `${gem.left + gem.width / 2}px`;
+      pop.style.top = `${gem.top}px`;
+      document.body.append(pop);
+      window.setTimeout(() => pop.remove(), 1500);
+    }, delay);
   }
 
   private renderStatus(view: v2.PlayerView): void {

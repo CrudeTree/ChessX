@@ -280,6 +280,60 @@ export const STARTER_CATALOG: Record<string, Card> = {
       'Drop it on one of your Dragons. From then on, once a turn, that Dragon can spend 1 mana to spit lava onto an empty square it could move to. No piece can move onto lava or be summoned onto it until the other player has taken 2 more turns; pieces still pass over it. The Dragon keeps Lava Breath when it evolves.',
     ...faces('lava_breath'),
   },
+
+  // Five plain spells (Djabooty, 2026-10-12): mana, a piece back from the dead, a shield, a freeze and a smite.
+  mana_surge: {
+    type: 'spell',
+    id: 'mana_surge',
+    name: 'Mana Surge',
+    cost: 1,
+    effect: { kind: 'mana', amount: 3 },
+    text: 'Gain 3 mana.',
+    detail: 'Drop it anywhere on the board. You pay 1 and get 3 back at once, so you end up 2 mana ahead, to spend now or save.',
+    ...faces('mana_surge'),
+  },
+  resurrect: {
+    type: 'spell',
+    id: 'resurrect',
+    name: 'Resurrect',
+    cost: 4,
+    effect: { kind: 'raise', maxCost: 4 },
+    text: 'Summon a piece that costs 4 or less from your discard pile.',
+    detail:
+      'Drop it on a free square of your first two rows, then pick a piece card that costs 4 or less from your discard pile: one of your own that left play, or an enemy piece you captured. It rises there as your piece and waits like a summoned one: no move or capture until your next turn.',
+    ...faces('resurrect'),
+  },
+  shield: {
+    type: 'spell',
+    id: 'shield',
+    name: 'Shield',
+    cost: 2,
+    effect: { kind: 'shield' },
+    text: 'Your piece can\'t be captured until your next turn.',
+    detail: 'Drop it on one of your pieces (not the King). Until your next turn it cannot be captured, and your opponent\'s spells cannot touch it. It still moves and captures as usual.',
+    ...faces('shield'),
+  },
+  freeze: {
+    type: 'spell',
+    id: 'freeze',
+    name: 'Freeze',
+    cost: 2,
+    effect: { kind: 'freeze' },
+    text: 'An enemy piece can\'t move on its next turn.',
+    detail: 'Drop it on an enemy piece (not the King). On its owner\'s next turn it cannot move or capture. It still blocks squares, and still gives check.',
+    ...faces('freeze'),
+  },
+  smite: {
+    type: 'spell',
+    id: 'smite',
+    name: 'Smite',
+    cost: 3,
+    effect: { kind: 'destroyPiece', maxCost: 2 },
+    text: 'Destroy an enemy piece that costs 2 or less.',
+    detail:
+      'Drop it on an enemy piece (not the King) whose card costs 2 or less: an Initiate, Squire, Recruit, Apprentice, Colt or Wyrmling. The piece is destroyed and its card goes to its owner\'s discard pile. It is not a capture, so it pays no bounty.',
+    ...faces('smite'),
+  },
 };
 
 /**
@@ -302,8 +356,8 @@ export function withCurrentArt(catalog: Record<string, Card>): Record<string, Ca
 }
 
 /**
- * A 25-card starter deck: 2 Initiates and 1 Squire; per line two level-1 cards and one of each higher level
- * (both Paladin final forms); 1 Duskfang; 2 Insight, 1 Dispel and 1 Lava Breath. Four cost-2 pieces at most (msg-026).
+ * A 30-card starter deck: 2 Initiates and 1 Squire; per line two level-1 cards and one of each higher level
+ * (both Paladin final forms); 1 Duskfang; 2 Insight and one of every other spell. Four cost-2 pieces at most (msg-026).
  */
 export function starterDeck(): string[] {
   const counts: Record<string, number> = {
@@ -326,6 +380,11 @@ export function starterDeck(): string[] {
     insight: 2,
     dispel: 1,
     lava_breath: 1,
+    mana_surge: 1,
+    resurrect: 1,
+    shield: 1,
+    freeze: 1,
+    smite: 1,
   };
   return Object.entries(counts).flatMap(([id, n]) => Array.from({ length: n }, () => id));
 }

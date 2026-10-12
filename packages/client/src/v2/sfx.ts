@@ -294,14 +294,44 @@ export class Sfx {
     this.noise({ at: delayMs / 1000, attack: 0.1, decay: 0.9, peak: 0.12, room: 0.4, filter: { type: 'highpass', freq: 2500, to: 5000, time: 0.8 } });
   }
 
-  /** A spell is cast: a rising rush and a chord, unsettling for Dispel and bright for the rest. */
-  spell(cardId: string): void {
+  /**
+   * A spell is cast: a rising rush and a chord as its card covers the board, unsettling for Dispel and bright for the
+   * rest, then what it does as it lands `hitMs` later: a thunderclap for Smite, ice for Freeze, ringing steel for
+   * Shield, a rising sparkle for Mana Surge.
+   */
+  spell(cardId: string, hitMs: number): void {
+    const hit = hitMs / 1000;
     this.whoosh(0, 0.5, 400, 4500, 0.14);
-    if (cardId === 'dispel') {
-      this.bells(0.3, [74, 80, 86], 0.04, 0.06);
-      this.tone({ at: 0.35, wave: 'sawtooth', freq: 2400, to: 160, glide: 0.4, decay: 0.45, peak: 0.05, room: 0.5, filter: { type: 'bandpass', freq: 1800, q: 4 } });
-    } else {
-      this.bells(0.3, [81, 85, 88, 93, 97], 0.055, 0.05);
+    switch (cardId) {
+      case 'dispel':
+        this.bells(0.3, [74, 80, 86], 0.04, 0.06);
+        this.tone({ at: 0.35, wave: 'sawtooth', freq: 2400, to: 160, glide: 0.4, decay: 0.45, peak: 0.05, room: 0.5, filter: { type: 'bandpass', freq: 1800, q: 4 } });
+        break;
+      case 'smite':
+        this.bells(0.3, [74, 78, 81], 0.05, 0.05);
+        this.noise({ at: hit - 0.1, attack: 0.1, decay: 0.04, peak: 0.12, filter: { type: 'highpass', freq: 3000 } });
+        this.crackle(hit, 0.25, 0.45, 16);
+        this.boom(hit, 0.85);
+        break;
+      case 'freeze':
+        this.bells(0.3, [86, 91, 93, 98], 0.05, 0.045);
+        this.glass(hit, 0.6, 18);
+        this.noise({ at: hit, attack: 0.05, decay: 0.8, peak: 0.1, room: 0.5, filter: { type: 'highpass', freq: 5000, to: 2500, time: 0.6 } });
+        break;
+      case 'shield':
+        this.bells(0.3, [79, 83, 86, 91], 0.05, 0.05);
+        this.steel(hit, 0.9);
+        break;
+      case 'mana_surge':
+        this.bells(0.25, [81, 85, 88, 93, 97, 100], 0.045, 0.045);
+        this.tone({ at: hit, wave: 'triangle', freq: 300, to: 1800, glide: 0.5, decay: 0.6, peak: 0.08, room: 0.5 });
+        break;
+      case 'resurrect':
+        this.bells(0.3, [62, 69, 74, 78, 81], 0.07, 0.05);
+        this.noise({ at: 0.3, attack: 0.5, decay: 0.6, peak: 0.08, room: 0.6, filter: { type: 'bandpass', freq: 300, to: 2400, time: 0.9, q: 2 } });
+        break;
+      default:
+        this.bells(0.3, [81, 85, 88, 93, 97], 0.055, 0.05);
     }
     this.boom(0.4, 0.2);
   }

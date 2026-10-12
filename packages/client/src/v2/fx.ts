@@ -19,6 +19,12 @@ export const BURST_MS = 250;
 export const HATCH_T0_MS = 230;
 /** How long a ball of lava flies before it lands (g2-lava-fly in style.css). */
 export const LAVA_FLIGHT_MS = 460;
+/** How long a cast spell's card covers the board (g2-spellcard in style.css) before it flies to the discard pile. */
+export const SPELL_HOLD_MS = 780;
+/** How long it takes to fly there. */
+const SPELL_FLY_MS = 480;
+/** When it lands. */
+export const SPELL_LANDS_MS = SPELL_HOLD_MS + SPELL_FLY_MS;
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -60,6 +66,8 @@ export class BoardFx {
   /** Flat over the whole board: the spell reveal and banners. */
   private readonly overlay = el('div', 'g2-fx-overlay');
   private readonly timers = new Set<number>();
+  /** Cards on their way off the board to a discard pile, over the whole page. */
+  private readonly flyers = new Set<HTMLElement>();
 
   constructor(
     private readonly board: HTMLElement,
@@ -82,16 +90,22 @@ export class BoardFx {
   clear(): void {
     for (const t of this.timers) clearTimeout(t);
     this.timers.clear();
+    for (const f of this.flyers) f.remove();
+    this.flyers.clear();
     this.floor.replaceChildren();
     this.overlay.replaceChildren();
   }
 
-  private removeAfter(node: HTMLElement, ms: number): void {
+  private later(ms: number, run: () => void): void {
     const t = window.setTimeout(() => {
       this.timers.delete(t);
-      node.remove();
+      run();
     }, ms);
     this.timers.add(t);
+  }
+
+  private removeAfter(node: HTMLElement, ms: number): void {
+    this.later(ms, () => node.remove());
   }
 
   /** A box over the square's cell, on the floor, that starts after `delay` and is gone after `ms` more. */
@@ -238,16 +252,82 @@ export class BoardFx {
     spot?.append(el('div', 'g2-fx-gain', text));
   }
 
-  /** The spell just cast, shown big over the board before it dissolves. */
-  spell(card: HTMLElement, owner: Color): void {
+  /** A piece is shielded: a golden dome closes over it and rings once. */
+  shield(square: v2.Square, delay = 0): void {
+    const spot = this.spot(square, 'shield', 1400, delay);
+    spot?.append(el('div', 'g2-fx-dome'), el('div', 'g2-fx-ring gold'), sparks(12, 'gold'));
+  }
+
+  /** A piece is frozen: frost spreads over its square and ice shards fly off it. */
+  freeze(square: v2.Square, delay = 0): void {
+    const spot = this.spot(square, 'freeze', 1400, delay);
+    spot?.append(el('div', 'g2-fx-frost'), el('div', 'g2-fx-ring ice'), sparks(14, 'ice'));
+  }
+
+  /** A piece is smitten: a bolt from above, and the piece (a copy of its token) breaks apart. */
+  smite(square: v2.Square, token: HTMLElement, delay = 0): void {
+    const spot = this.spot(square, 'smite', 1100, delay);
+    if (!spot) return;
+    token.classList.add('g2-fx-ghost', 'capture');
+    spot.append(el('div', 'g2-fx-bolt'), token, el('div', 'g2-fx-burst'), sparks(16, 'gold'));
+    this.quake(0.7, delay + 90);
+  }
+
+  /**
+   * The spell just cast covers the board for a moment so both players see what it was, then flies into its caster's
+   * discard pile; `pile` finds that on screen as it leaves, and `landed` runs as it lands. With no pile to fly to, it
+   * fades where it is.
+   */
+  spell(card: HTMLElement, owner: Color, pile: () => HTMLElement | null, landed?: () => void): void {
     const stage = el('div', `g2-fx-spell ${owner}`);
-    stage.style.fontSize = `${Math.max(9, Math.round(this.overlay.offsetWidth / 30))}px`;
+    // A card is 10em by 14em: as big as the board leaves room for.
+    const size = Math.min((this.overlay.offsetWidth * 0.86) / 10, (this.overlay.offsetHeight * 0.9) / 14);
+    stage.style.fontSize = `${Math.max(9, size).toFixed(1)}px`;
     const circle = rune();
     circle.classList.add('g2-fx-spellrune');
     card.classList.add('g2-fx-spellcard');
     stage.append(el('div', 'g2-fx-spellring'), circle, card);
     this.overlay.append(stage);
-    this.removeAfter(stage, 1700);
+    this.removeAfter(stage, SPELL_HOLD_MS + SPELL_FLY_MS + 200);
+    this.later(SPELL_HOLD_MS, () => this.toPile(card, pile, landed));
+  }
+
+  /** Lifts `card` off the board onto the page and flies it into the discard pile, which bumps as it lands. */
+  private toPile(card: HTMLElement, pile: () => HTMLElement | null, landed?: () => void): void {
+    const from = card.getBoundingClientRect();
+    const to = pile()?.getBoundingClientRect();
+    if (!to?.width || !from.width) {
+      card.classList.add('fade');
+      landed?.();
+      return;
+    }
+    const flyer = el('div', 'g2-fx-flyer');
+    flyer.style.left = `${from.left}px`;
+    flyer.style.top = `${from.top}px`;
+    flyer.style.width = `${from.width}px`;
+    flyer.style.height = `${from.height}px`;
+    flyer.style.fontSize = getComputedStyle(card).fontSize;
+    card.classList.remove('g2-fx-spellcard');
+    flyer.append(card);
+    document.body.append(flyer);
+    this.flyers.add(flyer);
+    const scale = Math.min(to.width / from.width, to.height / from.height);
+    const dx = to.left + to.width / 2 - (from.left + from.width / 2);
+    const dy = to.top + to.height / 2 - (from.top + from.height / 2);
+    flyer.animate(
+      [
+        { transform: 'none', opacity: 1 },
+        { transform: `translate(${dx * 0.3}px, ${dy * 0.3 - from.height * 0.06}px) scale(${0.5 + scale * 0.5}) rotate(-5deg)`, opacity: 1, offset: 0.4 },
+        { transform: `translate(${dx}px, ${dy}px) scale(${scale}) rotate(0deg)`, opacity: 0.85 },
+      ],
+      { duration: SPELL_FLY_MS, easing: 'cubic-bezier(0.5, 0, 0.6, 1)', fill: 'forwards' },
+    );
+    this.later(SPELL_FLY_MS, () => {
+      flyer.remove();
+      this.flyers.delete(flyer);
+      landed?.();
+      pile()?.animate([{ scale: '1' }, { scale: '1.25' }, { scale: '1' }], { duration: 280, easing: 'ease-out' });
+    });
   }
 
   /** A band across the middle of the board: whose turn it is, check, or how the game ended. */

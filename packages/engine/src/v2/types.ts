@@ -100,7 +100,20 @@ export type SpellEffect =
   /** `mana` is gained as well, for spells that pay back (Insight, Djabooty 2026-10-11). */
   | { kind: 'draw'; count: number; mana?: number }
   /** Teaches one of your pieces of the spell's `tribe` an ability it keeps, also when it evolves. */
-  | { kind: 'grant'; ability: Ability };
+  | { kind: 'grant'; ability: Ability }
+  /** Gain `amount` mana (Mana Surge). */
+  | { kind: 'mana'; amount: number }
+  /**
+   * Summon a piece card costing at most `maxCost` from your discard pile onto your first two rows (Resurrect). Pieces
+   * you captured are in your pile too, so an enemy card can rise as yours.
+   */
+  | { kind: 'raise'; maxCost: number }
+  /** One of your pieces (not the King) cannot be captured, nor targeted by enemy spells, until your next turn. */
+  | { kind: 'shield' }
+  /** An enemy piece (not the King) cannot move or capture on its owner's next turn. */
+  | { kind: 'freeze' }
+  /** Destroy an enemy piece (not the King) whose card costs at most `maxCost` (Smite). */
+  | { kind: 'destroyPiece'; maxCost: number };
 
 export interface SpellCard {
   type: 'spell';
@@ -144,6 +157,10 @@ export interface Piece {
   abilities?: Ability[];
   /** Owner turn on which it last spat lava: Lava Breath works once a turn. */
   lavaOnTurn?: number;
+  /** Owner turn a Shield was cast on it: until the owner's next turn it cannot be captured or targeted by enemy spells. */
+  shieldOnTurn?: number;
+  /** Owner turn a Freeze holds it through: it cannot move or capture during that turn. */
+  frozenOnTurn?: number;
 }
 
 /**
@@ -207,7 +224,8 @@ export type Action =
   | { type: 'seal'; cardUid: string; target: Square }
   /** Play an evolution card onto the piece it evolves from, which changes into it on its square. */
   | { type: 'evolve'; cardUid: string; target: Square }
-  | { type: 'spell'; cardUid: string; target?: Square }
+  /** `pick`: for Resurrect, the uid of the card it raises from a discard pile onto `target`. */
+  | { type: 'spell'; cardUid: string; target?: Square; pick?: string }
   /** Discard a card from your hand for +1 mana, once a turn (Djabooty, 2026-10-11). */
   | { type: 'pitch'; cardUid: string }
   /** The piece on `from`, which knows Lava Breath, turns the empty square `to` into lava. */
@@ -237,6 +255,14 @@ export type GameEvent =
   | { type: 'spellPlayed'; color: Color; cardId: string; target?: Square }
   /** A spell taught `pieceId` (named `name`) an ability. */
   | { type: 'learned'; color: Color; pieceId: string; name: string; square: Square; ability: Ability }
+  | { type: 'manaGained'; color: Color; mana: number }
+  /** Resurrect raised `cardId` from `color`'s discard pile as their piece. */
+  | { type: 'raised'; color: Color; pieceId: string; name: string; square: Square; cardId: string }
+  | { type: 'shielded'; color: Color; pieceId: string; name: string; square: Square }
+  /** `color` froze `owner`'s piece. */
+  | { type: 'frozen'; color: Color; pieceId: string; name: string; square: Square; owner: Color }
+  /** `color`'s spell destroyed `owner`'s piece. */
+  | { type: 'destroyed'; color: Color; pieceId: string; name: string; square: Square; owner: Color; cardId: string | null }
   | { type: 'pitched'; color: Color; cardId: string; mana: number }
   /** `pieceId` (named `name`) spat lava from `from` onto `square`. */
   | { type: 'lava'; color: Color; pieceId: string; name: string; from: Square; square: Square }
