@@ -15,6 +15,7 @@ import {
   type Color,
   type GameEvent,
   type GameState,
+  type Lava,
   type Piece,
   type PieceCard,
   type Seal,
@@ -26,6 +27,24 @@ export const START_MANA = 2;
 /** Deploy phase of games saved before the 2026-10-08 setup ruling; new games skip it. */
 export const SETUP_PIECES = 3;
 export const KING_FILE = 3;
+/** Mana a Lava Breath costs, and how many turns of the other player its lava lasts (Djabooty, 2026-10-11). */
+export const LAVA_COST = 1;
+export const LAVA_TURNS = 2;
+/** Mana for pitching a card from your hand, once a turn (Djabooty, 2026-10-11). */
+export const PITCH_MANA = 1;
+
+/**
+ * The mana a player's turn brings (Djabooty, 2026-10-11): +1 on their turns 1 to 5, +2 on 6 to 10, +3 on 11 to 15
+ * and +4 after that, so the opening stays as it was and the big cards come within reach later.
+ */
+export function incomeFor(turn: number): number {
+  return Math.min(4, 1 + Math.floor((Math.max(turn, 1) - 1) / 5));
+}
+
+/** Mana for capturing a piece: half its card's cost, rounded up (Djabooty, 2026-10-11). */
+export function bountyFor(card: Card | undefined): number {
+  return card ? Math.ceil(card.cost / 2) : 0;
+}
 
 export interface NewGameOptions {
   seed: number;
@@ -50,6 +69,7 @@ export function cloneState(state: GameState): GameState {
     discard: { white: state.discard.white.slice(), black: state.discard.black.slice() },
     pieces: state.pieces.map((p) => ({ ...p })),
     seals: state.seals.map((s) => ({ ...s })),
+    lava: state.lava?.map((l) => ({ ...l })),
     setupDeployed: { ...state.setupDeployed },
   };
 }
@@ -117,6 +137,7 @@ export function newGame(options: NewGameOptions): GameState {
     discard: { white: [], black: [] },
     pieces: [],
     seals: [],
+    lava: [],
     setupDeployed: { white: 0, black: 0 },
     actionTaken: false,
     cardPlayed: false,
@@ -158,6 +179,30 @@ export function sealAt(state: GameState, square: Square): Seal | undefined {
 
 function ownerAt(state: GameState, square: Square): Color | null {
   return pieceAt(state, square)?.owner ?? sealAt(state, square)?.owner ?? null;
+}
+
+export function lavaAt(state: GameState, square: Square): Lava | undefined {
+  return state.lava?.find((l) => l.square === square);
+}
+
+/** A piece card's type; the starting Initiates and Kings have none. */
+function tribeOf(state: GameState, piece: Piece): string | undefined {
+  const card = piece.cardId ? state.catalog[piece.cardId] : undefined;
+  return card?.type === 'piece' ? card.tribe : undefined;
+}
+
+/**
+ * What playing evolution `card` onto `piece` costs, or null if it cannot go there. It goes onto the card it evolves
+ * from for its printed cost. A level-2 card also goes onto a piece whose card takes any path (the Initiate), for its
+ * cost plus the cost of the first level it skips (Djabooty, 2026-10-11).
+ */
+export function evolveCost(state: GameState, card: PieceCard, piece: Piece): number | null {
+  if (!card.evolvesFrom || piece.def.king || !piece.cardId) return null;
+  if (piece.cardId === card.evolvesFrom) return card.cost;
+  const base = state.catalog[piece.cardId];
+  const skipped = state.catalog[card.evolvesFrom];
+  if (base?.type !== 'piece' || !base.anyPath || skipped?.type !== 'piece' || skipped.evolvesFrom) return null;
+  return card.cost + skipped.cost;
 }
 
 export function isActive(state: GameState, piece: Piece): boolean {
@@ -238,7 +283,18 @@ function capture(state: GameState, mover: Piece, to: Square, events: GameEvent[]
   const victim = pieceAt(state, to);
   if (victim) {
     state.pieces = state.pieces.filter((p) => p.id !== victim.id);
-    events.push({ type: 'captured', pieceId: victim.id, by: mover.id, square: to });
+    const bounty = bountyFor(victim.cardId ? state.catalog[victim.cardId] : undefined);
+    state.mana[mover.owner] += bounty;
+    events.push({
+      type: 'captured',
+      pieceId: victim.id,
+      by: mover.id,
+      square: to,
+      name: victim.def.name,
+      owner: victim.owner,
+      cardId: victim.cardId,
+      bounty,
+    });
     return;
   }
   const seal = sealAt(state, to);
@@ -266,7 +322,7 @@ function applyAction(state: GameState, action: Action, events: GameEvent[]): voi
       };
       state.pieces.push(piece);
       state.setupDeployed[color] += 1;
-      events.push({ type: 'deployed', color, pieceId: piece.id, square: piece.square });
+      events.push({ type: 'deployed', color, pieceId: piece.id, square: piece.square, name: piece.def.name });
       return;
     }
     case 'move': {
@@ -275,7 +331,7 @@ function applyAction(state: GameState, action: Action, events: GameEvent[]): voi
       capture(state, piece, action.to, events);
       piece.square = action.to;
       state.actionTaken = true;
-      events.push({ type: 'moved', pieceId: piece.id, from: action.from, to: action.to });
+      events.push({ type: 'moved', pieceId: piece.id, from: action.from, to: action.to, name: piece.def.name, owner: piece.owner });
       return;
     }
     case 'summon': {
@@ -293,7 +349,7 @@ function applyAction(state: GameState, action: Action, events: GameEvent[]): voi
       };
       state.pieces.push(piece);
       state.cardPlayed = true;
-      events.push({ type: 'summoned', color, pieceId: piece.id, square: piece.square });
+      events.push({ type: 'summoned', color, pieceId: piece.id, square: piece.square, name: piece.def.name, cardId: card.id });
       return;
     }
     case 'seal': {
@@ -306,17 +362,29 @@ function applyAction(state: GameState, action: Action, events: GameEvent[]): voi
       const seal: Seal = { id: newId(state, 's'), owner: color, square: action.target, card, timer: card.sealTimer };
       state.seals.push(seal);
       state.cardPlayed = true;
-      events.push({ type: 'sealed', color, sealId: seal.id, square: seal.square, consumedPieceId: consumed.id, timer: seal.timer });
+      events.push({
+        type: 'sealed',
+        color,
+        sealId: seal.id,
+        square: seal.square,
+        consumedPieceId: consumed.id,
+        timer: seal.timer,
+        consumedName: consumed.def.name,
+        cardId: card.id,
+      });
       return;
     }
     case 'evolve': {
       const instance = removeFromHand(state, color, action.cardUid);
       const card = pieceCard(state, instance.cardId);
-      state.mana[color] -= card.cost;
       const old = pieceAt(state, action.target);
       if (!old) throw new Error('No piece to evolve');
+      const cost = evolveCost(state, card, old);
+      if (cost === null) throw new Error('Cannot evolve that piece');
+      state.mana[color] -= cost;
       state.pieces = state.pieces.filter((p) => p.id !== old.id);
       // A new piece, so it waits like a summoned one: no move or capture until the owner's next turn (Djabooty, 2026-10-11).
+      // What spells taught it stays with it.
       const piece: Piece = {
         id: newId(state, 'p'),
         owner: color,
@@ -325,10 +393,21 @@ function applyAction(state: GameState, action: Action, events: GameEvent[]): voi
         square: action.target,
         activeFromTurn: state.turns[color] + 1,
         summonedOnTurn: state.turns[color],
+        ...(old.abilities ? { abilities: old.abilities } : {}),
       };
       state.pieces.push(piece);
       state.cardPlayed = true;
-      events.push({ type: 'evolved', color, pieceId: piece.id, fromPieceId: old.id, square: piece.square });
+      events.push({
+        type: 'evolved',
+        color,
+        pieceId: piece.id,
+        fromPieceId: old.id,
+        square: piece.square,
+        name: piece.def.name,
+        fromName: old.def.name,
+        cardId: card.id,
+        cost,
+      });
       return;
     }
     case 'spell': {
@@ -339,8 +418,15 @@ function applyAction(state: GameState, action: Action, events: GameEvent[]): voi
       state.discard[color].push(instance);
       state.cardPlayed = true;
       events.push({ type: 'spellPlayed', color, cardId: card.id, target: action.target });
-      if (card.effect.kind === 'draw') {
-        draw(state, color, card.effect.count, events);
+      const effect = card.effect;
+      if (effect.kind === 'draw') {
+        draw(state, color, effect.count, events);
+        state.mana[color] += effect.mana ?? 0;
+      } else if (effect.kind === 'grant') {
+        const target = action.target === undefined ? undefined : pieceAt(state, action.target);
+        if (!target) throw new Error('No piece to teach');
+        target.abilities = [...(target.abilities ?? []), effect.ability];
+        events.push({ type: 'learned', color, pieceId: target.id, name: target.def.name, square: target.square, ability: effect.ability });
       } else if (action.target !== undefined) {
         const seal = sealAt(state, action.target);
         if (seal) {
@@ -349,6 +435,25 @@ function applyAction(state: GameState, action: Action, events: GameEvent[]): voi
           events.push({ type: 'sealDestroyed', sealId: seal.id, by: card.id, square: seal.square, cardId: seal.card.id });
         }
       }
+      return;
+    }
+    case 'pitch': {
+      const instance = removeFromHand(state, color, action.cardUid);
+      state.discard[color].push(instance);
+      state.mana[color] += PITCH_MANA;
+      state.pitched = true;
+      state.cardPlayed = true;
+      events.push({ type: 'pitched', color, cardId: instance.cardId, mana: PITCH_MANA });
+      return;
+    }
+    case 'lava': {
+      const piece = pieceAt(state, action.from);
+      if (!piece) throw new Error('No piece to breathe lava');
+      state.mana[color] -= LAVA_COST;
+      piece.lavaOnTurn = state.turns[color];
+      state.lava = [...(state.lava ?? []), { square: action.to, by: color, untilTurn: state.turns[opposite(color)] + LAVA_TURNS }];
+      state.cardPlayed = true;
+      events.push({ type: 'lava', color, pieceId: piece.id, name: piece.def.name, from: action.from, square: action.to });
       return;
     }
     case 'endTurn': {
@@ -363,6 +468,11 @@ function applyAction(state: GameState, action: Action, events: GameEvent[]): voi
 
 function backRowSquares(color: Color): Square[] {
   return Array.from({ length: FILES }, (_, file) => sq(file, backRank(color)));
+}
+
+/** Where new pieces enter: your back row and the row in front of it (Djabooty, 2026-10-11). */
+export function homeSquares(color: Color): Square[] {
+  return [...backRowSquares(color), ...backRowSquares(color).map((s) => s + forward(color) * FILES)];
 }
 
 function handPieces(state: GameState, color: Color): { instance: CardInstance; card: PieceCard }[] {
@@ -406,7 +516,7 @@ function moveActions(state: GameState): Action[] {
     for (const reach of reaches(state, piece)) {
       const empty = reach.occupant === null;
       const enemy = reach.occupant === opposite(color);
-      const canMove = empty && reach.mode !== 'capture';
+      const canMove = empty && reach.mode !== 'capture' && !lavaAt(state, reach.to);
       const canCapture = enemy && reach.mode !== 'move' && !sick;
       if (!canMove && !canCapture) continue;
       const action: Action = { type: 'move', from: piece.square, to: reach.to };
@@ -418,7 +528,7 @@ function moveActions(state: GameState): Action[] {
 
 function summonActions(state: GameState): Action[] {
   const color = state.active;
-  const free = backRowSquares(color).filter((s) => ownerAt(state, s) === null);
+  const free = homeSquares(color).filter((s) => ownerAt(state, s) === null && !lavaAt(state, s));
   const out: Action[] = [];
   for (const { instance, card } of handPieces(state, color)) {
     if (card.evolvesFrom || card.cost > state.mana[color]) continue;
@@ -445,17 +555,19 @@ function sealActions(state: GameState): Action[] {
 }
 
 /**
- * An evolution card goes onto one of your pieces of the card it evolves from. The piece must have been on the board
- * since before this turn (no summoning sickness left), so each step of a line gives the opponent a turn to answer
- * (Djabooty, 2026-10-11).
+ * An evolution card goes onto one of your pieces of the card it evolves from, or, for a level-2 card, onto an
+ * Initiate (see `evolveCost`). The piece must have been on the board since before this turn (no summoning sickness
+ * left), so each step of a line gives the opponent a turn to answer (Djabooty, 2026-10-11).
  */
 function evolveActions(state: GameState): Action[] {
   const color = state.active;
   const out: Action[] = [];
   for (const { instance, card } of handPieces(state, color)) {
-    if (!card.evolvesFrom || card.cost > state.mana[color]) continue;
+    if (!card.evolvesFrom) continue;
     for (const piece of state.pieces) {
-      if (piece.owner !== color || piece.cardId !== card.evolvesFrom || !isActive(state, piece)) continue;
+      if (piece.owner !== color || !isActive(state, piece)) continue;
+      const cost = evolveCost(state, card, piece);
+      if (cost === null || cost > state.mana[color]) continue;
       const action: Action = { type: 'evolve', cardUid: instance.uid, target: piece.square };
       if (safe(state, action)) out.push(action);
     }
@@ -469,22 +581,67 @@ function spellActions(state: GameState): Action[] {
   for (const instance of state.hand[color]) {
     const card = state.catalog[instance.cardId];
     if (card?.type !== 'spell' || card.cost > state.mana[color]) continue;
-    const candidates: Action[] = card.effect.kind === 'destroySeal'
-      ? state.seals.map((s) => ({ type: 'spell', cardUid: instance.uid, target: s.square }) as Action)
-      : [{ type: 'spell', cardUid: instance.uid }];
+    const effect = card.effect;
+    let candidates: Action[];
+    if (effect.kind === 'destroySeal') {
+      candidates = state.seals.map((s): Action => ({ type: 'spell', cardUid: instance.uid, target: s.square }));
+    } else if (effect.kind === 'grant') {
+      // Onto one of your pieces of the spell's type that does not know the ability yet.
+      candidates = state.pieces
+        .filter((p) => p.owner === color && !p.def.king && (!card.tribe || tribeOf(state, p) === card.tribe) && !p.abilities?.includes(effect.ability))
+        .map((p): Action => ({ type: 'spell', cardUid: instance.uid, target: p.square }));
+    } else {
+      candidates = [{ type: 'spell', cardUid: instance.uid }];
+    }
     for (const action of candidates) if (safe(state, action)) out.push(action);
   }
   return out;
 }
 
-function cardActions(state: GameState): Action[] {
-  return [...summonActions(state), ...sealActions(state), ...evolveActions(state), ...spellActions(state)];
+/** Once a turn, any card in hand can be discarded for mana; never while in check, since it answers nothing. */
+function pitchActions(state: GameState): Action[] {
+  const color = state.active;
+  if (state.pitched || isInCheck(state, color)) return [];
+  return state.hand[color].map((c): Action => ({ type: 'pitch', cardUid: c.uid }));
 }
 
 /**
- * A turn is: play any cards the mana pays for (summon, seal, evolve, spell), then move a piece, and the move ends the
- * turn (Djabooty, 2026-10-10). Nothing may leave your own King in check, so a King in check is answered first,
- * by a move or by a summon that blocks; no spell can do it. End turn closes a turn only when no move is left,
+ * A piece with Lava Breath that was on the board before this turn spits lava, once a turn, onto an empty square it
+ * could move to. Lava neither blocks nor makes an attack, so it never answers a check.
+ */
+function lavaActions(state: GameState): Action[] {
+  const color = state.active;
+  if (state.mana[color] < LAVA_COST || isInCheck(state, color)) return [];
+  const turn = state.turns[color];
+  const out: Action[] = [];
+  for (const piece of state.pieces) {
+    if (piece.owner !== color || !piece.abilities?.includes('lavaBreath')) continue;
+    if (piece.summonedOnTurn === turn || piece.lavaOnTurn === turn) continue;
+    const seen = new Set<Square>();
+    for (const reach of reaches(state, piece)) {
+      if (reach.occupant !== null || reach.mode === 'capture' || seen.has(reach.to) || lavaAt(state, reach.to)) continue;
+      seen.add(reach.to);
+      out.push({ type: 'lava', from: piece.square, to: reach.to });
+    }
+  }
+  return out;
+}
+
+function cardActions(state: GameState): Action[] {
+  return [
+    ...summonActions(state),
+    ...sealActions(state),
+    ...evolveActions(state),
+    ...spellActions(state),
+    ...pitchActions(state),
+    ...lavaActions(state),
+  ];
+}
+
+/**
+ * A turn is: play any cards the mana pays for (summon, seal, evolve, spell, pitch, lava), then move a piece, and the
+ * move ends the turn (Djabooty, 2026-10-10). Nothing may leave your own King in check, so a King in check is answered
+ * first, by a move or by a summon that blocks; no spell can do it. End turn closes a turn only when no move is left,
  * and only after a card, so there is still no pass. `actionTaken` is a game saved while an older rule kept the
  * turn open after the action.
  */
@@ -506,11 +663,20 @@ const ENDS_TURN: ReadonlySet<Action['type']> = new Set(['move']);
 function startTurn(state: GameState, color: Color, events: GameEvent[]): void {
   state.active = color;
   state.turns[color] += 1;
-  state.mana[color] += 1;
+  const income = incomeFor(state.turns[color]);
+  state.mana[color] += income;
   state.actionTaken = false;
   state.cardPlayed = false;
-  events.push({ type: 'turnStarted', color, turn: state.turns[color], mana: state.mana[color] });
+  state.pitched = false;
+  events.push({ type: 'turnStarted', color, turn: state.turns[color], mana: state.mana[color], income });
   draw(state, color, 1, events);
+
+  // Lava cools once the other player has taken its turns: at the start of the turn of the side that made it.
+  for (const lava of state.lava ?? []) {
+    if (lava.by !== color || state.turns[opposite(color)] < lava.untilTurn) continue;
+    state.lava = state.lava!.filter((l) => l !== lava);
+    events.push({ type: 'lavaCooled', square: lava.square });
+  }
 
   for (const seal of state.seals.filter((s) => s.owner === color)) {
     seal.timer -= 1;
@@ -526,7 +692,7 @@ function startTurn(state: GameState, color: Color, events: GameEvent[]): void {
       activeFromTurn: state.turns[color] + 1,
     };
     state.pieces.push(piece);
-    events.push({ type: 'hatched', color, pieceId: piece.id, square: piece.square });
+    events.push({ type: 'hatched', color, pieceId: piece.id, square: piece.square, name: piece.def.name });
   }
 
   if (isInCheck(state, color)) events.push({ type: 'check', color });

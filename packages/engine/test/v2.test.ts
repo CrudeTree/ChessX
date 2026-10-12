@@ -4,9 +4,12 @@ import {
   KING,
   STARTER_CATALOG,
   applyLegalAction,
+  bountyFor,
   faceArt,
+  incomeFor,
   isInCheck,
   legalActions,
+  nextRecord,
   newGame,
   parseSquare,
   pieceAt,
@@ -179,10 +182,10 @@ describe('turn flow and resources', () => {
     state = act(state, find(state, (a) => a.type === 'seal' && a.cardUid === recruit && a.target === S('c3')));
     state = act(state, { type: 'spell', cardUid: insight });
     expect(state.active).toBe('white');
-    expect(state.mana.white).toBe(4);
-    expect(state.hand.white.map((c) => c.cardId)).toEqual(['duskfang', 'duskfang']);
-    // A Duskfang costs 15, so the cards are done; the move is all that is left.
-    expect(legalActions(state).every((a) => a.type === 'move')).toBe(true);
+    expect(state.mana.white).toBe(5);
+    expect(state.hand.white.map((c) => c.cardId)).toEqual(['duskfang']);
+    // A Duskfang costs 9, so the cards are done but for a pitch; the move is all that is left.
+    expect(legalActions(state).every((a) => a.type === 'move' || a.type === 'pitch')).toBe(true);
     state = act(state, find(state, (a) => a.type === 'move'));
     expect(state.active).toBe('black');
   });
@@ -194,11 +197,11 @@ describe('turn flow and resources', () => {
     state.deck.white = [{ uid: 'a', cardId: 'squire' }, { uid: 'b', cardId: 'squire' }, { uid: 'c', cardId: 'squire' }, { uid: 'd', cardId: 'squire' }];
     let next = act(state, { type: 'spell', cardUid: first });
     expect(next.active).toBe('white');
-    expect(next.hand.white.length).toBe(3);
+    expect(next.hand.white.length).toBe(2);
     next = act(next, { type: 'spell', cardUid: second });
     expect(next.active).toBe('white');
-    expect(next.hand.white.map((c) => c.uid)).toEqual(['a', 'b', 'c', 'd']);
-    expect(next.mana.white).toBe(6);
+    expect(next.hand.white.map((c) => c.uid)).toEqual(['a', 'b']);
+    expect(next.mana.white).toBe(8);
     next = act(next, find(next, (a) => a.type === 'move'));
     expect(next.active).toBe('black');
   });
@@ -271,15 +274,32 @@ describe('turn flow and resources', () => {
 });
 
 describe('summoning', () => {
-  it('costs the printed mana and goes only on the back row', () => {
+  it('costs the printed mana and goes on either of your first two rows (Djabooty, 2026-10-11)', () => {
     const state = bare(2);
     const wyrmling = give(state, 'white', 'wyrmling');
     const duskfang = give(state, 'white', 'duskfang');
-    const summons = legalActions(state).filter((a) => a.type === 'summon');
-    expect(summons.every((a) => a.type === 'summon' && a.cardUid === wyrmling && a.to < FILES && a.to !== S('d1'))).toBe(true);
-    expect(summons.some((a) => a.type === 'summon' && a.cardUid === duskfang)).toBe(false);
+    const summons = legalActions(state).filter((a): a is Extract<Action, { type: 'summon' }> => a.type === 'summon');
+    expect(summons.every((a) => a.cardUid === wyrmling)).toBe(true);
+    expect(summons.some((a) => a.cardUid === duskfang)).toBe(false);
+    expect(summons.map((a) => a.to).sort((x, y) => x - y)).toEqual(
+      Array.from({ length: 2 * FILES }, (_, s) => s).filter((s) => s !== S('d1')),
+    );
     const next = act(state, summons[0]!);
     expect(next.mana.white).toBe(0);
+  });
+
+  it('Black summons onto ranks 8 and 7, never onto a taken square', () => {
+    let state = bare(5);
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('d1') && a.to === S('e1')));
+    piece(state, 'black', 'initiate', 'b7');
+    const squire = give(state, 'black', 'squire');
+    const to = legalActions(state)
+      .filter((a): a is Extract<Action, { type: 'summon' }> => a.type === 'summon' && a.cardUid === squire)
+      .map((a) => a.to);
+    expect(to).toHaveLength(2 * FILES - 2);
+    expect(to.every((s) => s >= S('a7'))).toBe(true);
+    expect(to).not.toContain(S('b7'));
+    expect(to).not.toContain(S('d8'));
   });
 
   it('a summoned piece cannot capture until its owner\'s next turn', () => {
@@ -345,9 +365,9 @@ describe('Dawn Paladin', () => {
 });
 
 describe('Duskfang', () => {
-  it('costs 15 with no evolution line (Djabooty, 2026-10-11), seals on a 3-turn timer, steps one square diagonally and captures only with a knight leap', () => {
+  it('costs 9 with no evolution line (Djabooty, 2026-10-11), seals on a 3-turn timer, steps one square diagonally and captures only with a knight leap', () => {
     const card = STARTER_CATALOG.duskfang!;
-    expect(card).toMatchObject({ type: 'piece', cost: 15, sealTimer: 3 });
+    expect(card).toMatchObject({ type: 'piece', cost: 9, sealTimer: 3, tribe: 'Beast' });
     expect(card).not.toHaveProperty('line');
     expect(card).not.toHaveProperty('evolvesFrom');
     expect(starterDeck().filter((id) => id === 'duskfang')).toHaveLength(1);
@@ -540,7 +560,17 @@ describe('evolving (Djabooty, 2026-10-11)', () => {
     expect(next.hand.white).toHaveLength(0);
     expect(next.active).toBe('white');
     expect(next.cardPlayed).toBe(true);
-    expect(events).toContainEqual({ type: 'evolved', color: 'white', pieceId: evolved.id, fromPieceId: recruit.id, square: S('c3') });
+    expect(events).toContainEqual({
+      type: 'evolved',
+      color: 'white',
+      pieceId: evolved.id,
+      fromPieceId: recruit.id,
+      square: S('c3'),
+      name: 'Warrior',
+      fromName: 'Recruit',
+      cardId: 'warrior',
+      cost: 4,
+    });
   });
 
   it('the new piece waits like a summoned one, then moves with its new reach', () => {
@@ -580,16 +610,42 @@ describe('evolving (Djabooty, 2026-10-11)', () => {
     expect(legalActions(state).some((a) => a.type === 'evolve' && a.cardUid === second)).toBe(false);
   });
 
-  it('goes only onto the card it evolves from, and an evolution card is never summoned or sealed', () => {
+  it('goes only onto the card it evolves from (or an Initiate), and an evolution card is never summoned or sealed', () => {
     const state = bare(20);
     piece(state, 'white', 'recruit', 'c3');
     piece(state, 'white', 'initiate', 'e3');
     const warlord = give(state, 'white', 'warlord');
-    const mystic = give(state, 'white', 'mystic_dragon');
     const archmage = give(state, 'white', 'archmage');
-    const uids = new Set([warlord, mystic, archmage]);
-    expect(legalActions(state).some((a) => 'cardUid' in a && uids.has(a.cardUid))).toBe(false);
-    expect(legalActions(state).some((a) => a.type === 'summon' || a.type === 'seal')).toBe(false);
+    const mage = give(state, 'white', 'mage');
+    const played = legalActions(state).filter((a) => a.type !== 'pitch' && 'cardUid' in a);
+    // Level 3 goes onto nothing here; the Mage (level 2) only onto the Initiate, since there is no Apprentice.
+    expect(played).toEqual([{ type: 'evolve', cardUid: mage, target: S('e3') }]);
+    expect(played.some((a) => 'cardUid' in a && (a.cardUid === warlord || a.cardUid === archmage))).toBe(false);
+  });
+
+  it('Initiates take any path (Djabooty, 2026-10-11): a level-2 card goes onto one for its cost plus the level it skips', () => {
+    const state = bare(5);
+    const initiate = piece(state, 'white', 'initiate', 'e3');
+    const warrior = give(state, 'white', 'warrior');
+    const paladin = give(state, 'white', 'paladin');
+    const mystic = give(state, 'white', 'mystic_dragon');
+    const onto = (s: GameState) => legalActions(s).filter((a) => a.type === 'evolve').map((a) => a.type === 'evolve' && a.cardUid);
+    // Warrior 4 + Recruit 1 = 5; Paladin 4 + Colt 2 = 6; Mystic Dragon 6 + Wyrmling 2 = 8.
+    expect(onto(state)).toEqual([warrior]);
+    state.mana.white = 8;
+    expect(onto(state).sort()).toEqual([warrior, paladin, mystic].sort());
+    const { state: next, events } = applyLegalAction(state, { type: 'evolve', cardUid: paladin, target: S('e3') });
+    expect(next.mana.white).toBe(2);
+    expect(pieceAt(next, S('e3'))).toMatchObject({ cardId: 'paladin', activeFromTurn: 2, summonedOnTurn: 1 });
+    expect(events).toContainEqual(expect.objectContaining({ type: 'evolved', fromPieceId: initiate.id, fromName: 'Initiate', name: 'Paladin', cost: 6 }));
+  });
+
+  it('a game whose cards came before any path keeps its Initiates on their own path', () => {
+    const state = bare(20);
+    state.catalog = { ...state.catalog, initiate: { ...(STARTER_CATALOG.initiate as PieceCard), anyPath: undefined } };
+    piece(state, 'white', 'initiate', 'e3');
+    give(state, 'white', 'warrior');
+    expect(legalActions(state).some((a) => a.type === 'evolve')).toBe(false);
   });
 
   it('the Paladin has two final forms to choose from', () => {
@@ -603,7 +659,7 @@ describe('evolving (Djabooty, 2026-10-11)', () => {
 
   it('an evolved piece gives check at once, and evolving never answers a check', () => {
     let state = bare(10);
-    state.pieces.find((p) => p.owner === 'black' && p.def.king)!.square = S('d7');
+    state.pieces.find((p) => p.owner === 'black' && p.def.king)!.square = S('f6');
     piece(state, 'white', 'wyrmling', 'd4');
     piece(state, 'black', 'recruit', 'h7');
     give(state, 'black', 'warrior');
@@ -628,7 +684,8 @@ describe('evolving (Djabooty, 2026-10-11)', () => {
     state = act(state, find(state, (a) => a.type === 'evolve' && a.cardUid === mystic));
     state = act(state, find(state, (a) => a.type === 'move' && a.from === S('d1') && a.to === S('e1')));
     state = act(state, find(state, (a) => a.type === 'move' && a.from === S('a8') && a.to === S('b8')));
-    expect(moveTargets(state, 'd4')).toHaveLength(24);
+    // Range 2 in all eight directions (Djabooty, 2026-10-11).
+    expect(moveTargets(state, 'd4')).toHaveLength(16);
     state = act(state, find(state, (a) => a.type === 'evolve' && a.cardUid === ancient));
     expect(state.mana.white).toBe(20 - 6 + 1 - 10);
     state = act(state, find(state, (a) => a.type === 'move' && a.from === S('e1') && a.to === S('f1')));
@@ -677,8 +734,250 @@ describe('spells', () => {
   });
 });
 
+describe('mana (Djabooty, 2026-10-11)', () => {
+  /** Plays King shuffles until White has started `turn` turns, returning the turnStarted events White got. */
+  function playTo(turn: number): { state: GameState; incomes: number[] } {
+    let state = bare(0);
+    state.turns = { white: 0, black: 0 };
+    state.active = 'black';
+    state.pieces.find((p) => p.owner === 'black' && p.def.king)!.square = S('a8');
+    const incomes: number[] = [];
+    while (state.turns.white < turn) {
+      const { state: next, events } = applyLegalAction(state, find(state, (a) => a.type === 'move' && a.from === kingAt(state)));
+      for (const e of events) if (e.type === 'turnStarted' && e.color === 'white') incomes.push(e.income!);
+      state = next;
+    }
+    return { state, incomes };
+  }
+  const kingAt = (state: GameState) => state.pieces.find((p) => p.owner === state.active && p.def.king)!.square;
+
+  it('income steps up: +1 on turns 1 to 5, +2 on 6 to 10, +3 on 11 to 15, then +4', () => {
+    expect(Array.from({ length: 20 }, (_, i) => incomeFor(i + 1))).toEqual([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4]);
+    const { state, incomes } = playTo(16);
+    expect(incomes).toEqual([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4]);
+    expect(state.mana.white).toBe(34);
+    // The view shows what the side to move got this turn and what the other side's next turn brings.
+    const { state: fifth } = playTo(5);
+    const blackToMove = act(fifth, find(fifth, (a) => a.type === 'move' && a.from === kingAt(fifth)));
+    expect(viewFor({ state: blackToMove, seq: 0, events: [] }, 'white').income).toEqual({ white: 2, black: 1 });
+  });
+
+  it('pitches a card from the hand for +1 mana, once a turn; it counts as a card for End turn', () => {
+    let state = bare(0);
+    const squire = give(state, 'white', 'squire');
+    const dispel = give(state, 'white', 'dispel');
+    const pitches = legalActions(state).filter((a) => a.type === 'pitch');
+    expect(pitches).toEqual([{ type: 'pitch', cardUid: squire }, { type: 'pitch', cardUid: dispel }]);
+    const { state: next, events } = applyLegalAction(state, { type: 'pitch', cardUid: dispel });
+    expect(next.mana.white).toBe(1);
+    expect(next.discard.white.map((c) => c.uid)).toEqual([dispel]);
+    expect(next.hand.white.map((c) => c.uid)).toEqual([squire]);
+    expect(next.active).toBe('white');
+    expect(next.cardPlayed).toBe(true);
+    expect(events).toEqual([{ type: 'pitched', color: 'white', cardId: 'dispel', mana: 1 }]);
+    expect(legalActions(next).some((a) => a.type === 'pitch')).toBe(false);
+    expect(viewFor({ state: next, seq: 0, events: [] }, 'white').pitched).toBe(true);
+    // The pitched mana pays for a card at once, and next turn the pitch is back.
+    expect(legalActions(next).some((a) => a.type === 'summon' && a.cardUid === squire)).toBe(true);
+    state = act(next, find(next, (a) => a.type === 'move'));
+    state = act(state, find(state, (a) => a.type === 'move'));
+    expect(legalActions(state).some((a) => a.type === 'pitch' && a.cardUid === squire)).toBe(true);
+  });
+
+  it('cannot pitch while in check', () => {
+    const state = bare(0);
+    piece(state, 'black', 'warlord', 'a1');
+    give(state, 'white', 'squire');
+    expect(isInCheck(state, 'white')).toBe(true);
+    expect(legalActions(state).some((a) => a.type === 'pitch')).toBe(false);
+  });
+
+  it('a capture pays half the captured card\'s cost, rounded up', () => {
+    let state = bare(0);
+    piece(state, 'white', 'warlord', 'a2');
+    piece(state, 'black', 'warrior', 'a5');
+    piece(state, 'black', 'initiate', 'h5');
+    const { state: next, events } = applyLegalAction(state, { type: 'move', from: S('a2'), to: S('a5') });
+    expect(next.mana.white).toBe(2);
+    expect(events[0]).toMatchObject({ type: 'captured', name: 'Warrior', owner: 'black', cardId: 'warrior', bounty: 2 });
+    state = act(next, find(next, (a) => a.type === 'move' && a.from === S('d8')));
+    const mana = state.mana.white;
+    state = act(state, { type: 'move', from: S('a5'), to: S('h5') });
+    expect(state.mana.white).toBe(mana);
+    expect(bountyFor(STARTER_CATALOG.duskfang)).toBe(5);
+    expect(bountyFor(STARTER_CATALOG.squire)).toBe(1);
+  });
+
+  it('destroying a sacrifice pays nothing', () => {
+    let state = bare(0);
+    piece(state, 'white', 'warlord', 'a2');
+    state.seals.push({ id: 's1', owner: 'black', square: S('a6'), card: STARTER_CATALOG.duskfang as PieceCard, timer: 2 });
+    state = act(state, { type: 'move', from: S('a2'), to: S('a6') });
+    expect(state.mana.white).toBe(0);
+  });
+});
+
+describe('Lava Breath (Djabooty, 2026-10-11)', () => {
+  /** White to move with a Dragon on d4 that knows Lava Breath. */
+  function breather(mana = 5, cardId = 'wyrmling'): GameState {
+    const state = bare(mana);
+    state.pieces.find((p) => p.owner === 'black' && p.def.king)!.square = S('h8');
+    piece(state, 'white', cardId, 'd4').abilities = ['lavaBreath'];
+    return state;
+  }
+  const lavaTargets = (state: GameState) =>
+    legalActions(state)
+      .filter((a): a is Extract<Action, { type: 'lava' }> => a.type === 'lava')
+      .map((a) => a.to)
+      .sort((x, y) => x - y);
+
+  it('the spell goes only onto one of your Dragons that does not know it yet', () => {
+    const state = bare(5);
+    piece(state, 'white', 'wyrmling', 'c3');
+    piece(state, 'white', 'mystic_dragon', 'e3').abilities = ['lavaBreath'];
+    piece(state, 'white', 'recruit', 'f3');
+    piece(state, 'white', 'initiate', 'g3');
+    piece(state, 'black', 'wyrmling', 'c6');
+    const spell = give(state, 'white', 'lava_breath');
+    const targets = legalActions(state).filter((a) => a.type === 'spell').map((a) => a.type === 'spell' && a.target);
+    expect(targets).toEqual([S('c3')]);
+    const { state: next, events } = applyLegalAction(state, { type: 'spell', cardUid: spell, target: S('c3') });
+    expect(pieceAt(next, S('c3'))!.abilities).toEqual(['lavaBreath']);
+    expect(next.mana.white).toBe(3);
+    expect(next.discard.white.map((c) => c.uid)).toEqual([spell]);
+    const dragon = pieceAt(state, S('c3'))!;
+    expect(events).toEqual([
+      { type: 'spellPlayed', color: 'white', cardId: 'lava_breath', target: S('c3') },
+      { type: 'learned', color: 'white', pieceId: dragon.id, name: 'Wyrmling', square: S('c3'), ability: 'lavaBreath' },
+    ]);
+    expect(pieceAt(state, S('c3'))!.abilities).toBeUndefined();
+    expect(viewFor({ state: next, seq: 0, events: [] }, 'white').pieces.find((p) => p.square === S('c3'))!.abilities).toEqual(['lavaBreath']);
+  });
+
+  it('spits lava onto an empty square the Dragon could move to, for 1 mana, once a turn; the turn goes on', () => {
+    const state = breather();
+    piece(state, 'white', 'initiate', 'b4');
+    piece(state, 'black', 'initiate', 'd6');
+    // A Wyrmling leaps 2 straight: b4 is taken by its own piece and d6 by an enemy.
+    expect(lavaTargets(state)).toEqual([S('d2'), S('f4')]);
+    const { state: next, events } = applyLegalAction(state, { type: 'lava', from: S('d4'), to: S('f4') });
+    expect(next.mana.white).toBe(4);
+    expect(next.active).toBe('white');
+    expect(next.lava).toEqual([{ square: S('f4'), by: 'white', untilTurn: 2 }]);
+    expect(events).toEqual([{ type: 'lava', color: 'white', pieceId: pieceAt(state, S('d4'))!.id, name: 'Wyrmling', from: S('d4'), square: S('f4') }]);
+    expect(lavaTargets(next)).toEqual([]);
+    expect(legalActions(next).some((a) => a.type === 'endTurn')).toBe(false);
+    expect(state.lava).toEqual([]);
+  });
+
+  it('costs mana, never answers a check, and a Dragon that just arrived cannot spit yet', () => {
+    expect(lavaTargets(breather(0))).toEqual([]);
+    const checked = breather();
+    piece(checked, 'black', 'warlord', 'a1');
+    expect(isInCheck(checked, 'white')).toBe(true);
+    expect(lavaTargets(checked)).toEqual([]);
+    const fresh = breather();
+    pieceAt(fresh, S('d4'))!.summonedOnTurn = 1;
+    expect(lavaTargets(fresh)).toEqual([]);
+  });
+
+  it('no piece can move onto lava or be summoned onto it, though pieces pass over it and attack across it', () => {
+    let state = breather(5, 'mystic_dragon');
+    state.pieces.find((p) => p.owner === 'black' && p.def.king)!.square = S('a8');
+    piece(state, 'black', 'warlord', 'b6');
+    state = act(state, { type: 'lava', from: S('d4'), to: S('b2') });
+    expect(() => act(state, { type: 'lava', from: S('d4'), to: S('d2') })).toThrow();
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('d1') && a.to === S('e1')));
+    // Black's Warlord slides down the b-file over the lava on b2 to b1, but cannot stop on b2.
+    const warlord = legalActions(state).filter((a) => a.type === 'move' && a.from === S('b6')).map((a) => a.type === 'move' && a.to);
+    expect(warlord).toContain(S('b3'));
+    expect(warlord).toContain(S('b1'));
+    expect(warlord).not.toContain(S('b2'));
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('a8')));
+    const squire = give(state, 'white', 'squire');
+    expect(legalActions(state).some((a) => a.type === 'summon' && a.cardUid === squire && a.to === S('b2'))).toBe(false);
+    expect(legalActions(state).some((a) => a.type === 'summon' && a.cardUid === squire && a.to === S('a2'))).toBe(true);
+    // Lava does not block lines: a Warlord on b1 behind the lava still attacks along the b-file.
+    const lined = bare(0);
+    lined.lava = [{ square: S('a4'), by: 'black', untilTurn: 9 }];
+    lined.pieces.find((p) => p.owner === 'white' && p.def.king)!.square = S('a1');
+    piece(lined, 'black', 'warlord', 'a8');
+    expect(isInCheck(lined, 'white')).toBe(true);
+  });
+
+  it('lasts the other player\'s next 2 turns, then cools as its maker\'s turn begins', () => {
+    let state = breather();
+    state = act(state, { type: 'lava', from: S('d4'), to: S('f4') });
+    const turnsLeft = (s: GameState) => viewFor({ state: s, seq: 0, events: [] }, 'white').lava.map((l) => l.turnsLeft);
+    expect(turnsLeft(state)).toEqual([2]);
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('d1')));
+    expect(turnsLeft(state)).toEqual([2]);
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('h8')));
+    expect(turnsLeft(state)).toEqual([1]);
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === kingOf(state)));
+    expect(turnsLeft(state)).toEqual([1]);
+    const { state: cooled, events } = applyLegalAction(state, find(state, (a) => a.type === 'move' && a.from === kingOf(state)));
+    expect(cooled.active).toBe('white');
+    expect(cooled.lava).toEqual([]);
+    expect(events).toContainEqual({ type: 'lavaCooled', square: S('f4') });
+    expect(lavaTargets(cooled)).toContain(S('f4'));
+  });
+  const kingOf = (state: GameState) => state.pieces.find((p) => p.owner === state.active && p.def.king)!.square;
+
+  it('a Dragon keeps Lava Breath when it evolves', () => {
+    let state = breather(20);
+    const mystic = give(state, 'white', 'mystic_dragon');
+    state = act(state, find(state, (a) => a.type === 'evolve' && a.cardUid === mystic));
+    expect(pieceAt(state, S('d4'))).toMatchObject({ cardId: 'mystic_dragon', abilities: ['lavaBreath'] });
+    expect(lavaTargets(state)).toEqual([]);
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('d1')));
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('h8')));
+    expect(lavaTargets(state)).toHaveLength(16);
+  });
+
+  it('cloneState copies the lava', () => {
+    const state = breather();
+    state.lava = [{ square: S('a4'), by: 'white', untilTurn: 3 }];
+    const copy = cloneState(state);
+    copy.lava![0]!.untilTurn = 9;
+    copy.lava!.push({ square: S('b4'), by: 'white', untilTurn: 3 });
+    expect(state.lava).toEqual([{ square: S('a4'), by: 'white', untilTurn: 3 }]);
+  });
+});
+
+describe('the game log (Djabooty, 2026-10-11)', () => {
+  it('events name the pieces as they were, so a saved log reads after they are gone', () => {
+    let state = bare(5);
+    piece(state, 'white', 'colt', 'b1');
+    piece(state, 'black', 'apprentice', 'c3');
+    const squire = give(state, 'white', 'squire');
+    const summoned = applyLegalAction(state, find(state, (a) => a.type === 'summon' && a.cardUid === squire && a.to === S('h2')));
+    expect(summoned.events[0]).toMatchObject({ type: 'summoned', name: 'Squire', cardId: 'squire', square: S('h2') });
+    state = summoned.state;
+    const { events } = applyLegalAction(state, { type: 'move', from: S('b1'), to: S('c3') });
+    expect(events[0]).toMatchObject({ type: 'captured', name: 'Apprentice', owner: 'black', cardId: 'apprentice', bounty: 1 });
+    expect(events[1]).toMatchObject({ type: 'moved', name: 'Colt', owner: 'white', from: S('b1'), to: S('c3') });
+    expect(events[2]).toMatchObject({ type: 'turnStarted', color: 'black', turn: 1, income: 1 });
+  });
+
+  it('a record keeps every action\'s events, and the view sends them only when asked', () => {
+    const start = { state: bare(5), seq: 1, events: [], history: [] };
+    const first = applyLegalAction(start.state, find(start.state, (a) => a.type === 'move'));
+    const r1 = nextRecord(start, first.state, first.events);
+    const second = applyLegalAction(r1.state, find(r1.state, (a) => a.type === 'move'));
+    const r2 = nextRecord(r1, second.state, second.events);
+    expect(r2).toMatchObject({ seq: 3, events: second.events, history: [first.events, second.events] });
+    expect(viewFor(r2, 'white')).not.toHaveProperty('history');
+    expect(viewFor(r2, 'white', { history: true }).history).toEqual([first.events, second.events]);
+    // A game saved before the history began starts it from its latest events.
+    const old = { state: r1.state, seq: 2, events: first.events };
+    expect(viewFor(old, 'black', { history: true }).history).toEqual([first.events]);
+    expect(nextRecord(old, second.state, second.events).history).toEqual([first.events, second.events]);
+  });
+});
+
 describe('starter deck', () => {
-  it('is the agreed 24-card list', () => {
+  it('is the agreed 25-card list', () => {
     const counts: Record<string, number> = {};
     for (const id of starterDeck()) counts[id] = (counts[id] ?? 0) + 1;
     expect(counts).toEqual({
@@ -700,8 +999,37 @@ describe('starter deck', () => {
       duskfang: 1,
       insight: 2,
       dispel: 1,
+      lava_breath: 1,
     });
-    expect(starterDeck()).toHaveLength(24);
+    expect(starterDeck()).toHaveLength(25);
+  });
+
+  it('gives every card a type (Djabooty, 2026-10-11): a line\'s cards share its type', () => {
+    const types = Object.fromEntries(Object.values(STARTER_CATALOG).map((c) => [c.id, c.tribe]));
+    expect(types).toEqual({
+      initiate: 'Zealot',
+      squire: 'Warrior',
+      recruit: 'Warrior',
+      warrior: 'Warrior',
+      warlord: 'Warrior',
+      apprentice: 'Mage',
+      mage: 'Mage',
+      archmage: 'Mage',
+      colt: 'Paladin',
+      paladin: 'Paladin',
+      dawn_paladin: 'Paladin',
+      eclipse_knight: 'Paladin',
+      wyrmling: 'Dragon',
+      mystic_dragon: 'Dragon',
+      ancient_mystic_dragon: 'Dragon',
+      duskfang: 'Beast',
+      insight: undefined,
+      dispel: undefined,
+      lava_breath: 'Dragon',
+    });
+    for (const card of Object.values(STARTER_CATALOG)) {
+      if (card.type === 'piece' && card.line) expect(card.tribe, card.id).toBe(card.line);
+    }
   });
 
   it('every evolution card evolves from a card in the deck, one level down in the same line', () => {
@@ -732,20 +1060,24 @@ describe('starter deck', () => {
     expect(starterDeck().filter((id) => STARTER_CATALOG[id]!.type === 'piece' && STARTER_CATALOG[id]!.cost === 2).length).toBeLessThanOrEqual(4);
   });
 
-  it('prints Insight at 2 mana, so turn 1 is a Wyrmling seal or an Insight, never both (msg-028)', () => {
-    expect(STARTER_CATALOG.insight!.cost).toBe(2);
+  it('prints Insight at 2 mana, and it draws 1 card and pays 1 mana back (Djabooty, 2026-10-11)', () => {
+    expect(STARTER_CATALOG.insight).toMatchObject({ cost: 2, effect: { kind: 'draw', count: 1, mana: 1 }, text: 'Draw 1 card and gain 1 mana.' });
     const state = bare(3);
-    piece(state, 'white', 'initiate', 'c2');
-    const wyrmling = give(state, 'white', 'wyrmling');
+    state.deck.white = [{ uid: 'a', cardId: 'squire' }, { uid: 'b', cardId: 'squire' }];
     const insight = give(state, 'white', 'insight');
-    expect(legalActions(state).some((a) => a.type === 'spell' && a.cardUid === insight)).toBe(true);
-    const sealed = act(state, find(state, (a) => a.type === 'seal' && a.cardUid === wyrmling));
-    expect(sealed.mana.white).toBe(1);
-    expect(sealed.active).toBe('white');
-    expect(legalActions(sealed).some((a) => a.type === 'spell' && a.cardUid === insight)).toBe(false);
     const cast = act(state, { type: 'spell', cardUid: insight });
+    expect(cast.mana.white).toBe(2);
+    expect(cast.hand.white.map((c) => c.uid)).toEqual(['a']);
+    expect(cast.discard.white.map((c) => c.uid)).toEqual([insight]);
+  });
+
+  it('a game saved before the change keeps its own Insight: draw 2, no mana', () => {
+    const state = bare(3);
+    state.catalog = { ...state.catalog, insight: { ...STARTER_CATALOG.insight!, effect: { kind: 'draw', count: 2 }, text: 'Draw 2 cards.' } as never };
+    state.deck.white = [{ uid: 'a', cardId: 'squire' }, { uid: 'b', cardId: 'squire' }];
+    const cast = act(state, { type: 'spell', cardUid: give(state, 'white', 'insight') });
     expect(cast.mana.white).toBe(1);
-    expect(legalActions(cast).some((a) => a.type === 'seal' && a.cardUid === wyrmling)).toBe(false);
+    expect(cast.hand.white.map((c) => c.uid)).toEqual(['a', 'b']);
   });
 });
 
@@ -909,11 +1241,23 @@ describe('port additions', () => {
     expect(cards.warrior!.text).toBe('Slides straight, up to 3 squares.');
     expect(cards.warlord!.text).toBe('Slides straight, any distance.');
     expect(cards.wyrmling!.text).toBe('Leaps 2 squares straight.');
-    expect(cards.mystic_dragon!.text).toBe('Slides in any direction, up to 3 squares.');
+    expect(cards.mystic_dragon!.text).toBe('Slides in any direction, up to 2 squares.');
     expect(cards.ancient_mystic_dragon!.text).toBe('Slides in any direction, any distance.');
-    expect(cards.duskfang!.text).toBe('Steps diagonally, 1 square (cannot capture that way). Captures like a knight (cannot move there otherwise).');
-    expect(cards.squire!.text).toContain('Steps forward');
+    // A rule that only moves says "Moves", one that only captures says "Captures", like a chess pawn.
+    expect(cards.duskfang!.text).toBe('Moves diagonally, 1 square. Captures like a knight.');
+    expect(cards.squire!.text).toBe('Moves forward, 1 square. Captures diagonally forward, 1 square.');
     expect(cards.dispel!.type).toBe('spell');
+  });
+
+  it('sends types, the Initiate\'s any path and the longer viewer text', () => {
+    const cards = viewFor({ state: bare(), seq: 0, events: [] }, 'white').cards;
+    expect(cards.initiate).toMatchObject({ tribe: 'Zealot', anyPath: true, abilityText: 'Any path: evolves into any level 2.' });
+    expect(cards.initiate!.detail).toContain('any level-2 card');
+    expect(cards.warrior).toMatchObject({ tribe: 'Warrior' });
+    expect(cards.warrior).not.toHaveProperty('anyPath');
+    expect(cards.lava_breath).toMatchObject({ type: 'spell', tribe: 'Dragon', grants: 'lavaBreath', cost: 2 });
+    expect(cards.dispel!.detail).toContain('discard pile');
+    expect(cards.insight).not.toHaveProperty('detail');
   });
 
   it('sends the evolution line, and no seal timer on cards that can only evolve', () => {
@@ -959,9 +1303,17 @@ describe('port additions', () => {
     expect(faceArt(single, 'black')).toEqual(single);
   });
 
-  it('a saved game keeps its cards\' costs and moves but shows today\'s pictures', () => {
+  it('a saved game keeps its cards\' costs and moves but shows today\'s pictures and types', () => {
     const wyrmling = STARTER_CATALOG.wyrmling as PieceCard;
-    const saved: PieceCard = { ...wyrmling, cost: 1, art: '/art/pic-002.png', boardArt: '/art/pic-002.png', darkArt: undefined, darkBoardArt: undefined };
+    const saved: PieceCard = {
+      ...wyrmling,
+      cost: 1,
+      art: '/art/pic-002.png',
+      boardArt: '/art/pic-002.png',
+      darkArt: undefined,
+      darkBoardArt: undefined,
+      tribe: undefined,
+    };
     const custom: PieceCard = { ...wyrmling, id: 'custom', name: 'Custom', art: '/art/custom.png' };
     const catalog = withCurrentArt({ wyrmling: saved, insight: { ...STARTER_CATALOG.insight!, art: undefined, darkArt: undefined }, custom });
     expect(catalog.wyrmling).toEqual({ ...wyrmling, cost: 1 });

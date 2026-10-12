@@ -11,6 +11,8 @@
   "dependencies": {
     "@chessx/engine": "*",
     "@chessx/protocol": "*",
+    "@fontsource/alegreya": "^5.3.0",
+    "@fontsource/cinzel": "^5.3.0",
     "pixi.js": "^8.6.0"
   },
   "devDependencies": {

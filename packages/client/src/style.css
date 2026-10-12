@@ -4581,6 +4581,49 @@ button,
   animation: g2-gem 1.8s ease-in-out infinite;
 }
 
+/* Mana the next turn brings. */
+.g2-income {
+  margin-left: 1px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(90, 180, 255, 0.16);
+  color: #8fd0ff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* Holding a card you can pitch: your bar takes it, for mana. */
+.g2-player.pitch-drop {
+  border: 1px dashed rgba(120, 200, 255, 0.85);
+  box-shadow: 0 0 0 1px rgba(90, 180, 255, 0.3), 0 0 22px rgba(90, 180, 255, 0.35), 0 6px 18px rgba(0, 0, 0, 0.35);
+  animation: g2-pitch-glow 1.4s ease-in-out infinite;
+}
+
+.g2-player.pitch-drop.pitch-over {
+  border-style: solid;
+  border-color: #bfe3ff;
+  background: linear-gradient(180deg, rgba(36, 70, 120, 0.96), rgba(20, 36, 70, 0.96));
+  box-shadow: 0 0 0 2px rgba(150, 215, 255, 0.6), 0 0 32px rgba(110, 200, 255, 0.75), 0 6px 18px rgba(0, 0, 0, 0.35);
+  animation: none;
+}
+
+.g2-pitch-label {
+  color: #bfe3ff;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.g2-player.pitch-over .g2-pitch-label {
+  color: #fff;
+}
+
+@keyframes g2-pitch-glow {
+  50% {
+    box-shadow: 0 0 0 1px rgba(90, 180, 255, 0.5), 0 0 30px rgba(90, 180, 255, 0.6), 0 6px 18px rgba(0, 0, 0, 0.35);
+  }
+}
+
 @keyframes g2-gem {
   50% {
     box-shadow: 0 0 14px 3px rgba(120, 200, 255, 1);
@@ -4741,6 +4784,23 @@ button,
   }
 }
 
+/* Lava Breath taking aim: the squares it can reach glow like embers. */
+.g2-cell.target.lava-aim::before {
+  background: rgba(255, 110, 30, 0.22);
+  box-shadow:
+    inset 0 0 0 0.35cqw rgba(255, 120, 40, 0.95),
+    inset 0 0 3.2cqw 0.5cqw rgba(255, 90, 20, 0.75);
+}
+
+@media (hover: hover) {
+  .g2-cell.target.lava-aim:hover::before {
+    background: rgba(255, 120, 40, 0.38);
+    box-shadow:
+      inset 0 0 0 0.5cqw #ffb37a,
+      inset 0 0 3.2cqw 0.6cqw rgba(255, 100, 20, 0.95);
+  }
+}
+
 /* Your pieces that can move: picked up with a tap, or dragged (a finger on one drags it, never the page). */
 .g2-cell.movable {
   cursor: grab;
@@ -4869,6 +4929,24 @@ body.g2-grabbing * {
   box-shadow: 0 0 2cqw rgba(255, 90, 80, 0.95);
 }
 
+/* A spell that teaches a piece (Lava Breath): ember orange. */
+.g2-cell.drop-grant {
+  box-shadow: inset 0 0 0 3px rgba(255, 150, 60, 0.95), inset 0 0 2.4cqw rgba(255, 120, 40, 0.6);
+}
+
+.g2-cell.drop-grant::after {
+  border-color: rgba(255, 210, 160, 0.9);
+}
+
+.g2-cell.drop-grant.drop-hover {
+  box-shadow: inset 0 0 0 4px #ffb066, inset 0 0 3.4cqw rgba(255, 120, 40, 0.95);
+}
+
+.g2-cell.drop-grant.drop-hover::after {
+  border-color: #ffe6cc;
+  box-shadow: 0 0 2cqw rgba(255, 130, 50, 0.95);
+}
+
 /* A held spell with no target can be dropped anywhere: the whole board glows, brighter under the card. */
 .g2-board.drop-all {
   outline: 0.5cqw solid rgba(170, 140, 255, 0.55);
@@ -4987,6 +5065,132 @@ body.g2-grabbing * {
   box-shadow: 0 0.1em 0.25em rgba(0, 0, 0, 0.6);
 }
 
+/* Lava Breath: a flame on the piece, burning bright while it can spit. */
+.g2-piece-ember {
+  position: absolute;
+  left: 0.15em;
+  bottom: 0.1em;
+  width: 1.25em;
+  height: 1.25em;
+  font-size: max(8px, 0.3em);
+  border-radius: 50% 0 50% 50%;
+  rotate: -45deg;
+  background: radial-gradient(circle at 40% 60%, #fff3b0, #ffaa33 40%, #e8461a 75%, #7a1606);
+  border: 1px solid #ffd0a0;
+  box-shadow: 0 0 0.5em rgba(255, 110, 30, 0.7);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.g2-piece-ember.ready {
+  opacity: 1;
+  animation: g2-ember 1.1s ease-in-out infinite alternate;
+}
+
+@keyframes g2-ember {
+  to {
+    scale: 1.18;
+    box-shadow: 0 0 1em 0.2em rgba(255, 130, 40, 0.95);
+  }
+}
+
+/* Lava on a square: no piece can move onto it or be summoned onto it while it burns. */
+.g2-lava {
+  position: absolute;
+  inset: 7%;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.g2-lava::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 42% 48% 40% 52% / 48% 42% 54% 46%;
+  background:
+    radial-gradient(circle at 32% 34%, rgba(255, 246, 190, 0.95) 0 5%, transparent 15%),
+    radial-gradient(circle at 68% 62%, rgba(255, 214, 120, 0.9) 0 4%, transparent 13%),
+    radial-gradient(circle at 56% 28%, rgba(255, 190, 90, 0.8) 0 3%, transparent 10%),
+    radial-gradient(circle at 50% 50%, #ffb02e 0%, #f2541b 42%, #a8200c 72%, #3a0a04 100%);
+  box-shadow: 0 0 1.6cqw 0.3cqw rgba(255, 100, 20, 0.75), inset 0 0 1.4cqw rgba(60, 8, 0, 0.9);
+  animation: g2-lava-churn 2.2s ease-in-out infinite alternate;
+}
+
+@keyframes g2-lava-churn {
+  from {
+    filter: brightness(0.92);
+    rotate: -4deg;
+    scale: 0.97;
+  }
+  to {
+    filter: brightness(1.18) saturate(1.15);
+    rotate: 4deg;
+    scale: 1.02;
+  }
+}
+
+/* How many of the other player's turns it still blocks. */
+.g2-lava-turns {
+  position: absolute;
+  right: -8%;
+  bottom: -8%;
+  min-width: 1.7em;
+  height: 1.7em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: max(9px, 1.9cqw);
+  font-weight: 800;
+  line-height: 1;
+  color: #fff3dc;
+  background: radial-gradient(circle at 35% 30%, #6a200c, #220704 75%);
+  border: 0.1em solid #ff9a4d;
+  box-shadow: 0 0 0.5em rgba(255, 110, 30, 0.8);
+}
+
+.g2-lava.fx-lava-in {
+  animation: g2-lava-in 700ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+
+@keyframes g2-lava-in {
+  0% {
+    opacity: 0;
+    scale: 0.2;
+    filter: brightness(3);
+  }
+  60% {
+    opacity: 1;
+    scale: 1.12;
+    filter: brightness(1.6);
+  }
+  100% {
+    scale: 1;
+    filter: none;
+  }
+}
+
+/* Lava that cooled (drawn by fx.ts): it darkens into rock and is gone. */
+.g2-lava.cooling::before {
+  animation: g2-lava-cool 900ms ease-in var(--delay, 0ms) both;
+}
+
+@keyframes g2-lava-cool {
+  0% {
+    opacity: 1;
+    filter: none;
+  }
+  45% {
+    opacity: 1;
+    filter: grayscale(1) brightness(0.45);
+  }
+  100% {
+    opacity: 0;
+    filter: grayscale(1) brightness(0.3);
+    scale: 0.85;
+  }
+}
+
 /* Summoning sickness: cannot capture yet (still gives check). Dimmed, with a slowly turning ring. */
 .g2-piece.sick {
   filter: saturate(0.4) brightness(0.8);
@@ -5077,6 +5281,7 @@ body.g2-grabbing * {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 0.1em;
   min-width: 2.1em;
   height: 2.1em;
   padding: 0 0.3em;
@@ -5268,29 +5473,25 @@ body.g2-grabbing * {
   padding-left: 0.45em;
 }
 
+/* Set in Cinzel; cardFrame.ts shrinks a long name (--name-fit) until it fits on its plate. */
 .g2-frame-name span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--card-font);
-  font-size: 0.9em;
+  font-family: 'Cinzel', var(--card-font);
+  font-size: calc(0.8em * var(--name-fit, 1));
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
   color: var(--ink);
-  text-shadow: 0 0.07em 0 #000, 0 0 0.4em rgba(0, 0, 0, 0.8);
+  text-shadow: 0 0.07em 0 #000, 0 0 0.4em rgba(0, 0, 0, 0.8), 0 0 0.9em rgba(255, 214, 140, 0.18);
 }
 
-.g2-frame-name.long span {
-  font-size: 0.74em;
-  letter-spacing: 0;
-}
-
-/* Names too long for one line (Ancient Mystic Dragon) wrap onto two. */
-.g2-frame-name.longer span {
-  font-size: 0.7em;
-  letter-spacing: 0;
-  line-height: 1;
+/* A name that does not fit on one line even shrunk (Ancient Mystic Dragon) wraps onto two. */
+.g2-frame-name.wrap span {
+  font-size: 0.66em;
+  letter-spacing: 0.01em;
+  line-height: 1.02;
   white-space: normal;
   text-align: center;
 }
@@ -5350,49 +5551,135 @@ body.g2-grabbing * {
   text-shadow: 0 0 0.12em hsl(var(--hue) 100% 75%), 0 0 0.45em hsl(var(--hue) 100% 60%), 0 0 0.9em hsl(var(--hue) 100% 55% / 0.7), 0 0.04em 0 #000;
 }
 
+/* The card's type ("Dragon · Level 2"), between two little rules. */
 .g2-frame-type {
   flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 2.2em;
-  font-size: 0.56em;
+  gap: 0.6em;
+  height: 2.4em;
+  overflow: hidden;
+  white-space: nowrap;
+  font-family: 'Cinzel', var(--card-font);
+  font-size: 0.52em;
   font-weight: 700;
-  letter-spacing: 0.24em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink);
+  text-shadow: 0 0.08em 0 #000;
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.07) 30%, rgba(255, 255, 255, 0.07) 70%, transparent);
   border-top: 0.1em solid rgba(255, 228, 170, 0.28);
   border-bottom: 0.1em solid rgba(0, 0, 0, 0.6);
 }
 
+.g2-frame-type::before,
+.g2-frame-type::after {
+  content: '';
+  flex: none;
+  width: 1.2em;
+  height: 0.14em;
+  border-radius: 1em;
+  background: linear-gradient(90deg, transparent, currentColor);
+  opacity: 0.55;
+}
+
+.g2-frame-type::after {
+  background: linear-gradient(270deg, transparent, currentColor);
+}
+
+/* The printed text on its parchment; cardFrame.ts shrinks it (--fit) until it fits the box. */
 .g2-frame-text {
   flex: 1;
   min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0.5em 0.5em 0.6em;
-  padding: 0.4em 0.7em;
+  margin: 0.45em 0.5em 0.55em;
+  padding: 0.3em 0.55em;
   overflow: hidden;
   border-radius: 0.45em;
   background: var(--paper);
-  box-shadow: inset 0 0 0.6em rgba(90, 60, 20, 0.35), 0 0 0 0.08em rgba(0, 0, 0, 0.6);
+  box-shadow:
+    inset 0 0 0.6em rgba(90, 60, 20, 0.35),
+    inset 0 0 0 0.1em rgba(255, 255, 255, 0.28),
+    0 0 0 0.08em rgba(0, 0, 0, 0.6);
   color: var(--paper-ink);
-  font-family: var(--card-font);
-  font-size: 0.64em;
-  line-height: 1.25;
+  font-family: 'Alegreya', var(--card-font);
+  font-size: calc(0.7em * var(--fit, 1));
+  line-height: 1.16;
   text-align: center;
 }
 
-.g2-frame-text.evolves {
-  flex-direction: column;
-  gap: 0.3em;
+.g2-frame-copy {
+  width: 100%;
+}
+
+.g2-frame-copy p {
+  margin: 0;
+}
+
+.g2-frame-copy p + p {
+  margin-top: 0.2em;
 }
 
 .g2-frame-evolves {
+  font-style: italic;
   color: #7a4a0e;
+}
+
+.g2-frame-evolves span {
+  font-style: normal;
+  font-weight: 700;
+}
+
+/* Keywords ("Leaps", "Captures", "Any path") in the name's typeface. */
+.g2-kw {
+  font-family: 'Cinzel', var(--card-font);
+  font-size: 0.84em;
+  font-weight: 700;
   letter-spacing: 0.02em;
+  color: #7a2d0c;
+}
+
+.g2-num {
+  font-weight: 700;
+}
+
+.g2-frame-spell .g2-kw {
+  color: #4b2490;
+}
+
+/* An ability under the text: printed on the card, or taught by a spell (glowing like embers). */
+.g2-frame-ability {
+  padding-top: 0.18em;
+  border-top: 0.06em solid rgba(90, 60, 20, 0.28);
+}
+
+.g2-frame-ability.learned .g2-kw {
+  color: #c2410c;
+  text-shadow: 0 0 0.45em rgba(255, 130, 40, 0.55);
+}
+
+.g2-frame-ability.learned::before {
+  content: '✦ ';
+  color: #e8590c;
+}
+
+/* cardFrame.ts measures a hidden copy of each new card face here. */
+.g2-frame-probe {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  font-size: 40px;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.g2-hourglass {
+  flex: none;
+  width: 0.62em;
+  height: 0.86em;
 }
 
 .g2-frame-cost {
@@ -5437,6 +5724,7 @@ body.g2-grabbing * {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 0.12em;
   border-radius: 1em;
   background: radial-gradient(circle at 35% 30%, #7c66c8, #2b1e58 70%);
   border: 0.1em solid #cdbcff;
@@ -5669,6 +5957,22 @@ body.g2-grabbing * {
   transform-origin: 50% 50%;
 }
 
+/* A pitched card shrinks into your mana gem, burning blue. */
+.g2-card.g2-drag-ghost.pitching {
+  transition:
+    left 0.4s cubic-bezier(0.5, 0, 0.75, 0),
+    top 0.4s cubic-bezier(0.5, 0, 0.75, 0),
+    scale 0.4s ease-in,
+    opacity 0.4s ease-in,
+    rotate 0.4s ease,
+    filter 0.4s ease;
+  rotate: 14deg;
+  scale: 0.1;
+  opacity: 0;
+  filter: sepia(1) saturate(5) hue-rotate(170deg) brightness(1.6);
+  transform-origin: 50% 50%;
+}
+
 .g2-droptag {
   position: fixed;
   z-index: 1001;
@@ -5700,6 +6004,13 @@ body.g2-grabbing * {
   background: #3a2a0c;
   border-color: #f2c35a;
   color: #fff1cf;
+}
+
+.g2-droptag.grant,
+.g2-dropnote.grant {
+  background: #3d1a08;
+  border-color: #ff9a4d;
+  color: #ffe8d6;
 }
 
 /* ------------------------------------------------------------ the card viewer */
@@ -5813,6 +6124,12 @@ body.g2-grabbing * {
   border-color: rgba(170, 140, 255, 0.38);
 }
 
+.g2-chip.timer .g2-hourglass {
+  width: 0.7em;
+  height: 0.95em;
+  vertical-align: -0.14em;
+}
+
 .g2-chip.line {
   color: #ffe1a0;
   border-color: rgba(242, 195, 90, 0.45);
@@ -5861,6 +6178,37 @@ body.g2-grabbing * {
   font-size: 15px;
   line-height: 1.4;
   color: #efe6ff;
+}
+
+.g2-inspect-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.g2-inspect-action {
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.g2-inspect-action.mana {
+  border: 1px solid rgba(120, 200, 255, 0.8);
+  background: linear-gradient(180deg, #1d4f86, #12304f);
+  color: #e3f3ff;
+}
+
+.g2-inspect-action.lava {
+  border: 1px solid rgba(255, 150, 70, 0.85);
+  background: linear-gradient(180deg, #7a2a0e, #3d1207);
+  color: #ffe2c8;
+}
+
+.g2-inspect-action:hover {
+  filter: brightness(1.2);
 }
 
 .g2-inspect-hint {
@@ -6093,6 +6441,30 @@ body.g2-grabbing * {
 
 .g2-cue-step.now {
   color: var(--accent);
+}
+
+/* The picked piece has Lava Breath: the cue offers it (the cue itself lets clicks through to the board). */
+.g2-cue-lava {
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 140, 60, 0.85);
+  background: linear-gradient(180deg, #5a1d0a, #2e0e05);
+  color: #ffd7b0;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.g2-cue-lava:hover {
+  background: linear-gradient(180deg, #7a2a0e, #3d1207);
+  color: #fff;
+}
+
+.g2-cue-lava.on {
+  background: linear-gradient(180deg, #c2410c, #7a1f06);
+  color: #fff;
+  box-shadow: 0 0 10px rgba(255, 120, 40, 0.7);
 }
 
 .g2-menu,
@@ -6474,6 +6846,174 @@ body.g2-grabbing * {
 .g2-fx-sparks.violet i {
   background: #f1e9ff;
   box-shadow: 0 0 6px 2px #b48cff;
+}
+
+.g2-fx-sparks.ember i {
+  background: #ffe2b0;
+  box-shadow: 0 0 6px 2px #ff7a1a;
+}
+
+.g2-fx-ring.ember {
+  border-color: #ffb37a;
+  box-shadow: 0 0 10px rgba(255, 120, 40, 0.85), inset 0 0 8px rgba(255, 120, 40, 0.6);
+}
+
+/* Lava Breath: a molten ball arcs from the Dragon (--from-x, --from-y) onto its square and splashes. */
+.g2-fx-spot.lava {
+  --t0: 200ms;
+}
+
+.g2-fx-lavaball {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  animation: g2-lava-fly 460ms linear var(--delay, 0ms) both;
+}
+
+.g2-fx-lavaball i {
+  position: absolute;
+  left: calc(var(--cell) * -0.17);
+  top: calc(var(--cell) * -0.17);
+  width: calc(var(--cell) * 0.34);
+  height: calc(var(--cell) * 0.34);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff6c0, #ffb02e 35%, #f2541b 65%, #8f1b08);
+  box-shadow: 0 0 calc(var(--cell) * 0.2) calc(var(--cell) * 0.05) rgba(255, 110, 20, 0.9);
+  animation: g2-lava-arc 460ms var(--delay, 0ms) both;
+}
+
+@keyframes g2-lava-fly {
+  0% {
+    translate: var(--from-x) var(--from-y);
+    opacity: 1;
+  }
+  99% {
+    opacity: 1;
+  }
+  100% {
+    translate: 0 0;
+    opacity: 0;
+  }
+}
+
+@keyframes g2-lava-arc {
+  0% {
+    translate: 0 0;
+    scale: 0.6;
+    animation-timing-function: cubic-bezier(0.3, 0.6, 0.6, 1);
+  }
+  50% {
+    translate: 0 calc(var(--cell) * -1);
+    scale: 1.15;
+    animation-timing-function: cubic-bezier(0.4, 0, 0.7, 0.4);
+  }
+  100% {
+    translate: 0 0;
+    scale: 0.9;
+  }
+}
+
+.g2-fx-splash {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 110%;
+  height: 110%;
+  translate: -50% -50%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 240, 180, 0.95), rgba(255, 140, 40, 0.75) 35%, rgba(220, 50, 10, 0.35) 60%, transparent 72%);
+  opacity: 0;
+  animation: g2-splash 600ms ease-out calc(var(--delay, 0ms) + 460ms) both;
+}
+
+@keyframes g2-splash {
+  0% {
+    opacity: 1;
+    scale: 0.2;
+  }
+  100% {
+    opacity: 0;
+    scale: 1.5;
+  }
+}
+
+/* Lava cooling: steam rises off it. */
+.g2-fx-steam {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 70%;
+  height: 70%;
+  translate: -50% -50%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(235, 235, 245, 0.75), rgba(200, 200, 215, 0.35) 45%, transparent 70%);
+  filter: blur(0.6cqw);
+  opacity: 0;
+  animation: g2-steam 1200ms ease-out calc(var(--delay, 0ms) + 200ms) both;
+}
+
+.g2-fx-steam.late {
+  width: 50%;
+  height: 50%;
+  animation-delay: calc(var(--delay, 0ms) + 420ms);
+}
+
+@keyframes g2-steam {
+  0% {
+    opacity: 0;
+    translate: -50% -40%;
+    scale: 0.5;
+  }
+  30% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    translate: -50% -140%;
+    scale: 1.5;
+  }
+}
+
+/* Mana won on a square (a capture's bounty), floating up from it. */
+.g2-fx-gain {
+  position: absolute;
+  left: 50%;
+  top: 30%;
+  translate: -50% 0;
+  padding: 0.15em 0.55em;
+  border-radius: 999px;
+  font-size: max(11px, 2.2cqw);
+  font-weight: 800;
+  white-space: nowrap;
+  color: #e9f6ff;
+  background: rgba(20, 60, 110, 0.88);
+  border: 1px solid #8fd0ff;
+  box-shadow: 0 0 0.8em rgba(90, 180, 255, 0.8);
+  opacity: 0;
+  animation: g2-gain 1300ms ease-out var(--delay, 0ms) both;
+}
+
+@keyframes g2-gain {
+  0% {
+    opacity: 0;
+    translate: -50% 20%;
+    scale: 0.6;
+  }
+  15% {
+    opacity: 1;
+    scale: 1.1;
+  }
+  70% {
+    opacity: 1;
+    translate: -50% -60%;
+    scale: 1;
+  }
+  100% {
+    opacity: 0;
+    translate: -50% -110%;
+  }
 }
 
 @keyframes g2-spark {

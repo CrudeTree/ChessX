@@ -110,6 +110,35 @@ describe('rules 2 games', () => {
     expect(() => game.actV2(t, { type: 'endTurn' })).toThrow(GameError);
   });
 
+  it('keeps the whole log with the game and sends it to a player who opens it (Djabooty, 2026-10-11)', () => {
+    const { db, games, alice, bob } = setup();
+    const game = games.create(alice.id, false, []);
+    game.join(bob.id, []);
+    const white = transport(game.row.white_user_id!);
+    const black = transport(game.row.black_user_id!);
+    game.attach(white);
+    game.attach(black);
+    game.actV2(white, pick(game.record!.state, (a) => a.type === 'move'));
+    game.actV2(black, pick(game.record!.state, (a) => a.type === 'move'));
+    const history = game.record!.history!;
+    expect(history).toHaveLength(2);
+    expect(history[0]!.some((e) => e.type === 'moved')).toBe(true);
+    expect(history[1]).toEqual(game.record!.events);
+
+    // Updates during play carry only the latest events.
+    const update = [...white.messages].reverse().find((m) => m.type === 'stateV2');
+    if (update?.type !== 'stateV2') throw new Error('no state');
+    expect(update.view.history).toBeUndefined();
+
+    // After a server restart, opening the game brings the whole log.
+    const reloaded = new GameManager(db, (id) => db.userById(id)?.name ?? '?').get(game.id)!;
+    const again = transport(game.row.black_user_id!);
+    reloaded.attach(again);
+    const opened = again.messages.find((m) => m.type === 'stateV2');
+    if (opened?.type !== 'stateV2') throw new Error('no state');
+    expect(opened.view.history).toEqual(history);
+  });
+
   it('a practice game is v2, memory-only, and follows the side to move', () => {
     const { db, games, alice } = setup();
     const game = games.create(alice.id, true, []);

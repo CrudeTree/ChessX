@@ -3,8 +3,8 @@
 
 import { v2 } from '@chessx/engine';
 import type { ChatMessage, RoomInfo } from '@chessx/protocol';
-import { cardBack, fillFrame, tiltWithPointer, type FrameCard } from './cardFrame.js';
-import { BoardFx, CARD_DIVE_MS, type BannerTone } from './fx.js';
+import { cardBack, fillFrame, hourglass, tiltWithPointer, type FrameCard } from './cardFrame.js';
+import { BoardFx, CARD_DIVE_MS, LAVA_FLIGHT_MS, type BannerTone } from './fx.js';
 import { describeEvents, type PieceMemory } from './log.js';
 import { movementPanel } from './movement.js';
 import { sound } from './sound.js';
@@ -80,6 +80,8 @@ interface CardDrag {
   scrollFrom: number | null;
   ghost: HTMLElement | null;
   hover: v2.Square | null;
+  /** Over your player bar, where letting go pitches the card for mana. */
+  pitch: boolean;
 }
 
 /** Pixels the pointer must travel before a press on a card or piece becomes a drag rather than a click. */
@@ -118,7 +120,7 @@ interface Inspected {
 }
 
 /** Token animations in style.css and how long each runs: a piece appearing, sliding, a seal settling or ticking. */
-const TOKEN_FX_MS = { 'fx-rise': 900, 'fx-slide': 300, 'fx-seal-in': 800, 'fx-tick': 650 } as const;
+const TOKEN_FX_MS = { 'fx-rise': 900, 'fx-slide': 300, 'fx-seal-in': 800, 'fx-tick': 650, 'fx-lava-in': 700 } as const;
 type TokenFxKind = keyof typeof TOKEN_FX_MS;
 
 /**
@@ -194,6 +196,8 @@ export class GameScreen {
   private seat: Color = 'white';
 
   private selectedSquare: v2.Square | null = null;
+  /** The picked piece is taking aim with Lava Breath: the squares it can spit lava onto light up instead of its moves. */
+  private aimLava: v2.Square | null = null;
   private drag: CardDrag | null = null;
   private pieceDrag: PieceDrag | null = null;
   /** A dragged piece let go on a lit square: its copy waits there until the move comes back from the server. */
@@ -540,6 +544,7 @@ export class GameScreen {
     this.view = null;
     this.room = null;
     this.selectedSquare = null;
+    this.aimLava = null;
     this.inspected = null;
     this.hoverCard = null;
     this.hoverBoard = null;
@@ -635,12 +640,38 @@ export class GameScreen {
     return this.view?.legalActions ?? [];
   }
 
-  /** Squares the picked piece can move to, with the move to each. Cards are played by dragging them instead. */
+  /**
+   * Squares the picked piece can move to (or spit lava onto, while it takes aim), with the action for each. Cards
+   * are played by dragging them instead.
+   */
   private targets(): Map<v2.Square, Action> {
     const out = new Map<v2.Square, Action>();
     if (this.selectedSquare === null) return out;
-    for (const a of this.legal()) if (a.type === 'move' && a.from === this.selectedSquare) out.set(a.to, a);
+    const kind = this.aimLava === this.selectedSquare ? 'lava' : 'move';
+    for (const a of this.legal()) {
+      if ((a.type === 'move' || a.type === 'lava') && a.type === kind && a.from === this.selectedSquare) out.set(a.to, a);
+    }
     return out;
+  }
+
+  /** Whether the piece on `square` can spit lava now (Lava Breath). */
+  private canSpit(square: v2.Square): boolean {
+    return this.legal().some((a) => a.type === 'lava' && a.from === square);
+  }
+
+  /** Take aim with the picked piece's Lava Breath, or put it away again. */
+  private toggleLavaAim(square: v2.Square): void {
+    const aiming = this.aimLava === square && this.selectedSquare === square;
+    this.selectedSquare = square;
+    this.aimLava = aiming ? null : square;
+    if (!aiming) sound.sfx?.select();
+    if (!this.docked) this.inspected = null;
+    this.render();
+  }
+
+  /** Pitching a card in your hand for mana, if you can now. */
+  private pitchAction(uid: string): Action | null {
+    return this.legal().find((a) => a.type === 'pitch' && a.cardUid === uid) ?? null;
   }
 
   /** Squares holding one of your pieces that can move now: tap one to pick it up, or drag it. */
@@ -664,12 +695,14 @@ export class GameScreen {
       this.render();
       return;
     }
-    const movable = this.movers(view).has(square);
+    // A Dragon that cannot move can still be picked to spit lava.
+    const movable = this.movers(view).has(square) || (playing && this.canSpit(square));
     // A card floating over the board would hide the squares the piece can move to (see `startHold`).
     if (movable && !this.docked) this.inspected = null;
     else if (quick) this.toggleInspect(view, square);
     if (movable && this.selectedSquare !== square) {
       this.selectedSquare = square;
+      this.aimLava = null;
       sound.sfx?.select();
     } else {
       this.clearSelection();
@@ -679,6 +712,7 @@ export class GameScreen {
 
   private clearSelection(): void {
     this.selectedSquare = null;
+    this.aimLava = null;
   }
 
   /** A tap on a piece or seal opens its card; tapping the same one again, or an empty square, closes it. */
@@ -713,20 +747,36 @@ export class GameScreen {
     if (boardArt) tok.style.backgroundImage = `url("${boardArt}")`;
     else tok.append(el('span', 'g2-piece-glyph', glyphFor(piece.kind, piece.name)));
     if (card?.level) tok.append(el('span', 'g2-piece-level', LEVEL_MARK[card.level] ?? String(card.level)));
+    // An ember on a piece that has Lava Breath, burning bright while it can spit.
+    if (piece.abilities?.includes('lavaBreath')) tok.append(el('span', `g2-piece-ember${this.canSpit(piece.square) ? ' ready' : ''}`));
     const resting = piece.justSummoned
       ? ' (just arrived: cannot move or capture until its owner\'s next turn, but still gives check)'
       : piece.active ? '' : ' (summoning sickness: cannot capture yet, but still gives check)';
     const line = card?.line ? ` · ${card.line} level ${card.level}` : '';
-    tok.title = `${piece.name}${line}${resting}`;
+    const learned = piece.abilities?.length ? ` · ${piece.abilities.map((a) => v2.ABILITIES[a].name).join(', ')}` : '';
+    tok.title = `${piece.name}${line}${learned}${resting}`;
     return tok;
   }
 
   private sealToken(seal: v2.ViewSeal, view: v2.PlayerView): HTMLElement {
     const name = view.cards[seal.cardId]?.name ?? seal.cardId;
     const tok = el('div', `g2-seal ${seal.owner}`);
-    tok.append(cardBack('g2-seal-back'), el('span', 'g2-seal-timer', `⧗${seal.timer}`), el('span', 'g2-seal-name', name));
+    const timer = el('span', 'g2-seal-timer');
+    timer.append(hourglass(), String(seal.timer));
+    tok.append(cardBack('g2-seal-back'), timer, el('span', 'g2-seal-name', name));
     tok.title = `Sacrifice: ${name} arrives in ${seal.timer} of ${seal.owner === view.you ? 'your' : "its owner's"} turn${seal.timer === 1 ? '' : 's'}`;
     return tok;
+  }
+
+  /** A pool of lava on the board, with how many of the other player's turns it still blocks. */
+  private lavaPool(lava: v2.ViewLava, view: v2.PlayerView): HTMLElement {
+    const pool = el('div', 'g2-lava');
+    pool.append(el('span', 'g2-lava-turns', String(lava.turnsLeft)));
+    const victim = v2.opposite(lava.by);
+    const whose = this.solo ? `${sideName(victim)}'s` : victim === view.you ? 'your' : "your opponent's";
+    const turns = `${lava.turnsLeft} more of ${whose} turn${lava.turnsLeft === 1 ? '' : 's'}`;
+    pool.title = `Lava: no piece can move onto it or be summoned onto it for ${turns}. Pieces can still pass over it.`;
+    return pool;
   }
 
   private applyTokenFx(tok: HTMLElement, id: string, now: number): void {
@@ -758,6 +808,7 @@ export class GameScreen {
     const now = performance.now();
     const { turnAt, spellAt } = fxDelays(view);
     let ticked = false;
+    let cooled = false;
     for (const e of view.events) {
       switch (e.type) {
         case 'summoned':
@@ -794,6 +845,16 @@ export class GameScreen {
           break;
         case 'hatched':
           sfx.hatch(e.color, turnAt);
+          break;
+        case 'pitched':
+          sfx.pitch();
+          break;
+        case 'lava':
+          sfx.lava();
+          break;
+        case 'lavaCooled':
+          if (!cooled) sfx.cool(turnAt);
+          cooled = true;
           break;
         default:
           break;
@@ -846,8 +907,19 @@ export class GameScreen {
         case 'captured': {
           const victim = pieceBefore.get(e.pieceId);
           if (victim) this.fx.vanish(e.square, this.pieceToken(victim, prev), 'capture', 150);
+          if (e.bounty) this.fx.gain(e.square, `+${e.bounty} mana`, 450);
           break;
         }
+        case 'lava':
+          this.fx.lava(e.from, e.square);
+          this.tokenFx.set(`lava:${e.square}`, { kind: 'fx-lava-in', at: now + LAVA_FLIGHT_MS });
+          break;
+        case 'learned':
+          this.fx.learn(e.square, spellAt);
+          break;
+        case 'lavaCooled':
+          this.fx.cool(e.square, turnAt);
+          break;
         case 'sealDestroyed': {
           const seal = sealBefore.get(e.sealId);
           if (seal) this.fx.vanish(e.square, this.sealToken(seal, prev), 'shatter', spellAt || 150);
@@ -951,6 +1023,18 @@ export class GameScreen {
     setTimeout(() => ghost.remove(), 300);
   }
 
+  /** A pitched card shrinks into your mana gem and burns away. */
+  private burnAway(ghost: HTMLElement, gem: DOMRect | undefined): void {
+    if (!gem || !this.fx.enabled) {
+      ghost.remove();
+      return;
+    }
+    ghost.classList.add('pitching');
+    ghost.style.left = `${gem.left + gem.width / 2 - ghost.offsetWidth / 2}px`;
+    ghost.style.top = `${gem.top + gem.height / 2 - ghost.offsetHeight / 2}px`;
+    setTimeout(() => ghost.remove(), 420);
+  }
+
   private wasDropped(square: v2.Square, now: number): boolean {
     const at = this.landed.get(square);
     return at !== undefined && now - at < 4000;
@@ -1013,12 +1097,22 @@ export class GameScreen {
     let card: v2.ViewCard | undefined;
     let owner: Color = view.you;
     const notes: string[] = [];
+    const buttons: HTMLButtonElement[] = [];
     if (handCard) {
       card = view.cards[handCard.cardId];
       frame = this.frameFor(card, handCard.cardId, owner);
       notes.push(this.solo ? `In ${sideName(view.you)}'s hand.` : 'In your hand.', this.howToPlay(handCard.uid, card));
+      if (card?.type === 'piece' && card.detail) notes.push(card.detail);
       const next = this.evolvesInto(handCard.cardId, view);
       if (next) notes.push(next);
+      const pitch = this.pitchAction(handCard.uid);
+      if (pitch) {
+        buttons.push(
+          this.inspectButton(`Pitch it: +${v2.PITCH_MANA} mana`, 'Discard this card for mana. Once a turn; it does not end your turn.', 'mana', () =>
+            this.hooks.act(pitch),
+          ),
+        );
+      }
     } else if (piece) {
       card = piece.cardId ? view.cards[piece.cardId] : undefined;
       owner = piece.owner;
@@ -1026,12 +1120,26 @@ export class GameScreen {
         frame = { kind: 'king', id: 'king', name: piece.name, text: v2.describeMovement(v2.KING), glyph: glyphFor(piece.kind, piece.name), owner, rules: v2.KING.rules };
         notes.push('No card: the King cannot be summoned, sacrificed or evolved.');
       } else {
-        frame = this.frameFor(card, piece.kind, owner, piece.name);
+        frame = this.frameFor(card, piece.kind, owner, piece.name, piece.abilities);
       }
       if (piece.justSummoned) notes.push('Just arrived: cannot move or capture until its owner\'s next turn, but still gives check.');
       else if (!piece.active) notes.push('Summoning sickness: cannot capture yet, but still gives check.');
+      for (const a of piece.abilities ?? []) notes.push(`${v2.ABILITIES[a].name}: ${v2.ABILITIES[a].text}`);
+      if (card?.type === 'piece' && card.detail) notes.push(card.detail);
       const next = piece.cardId ? this.evolvesInto(piece.cardId, view) : null;
       if (next) notes.push(next);
+      if (this.canSpit(piece.square)) {
+        const aiming = this.aimLava === piece.square && this.selectedSquare === piece.square;
+        const square = piece.square;
+        buttons.push(
+          this.inspectButton(
+            aiming ? 'Put the lava away' : `Spit lava: ${v2.LAVA_COST} mana`,
+            `Pick an empty square it could move to. Lava blocks it for ${v2.LAVA_TURNS} of the other player's turns.`,
+            'lava',
+            () => this.toggleLavaAim(square),
+          ),
+        );
+      }
     } else if (seal) {
       card = view.cards[seal.cardId];
       owner = seal.owner;
@@ -1065,7 +1173,11 @@ export class GameScreen {
     if (!handCard) chips.append(el('span', `g2-chip owner ${owner}`, this.ownerLabel(owner, view)));
     if (card) chips.append(el('span', 'g2-chip mana', `◆ ${card.cost} mana`));
     if (card?.line) chips.append(el('span', 'g2-chip line', `${card.line} · level ${card.level}`));
-    if (card?.type === 'piece' && card.sealTimer !== undefined) chips.append(el('span', 'g2-chip timer', `⧗ sacrifice timer ${card.sealTimer}`));
+    if (card?.type === 'piece' && card.sealTimer !== undefined) {
+      const timer = el('span', 'g2-chip timer');
+      timer.append(hourglass(), ` sacrifice timer ${card.sealTimer}`);
+      chips.append(timer);
+    }
     head.append(title, chips);
     const pinned = !this.hoverCard && !this.hoverBoard && this.inspected !== null;
     if (pinned || !this.docked) {
@@ -1085,24 +1197,52 @@ export class GameScreen {
     } else if (card?.type === 'spell') {
       info.append(
         el('div', 'g2-inspect-label', 'What it does'),
-        el('p', 'g2-inspect-spell', card.text),
+        el('p', 'g2-inspect-spell', card.detail ?? card.text),
         el('p', 'g2-inspect-note', 'Cast it any time before you move; it does not end your turn. Not while your King is in check.'),
       );
     }
     for (const n of notes) info.append(el('p', 'g2-inspect-note', n));
+    if (buttons.length) {
+      const row = el('div', 'g2-inspect-actions');
+      row.append(...buttons);
+      info.append(row);
+    }
     box.replaceChildren(face, info);
+  }
+
+  /** A button in the card viewer; using it closes a viewer that floats over the board. */
+  private inspectButton(text: string, title: string, tone: 'mana' | 'lava', run: () => void): HTMLButtonElement {
+    const btn = el('button', `g2-inspect-action ${tone}`, text);
+    btn.type = 'button';
+    btn.title = title;
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      if (!this.docked) this.inspected = null;
+      this.hoverCard = null;
+      run();
+      this.render();
+    };
+    return btn;
   }
 
   private howToPlay(uid: string, card: v2.ViewCard | undefined): string {
     if (card?.type === 'spell') {
+      if (card.grants) {
+        const who = card.tribe ? `one of your ${card.tribe}s` : 'one of your pieces';
+        return `Drag it onto ${who} to teach it ${v2.ABILITIES[card.grants].name}. Casting does not end your turn.`;
+      }
       const targeted = this.legal().some((a) => a.type === 'spell' && a.cardUid === uid && a.target !== undefined);
       return `Drag it ${targeted ? 'onto a glowing target' : 'onto the board'} to cast it. Casting does not end your turn.`;
     }
     if (card?.evolvesFrom) {
-      const from = this.view?.cards[card.evolvesFrom]?.name ?? 'earlier form';
-      return `Drag it onto your ${from} to evolve it, if that piece was already on the board when your turn began. The new piece can move from your next turn. Evolving does not end your turn.`;
+      const cards = this.view?.cards ?? {};
+      const from = cards[card.evolvesFrom];
+      // A level-2 card can also go onto an Initiate (any path), for its own cost plus the level it skips.
+      const anyPath = from && !from.evolvesFrom ? Object.values(cards).find((c) => c.anyPath) : undefined;
+      const also = anyPath ? ` (or onto ${/^[aeiou]/i.test(anyPath.name) ? 'an' : 'a'} ${anyPath.name}, paying ${from!.name}'s ${from!.cost} mana as well)` : '';
+      return `Drag it onto your ${from?.name ?? 'earlier form'}${also} to evolve it, if that piece was already on the board when your turn began. The new piece can move from your next turn. Evolving does not end your turn.`;
     }
-    return 'Drag it to a free square on your back row to summon it, or onto one of your pieces (not the King) to sacrifice that piece for it. Neither ends your turn: play more cards, then move a piece.';
+    return 'Drag it to a free square on your first two rows to summon it, or onto one of your pieces (not the King) to sacrifice that piece for it. Neither ends your turn: play more cards, then move a piece.';
   }
 
   /** "Evolves into Mystic Dragon." for a card with a next level in this game's cards. */
@@ -1111,9 +1251,13 @@ export class GameScreen {
     return next.length ? `Evolves into ${next.join(' or ')}.` : null;
   }
 
-  /** The frame for a card, or for a piece whose card is missing from the view (name only). */
-  private frameFor(card: v2.ViewCard | undefined, kind: string, owner: Color, name = card?.name ?? kind): FrameCard {
-    if (!card) return { kind: 'piece', id: kind, name, text: '', glyph: glyphFor(kind, name), owner };
+  /**
+   * The frame for a card, or for a piece whose card is missing from the view (name only). A piece on the board
+   * also shows the abilities spells taught it (`learned`).
+   */
+  private frameFor(card: v2.ViewCard | undefined, kind: string, owner: Color, name = card?.name ?? kind, learned: readonly v2.Ability[] = []): FrameCard {
+    const taught = learned.map((a) => v2.ABILITIES[a].name);
+    if (!card) return { kind: 'piece', id: kind, name, text: '', glyph: glyphFor(kind, name), owner, learned: taught };
     return {
       kind: card.type,
       id: card.id,
@@ -1123,7 +1267,10 @@ export class GameScreen {
       line: card.line,
       level: card.level,
       evolvesFrom: card.evolvesFrom ? (this.view?.cards[card.evolvesFrom]?.name ?? card.evolvesFrom) : undefined,
+      tribe: card.tribe,
       text: card.text,
+      ability: card.abilityText,
+      learned: taught,
       art: v2.faceArt(card, owner).art,
       glyph: card.type === 'spell' ? SPELL_GLYPH : glyphFor(card.id, card.name),
       owner,
@@ -1206,7 +1353,7 @@ export class GameScreen {
   }
 
   /**
-   * Squares a held card can be dropped on: a free square on your back row summons (or deploys) it, one of your
+   * Squares a held card can be dropped on: a free square on your first two rows summons it (the back row deploys it), one of your
    * pieces seals (sacrifices) it or, for an evolution card, evolves it, a spell's target casts it. A spell with no
    * target goes anywhere (`untargetedSpell`).
    */
@@ -1243,6 +1390,7 @@ export class GameScreen {
       scrollFrom: null,
       ghost: null,
       hover: null,
+      pitch: false,
     };
     window.addEventListener('pointermove', this.onDragMove);
     window.addEventListener('pointerup', this.onDragEnd);
@@ -1276,7 +1424,7 @@ export class GameScreen {
       const ghost = tile.cloneNode(true) as HTMLElement;
       ghost.classList.remove('lifted', 'fresh', 'inspected');
       ghost.classList.add('g2-drag-ghost');
-      if (!this.dropTargets(drag.uid).size && !this.untargetedSpell(drag.uid)) ghost.classList.add('nowhere');
+      if (!this.dropTargets(drag.uid).size && !this.untargetedSpell(drag.uid) && !this.pitchAction(drag.uid)) ghost.classList.add('nowhere');
       ghost.style.fontSize = getComputedStyle(tile).fontSize;
       ghost.style.animationDelay = '';
       document.body.appendChild(ghost);
@@ -1294,27 +1442,52 @@ export class GameScreen {
     const square = this.squareAt(e.clientX, e.clientY);
     const anywhere = this.untargetedSpell(drag.uid) !== null;
     const hover = square !== null && (anywhere || this.dropTargets(drag.uid).has(square)) ? square : null;
+    const pitch = this.overPitch(e.clientX, e.clientY);
+    if (pitch !== drag.pitch) {
+      drag.pitch = pitch;
+      drag.ghost.classList.toggle('over', hover !== null || pitch);
+      this.renderPlayers();
+    }
     if (hover !== drag.hover) {
       if (drag.hover !== null) this.cells[drag.hover]?.classList.remove('drop-hover');
       if (hover !== null && !anywhere) this.cells[hover]?.classList.add('drop-hover');
       this.boardEl.classList.toggle('drop-over', anywhere && hover !== null);
       drag.hover = hover;
-      drag.ghost.classList.toggle('over', hover !== null);
+      drag.ghost.classList.toggle('over', hover !== null || pitch);
       this.showSealWarning(drag);
     }
   };
+
+  /** Whether the pointer is over the player bar that takes a pitched card (see `renderPlayers`). */
+  private overPitch(x: number, y: number): boolean {
+    return !!document.elementFromPoint(x, y)?.closest('.g2-player.pitch-drop');
+  }
 
   /**
    * "sacrifices Squire, gone for good" when the held card hovers one of your pieces, "evolves Recruit into Warrior"
    * for an evolution card; nothing for a summon.
    */
   private sealWarning(action: Action | undefined): string | null {
+    if (action?.type === 'spell' && action.target !== undefined) {
+      const grants = this.heldCard(action.cardUid)?.grants;
+      const target = this.view?.pieces.find((p) => p.square === action.target);
+      return grants ? `teaches ${target?.name ?? 'this piece'} ${v2.ABILITIES[grants].name}` : null;
+    }
     if (action?.type !== 'seal' && action?.type !== 'evolve') return null;
     const target = this.view?.pieces.find((p) => p.square === action.target);
     if (action.type === 'seal') return `sacrifices ${target?.name ?? 'this piece'}, gone for good`;
-    const cardId = this.view?.hand?.find((c) => c.uid === action.cardUid)?.cardId;
-    const into = cardId ? this.view?.cards[cardId]?.name : undefined;
-    return `evolves ${target?.name ?? 'this piece'}${into ? ` into ${into}` : ''}`;
+    const card = this.heldCard(action.cardUid);
+    const into = card ? ` into ${card.name}` : '';
+    // Onto an Initiate (any path): the level it skips is paid for as well.
+    const skipped = card?.evolvesFrom && target?.cardId !== card.evolvesFrom ? this.view?.cards[card.evolvesFrom] : undefined;
+    const cost = card && skipped ? ` for ${card.cost + skipped.cost} mana, skipping ${skipped.name}` : '';
+    return `evolves ${target?.name ?? 'this piece'}${into}${cost}`;
+  }
+
+  /** The card of a card in your hand. */
+  private heldCard(uid: string): v2.ViewCard | undefined {
+    const cardId = this.view?.hand?.find((c) => c.uid === uid)?.cardId;
+    return cardId ? this.view?.cards[cardId] : undefined;
   }
 
   private showSealWarning(drag: CardDrag): void {
@@ -1322,6 +1495,8 @@ export class GameScreen {
     const text = this.sealWarning(action);
     this.dropNoteEl.classList.toggle('evolve', action?.type === 'evolve');
     this.dropTagEl.classList.toggle('evolve', action?.type === 'evolve');
+    this.dropNoteEl.classList.toggle('grant', action?.type === 'spell');
+    this.dropTagEl.classList.toggle('grant', action?.type === 'spell');
     const mouse = drag.pointerType === 'mouse';
     this.dropNoteEl.textContent = text ?? '';
     this.dropNoteEl.classList.toggle('hidden', !text || mouse);
@@ -1359,8 +1534,17 @@ export class GameScreen {
       return;
     }
     const square = e.type === 'pointerup' ? this.squareAt(e.clientX, e.clientY) : null;
+    const pitch = e.type === 'pointerup' && square === null && this.overPitch(e.clientX, e.clientY) ? this.pitchAction(drag.uid) : null;
+    const gem = pitch ? document.querySelector('.g2-player.pitch-drop .g2-gem')?.getBoundingClientRect() : undefined;
     const action = this.dropAction(drag.uid, square);
     this.drag = null;
+    if (pitch) {
+      this.burnAway(ghost, gem);
+      this.hooks.act(pitch);
+      this.clearSelection();
+      this.render();
+      return;
+    }
     if (action && square !== null) {
       if (action.type === 'spell') {
         this.castAway(ghost);
@@ -1473,6 +1657,8 @@ export class GameScreen {
     document.body.appendChild(ghost);
     drag.ghost = ghost;
     if (drag.pointerType === 'mouse') document.body.classList.add('g2-grabbing');
+    // A piece being dragged moves; it does not spit lava.
+    this.aimLava = null;
     if (this.selectedSquare !== drag.from) {
       this.selectedSquare = drag.from;
       sound.sfx?.select();
@@ -1580,7 +1766,7 @@ export class GameScreen {
         el(
           'span',
           'g2-handtip',
-          ` · drag a piece to your back row to summon it, or onto your piece to sacrifice that piece for it · drag an evolution onto the piece it evolves from · drag a spell onto the board to cast it · ${read}`,
+          ` · drag a piece to your first two rows to summon it, or onto your piece to sacrifice that piece for it · drag an evolution onto the piece it evolves from · drag a spell onto the board to cast it · once a turn, drop a card on your name bar to pitch it for +${v2.PITCH_MANA} mana · ${read}`,
         ),
       );
     }
@@ -1646,17 +1832,22 @@ export class GameScreen {
     // A dragged piece leaves a faint copy on its square, also while it flies back; one dropped elsewhere is gone from it.
     const lifted = this.pieceDrag?.ghost ? this.pieceDrag.from : (this.returning?.from ?? null);
     const away = this.dropped?.from ?? null;
+    const aiming = this.aimLava !== null && this.aimLava === this.selectedSquare;
 
     for (let square = 0; square < v2.FILES * v2.RANKS; square++) {
       const cell = this.cells[square]!;
       const piece = view.pieces.find((p) => p.square === square);
       const seal = view.seals.find((s) => s.square === square);
+      const lava = view.lava.find((l) => l.square === square);
       const classes = ['g2-cell', (v2.fileOf(square) + v2.rankOf(square)) % 2 === 0 ? 'dark' : 'light'];
       if (movers.has(square) && square !== away) classes.push('movable');
       if (targets.has(square)) classes.push(this.pieceDrag?.hover === square ? 'target drag-over' : 'target');
+      if (aiming && targets.has(square)) classes.push('lava-aim');
       const drop = drops.get(square);
       if (drop) {
-        const kind = drop.type === 'seal' ? ' drop-seal' : drop.type === 'evolve' ? ' drop-evolve' : drop.type === 'spell' ? ' drop-spell' : '';
+        const grant = drop.type === 'spell' && held !== null && this.heldCard(held.uid)?.grants !== undefined;
+        const kind =
+          drop.type === 'seal' ? ' drop-seal' : drop.type === 'evolve' ? ' drop-evolve' : grant ? ' drop-grant' : drop.type === 'spell' ? ' drop-spell' : '';
         classes.push(`drop${kind}`);
       }
       if (drop && held?.hover === square) classes.push('drop-hover');
@@ -1670,6 +1861,11 @@ export class GameScreen {
       cell.className = classes.join(' ');
       // Keep the coordinate labels, replace the rest.
       for (const child of [...cell.children]) if (!child.classList.contains('g2-coord')) child.remove();
+      if (lava) {
+        const pool = this.lavaPool(lava, view);
+        this.applyTokenFx(pool, `lava:${square}`, now);
+        cell.appendChild(pool);
+      }
       const tok = piece ? this.pieceToken(piece, view) : seal ? this.sealToken(seal, view) : null;
       if (tok) {
         this.applyTokenFx(tok, piece?.id ?? seal!.id, now);
@@ -1710,8 +1906,16 @@ export class GameScreen {
         const turn = view.status.kind === 'playing' && view.active === color;
         if (turn) elx.classList.add('turn');
         const mana = el('span', 'g2-mana');
-        mana.title = `${view.mana[color]} mana`;
-        mana.append(el('i', 'g2-gem'), el('b', '', String(view.mana[color])), el('span', 'g2-mana-word', ' mana'));
+        const income = view.income[color];
+        mana.title = `${view.mana[color]} mana. ${turn ? 'This' : 'The next'} turn brings ${income}; every 5th turn brings 1 more, up to 4.`;
+        mana.append(el('i', 'g2-gem'), el('b', '', String(view.mana[color])), el('span', 'g2-mana-word', ' mana'), el('span', 'g2-income', `+${income}`));
+        // Holding a card you can pitch: the bar takes it (see `onDragEnd`).
+        const held = this.drag?.ghost ? this.drag : null;
+        if (held && color === view.you && this.pitchAction(held.uid)) {
+          elx.classList.add('pitch-drop');
+          if (held.pitch) elx.classList.add('pitch-over');
+          who.replaceChildren(el('span', 'g2-pitch-label', `Drop here to pitch it: +${v2.PITCH_MANA} mana`));
+        }
         const hand = el('span', 'g2-count hand', `Hand ${view.handCount[color]}`);
         // The hand you cannot see is shown as card backs.
         if (color !== view.you && view.handCount[color] > 0) {
@@ -1793,15 +1997,28 @@ export class GameScreen {
     cards.title = canPlay ? 'Optional: play any cards you can afford' : 'No card you can play now';
     finish.title = canEnd ? 'No move left: End turn closes your turn.' : 'Move a piece. It ends your turn.';
     cue.replaceChildren(cards, el('span', 'g2-cue-then', ', then '), finish);
+    // The picked piece has Lava Breath: aim it from here.
+    const from = this.selectedSquare;
+    if (from === null || !this.canSpit(from)) return;
+    const aiming = this.aimLava === from;
+    const lava = el('button', `g2-cue-lava${aiming ? ' on' : ''}`, aiming ? 'Pick a square for the lava · cancel' : `Spit lava · ${v2.LAVA_COST} mana`);
+    lava.type = 'button';
+    lava.title = aiming ? 'Put the lava away' : 'Spit lava onto an empty square this piece could move to';
+    lava.onclick = () => this.toggleLavaAim(from);
+    cue.append(el('span', 'g2-cue-then', ' · '), lava);
   }
 
+  /** Opening a game brings its whole log (`view.history`); after that, each update adds what its action did. */
   private appendLog(view: v2.PlayerView): void {
     if (view.seq === this.lastSeq) return;
     this.lastSeq = view.seq;
     const names = this.hooks.names();
-    for (const line of describeEvents(view, names, this.memory)) {
-      const div = el('div', `entry ${line.color ?? ''} ${line.important ? 'important' : ''}`, line.text);
-      this.logEl.appendChild(div);
+    if (view.history) this.logEl.replaceChildren();
+    for (const events of view.history ?? [view.events]) {
+      for (const line of describeEvents(events, view, names, this.memory)) {
+        const div = el('div', `entry ${line.color ?? ''} ${line.important ? 'important' : ''}`, line.text);
+        this.logEl.appendChild(div);
+      }
     }
     this.logEl.scrollTop = this.logEl.scrollHeight;
   }

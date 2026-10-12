@@ -17,6 +17,8 @@ export const CARD_DIVE_MS = 320;
 export const BURST_MS = 250;
 /** How long a hatching seal cracks before its circle opens (--t0 of .g2-fx-spot.hatch). */
 export const HATCH_T0_MS = 230;
+/** How long a ball of lava flies before it lands (g2-lava-fly in style.css). */
+export const LAVA_FLIGHT_MS = 460;
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -198,6 +200,42 @@ export class BoardFx {
   tick(square: v2.Square, delay = 0): void {
     const spot = this.spot(square, 'tick', 800, delay);
     spot?.append(el('div', 'g2-fx-ring'));
+  }
+
+  /**
+   * A Dragon spits lava: a molten ball arcs from `from` onto `to` and splashes there in embers. The pool it leaves is
+   * the board's own (the cell's lava), which wells up as the ball lands.
+   */
+  lava(from: v2.Square, to: v2.Square, delay = 0): void {
+    const source = this.cell(from);
+    const target = this.cell(to);
+    if (!source || !target) return;
+    const spot = this.spot(to, 'lava', LAVA_FLIGHT_MS + 1100, delay);
+    if (!spot) return;
+    spot.style.setProperty('--from-x', `${source.offsetLeft - target.offsetLeft}px`);
+    spot.style.setProperty('--from-y', `${source.offsetTop - target.offsetTop}px`);
+    const ball = el('div', 'g2-fx-lavaball');
+    ball.append(el('i'));
+    spot.append(ball, el('div', 'g2-fx-splash'), sparks(16, 'ember'));
+    this.quake(0.35, delay + LAVA_FLIGHT_MS);
+  }
+
+  /** A piece learns an ability from a spell: a ring of fire and embers flying off it. */
+  learn(square: v2.Square, delay = 0): void {
+    const spot = this.spot(square, 'learn', 1300, delay);
+    spot?.append(el('div', 'g2-fx-ring ember'), sparks(16, 'ember'));
+  }
+
+  /** Lava (gone from the board already) darkening into rock and rising off it as steam. */
+  cool(square: v2.Square, delay = 0): void {
+    const spot = this.spot(square, 'cool', 1400, delay);
+    spot?.append(el('div', 'g2-lava cooling'), el('div', 'g2-fx-steam'), el('div', 'g2-fx-steam late'));
+  }
+
+  /** Mana won on a square ("+2"), floating up from it. */
+  gain(square: v2.Square, text: string, delay = 0): void {
+    const spot = this.spot(square, 'gain', 1500, delay);
+    spot?.append(el('div', 'g2-fx-gain', text));
   }
 
   /** The spell just cast, shown big over the board before it dissolves. */

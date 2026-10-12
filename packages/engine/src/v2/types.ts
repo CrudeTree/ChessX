@@ -66,6 +66,20 @@ export interface PieceCard {
   /** The evolution line it belongs to (e.g. "Dragon") and its level in it, 1 to 3. */
   line?: string;
   level?: number;
+  /**
+   * The card's type, printed on its type line (Djabooty, 2026-10-11): Warrior, Mage, Paladin, Dragon, Beast or
+   * Zealot. A spell made for a type (`SpellCard.tribe`) only goes onto pieces of that type.
+   */
+  tribe?: string;
+  /**
+   * Counts as the first level of every line (the Initiate, Djabooty 2026-10-11): any level-2 card can be played
+   * onto it, for that card's cost plus the cost of the first level it skips.
+   */
+  anyPath?: boolean;
+  /** Printed under how it moves, for a piece that does more than move (the Initiate's any path). */
+  abilityText?: string;
+  /** The longer rules the card viewer shows beside the card. */
+  detail?: string;
   /** Card face picture, a path under the client's public folder. */
   art?: string;
   /** Picture drawn inside the piece token on the board. */
@@ -78,7 +92,15 @@ export interface PieceCard {
   darkBoardArt?: string;
 }
 
-export type SpellEffect = { kind: 'destroySeal' } | { kind: 'draw'; count: number };
+/** What a piece can learn from a spell. `lavaBreath`: once a turn, for mana, it turns a square it reaches into lava. */
+export type Ability = 'lavaBreath';
+
+export type SpellEffect =
+  | { kind: 'destroySeal' }
+  /** `mana` is gained as well, for spells that pay back (Insight, Djabooty 2026-10-11). */
+  | { kind: 'draw'; count: number; mana?: number }
+  /** Teaches one of your pieces of the spell's `tribe` an ability it keeps, also when it evolves. */
+  | { kind: 'grant'; ability: Ability };
 
 export interface SpellCard {
   type: 'spell';
@@ -86,7 +108,12 @@ export interface SpellCard {
   name: string;
   cost: number;
   effect: SpellEffect;
+  /** Printed on the card; kept short enough to read in the hand. */
   text: string;
+  /** The longer rules the card viewer shows beside the card. */
+  detail?: string;
+  /** The type of piece the spell is made for (e.g. "Dragon"), printed on its type line. */
+  tribe?: string;
   art?: string;
   /** Black's face of the card, as for pieces. */
   darkArt?: string;
@@ -113,6 +140,20 @@ export interface Piece {
   activeFromTurn: number;
   /** Owner turn on which the piece was summoned. Until the owner's next turn it cannot move either. */
   summonedOnTurn?: number;
+  /** Abilities spells taught it. */
+  abilities?: Ability[];
+  /** Owner turn on which it last spat lava: Lava Breath works once a turn. */
+  lavaOnTurn?: number;
+}
+
+/**
+ * A square of lava from Lava Breath (Djabooty, 2026-10-11). No piece can move onto it or be summoned onto it, though
+ * pieces pass over it and attack across it. It cools when `by`'s opponent has taken turn `untilTurn`.
+ */
+export interface Lava {
+  square: Square;
+  by: Color;
+  untilTurn: number;
 }
 
 export interface Seal {
@@ -143,10 +184,17 @@ export interface GameState {
   discard: Record<Color, CardInstance[]>;
   pieces: Piece[];
   seals: Seal[];
+  /** Lava on the board; missing in games saved before Lava Breath. */
+  lava?: Lava[];
   setupDeployed: Record<Color, number>;
   actionTaken: boolean;
-  /** A card (summon, seal, evolution or spell) was played this turn, so End turn may close it once no move is left. */
+  /**
+   * A card (summon, seal, evolution, spell or pitch) or a lava breath was played this turn, so End turn may close it
+   * once no move is left.
+   */
   cardPlayed: boolean;
+  /** A card was pitched for mana this turn: once a turn (Djabooty, 2026-10-11). */
+  pitched?: boolean;
   status: GameStatus;
   nextId: number;
   rng: number;
@@ -160,21 +208,38 @@ export type Action =
   /** Play an evolution card onto the piece it evolves from, which changes into it on its square. */
   | { type: 'evolve'; cardUid: string; target: Square }
   | { type: 'spell'; cardUid: string; target?: Square }
+  /** Discard a card from your hand for +1 mana, once a turn (Djabooty, 2026-10-11). */
+  | { type: 'pitch'; cardUid: string }
+  /** The piece on `from`, which knows Lava Breath, turns the empty square `to` into lava. */
+  | { type: 'lava'; from: Square; to: Square }
   | { type: 'endTurn' };
 
+/**
+ * What an action did, for the log and the effects. The names, owners and cards in them are what the pieces were at
+ * the time, so a log rebuilt from saved events can still name pieces that are gone; events saved before they were
+ * added lack them.
+ */
 export type GameEvent =
-  | { type: 'deployed'; color: Color; pieceId: string; square: Square }
-  | { type: 'turnStarted'; color: Color; turn: number; mana: number }
+  | { type: 'deployed'; color: Color; pieceId: string; square: Square; name?: string }
+  /** `income` is the mana the turn brought (Djabooty, 2026-10-11: +1 a turn, rising to +4); `mana` the new total. */
+  | { type: 'turnStarted'; color: Color; turn: number; mana: number; income?: number }
   | { type: 'drew'; color: Color; count: number }
-  | { type: 'moved'; pieceId: string; from: Square; to: Square }
-  | { type: 'captured'; pieceId: string; by: string; square: Square }
+  | { type: 'moved'; pieceId: string; from: Square; to: Square; name?: string; owner?: Color }
+  /** `bounty` is the mana the capturer got for it (Djabooty, 2026-10-11). */
+  | { type: 'captured'; pieceId: string; by: string; square: Square; name?: string; owner?: Color; cardId?: string | null; bounty?: number }
   | { type: 'sealDestroyed'; sealId: string; by: string; square: Square; cardId: string }
-  | { type: 'summoned'; color: Color; pieceId: string; square: Square }
-  | { type: 'sealed'; color: Color; sealId: string; square: Square; consumedPieceId: string; timer: number }
+  | { type: 'summoned'; color: Color; pieceId: string; square: Square; name?: string; cardId?: string }
+  | { type: 'sealed'; color: Color; sealId: string; square: Square; consumedPieceId: string; timer: number; consumedName?: string; cardId?: string }
   | { type: 'sealTick'; sealId: string; timer: number }
-  | { type: 'hatched'; color: Color; pieceId: string; square: Square }
-  /** `fromPieceId` is the piece that evolved; `pieceId` is what it became. */
-  | { type: 'evolved'; color: Color; pieceId: string; fromPieceId: string; square: Square }
+  | { type: 'hatched'; color: Color; pieceId: string; square: Square; name?: string }
+  /** `fromPieceId` is the piece that evolved; `pieceId` is what it became; `cost` what it paid. */
+  | { type: 'evolved'; color: Color; pieceId: string; fromPieceId: string; square: Square; name?: string; fromName?: string; cardId?: string; cost?: number }
   | { type: 'spellPlayed'; color: Color; cardId: string; target?: Square }
+  /** A spell taught `pieceId` (named `name`) an ability. */
+  | { type: 'learned'; color: Color; pieceId: string; name: string; square: Square; ability: Ability }
+  | { type: 'pitched'; color: Color; cardId: string; mana: number }
+  /** `pieceId` (named `name`) spat lava from `from` onto `square`. */
+  | { type: 'lava'; color: Color; pieceId: string; name: string; from: Square; square: Square }
+  | { type: 'lavaCooled'; square: Square }
   | { type: 'check'; color: Color }
   | { type: 'gameOver'; status: GameStatus };

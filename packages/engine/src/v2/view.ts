@@ -1,15 +1,17 @@
-import { isActive, isInCheck, legalActions, SETUP_PIECES } from './engine.js';
-import type {
-  Action,
-  Card,
-  CardInstance,
-  Color,
-  GameEvent,
-  GameState,
-  GameStatus,
-  MoveRule,
-  PieceDef,
-  Square,
+import { incomeFor, isActive, isInCheck, LAVA_COST, LAVA_TURNS, legalActions, SETUP_PIECES } from './engine.js';
+import {
+  opposite,
+  type Ability,
+  type Action,
+  type Card,
+  type CardInstance,
+  type Color,
+  type GameEvent,
+  type GameState,
+  type GameStatus,
+  type MoveRule,
+  type PieceDef,
+  type Square,
 } from './types.js';
 
 /** What the server persists for a v2 game: the rules state plus what the last action did (for the log and replay). */
@@ -19,7 +21,20 @@ export interface GameRecord {
   seq: number;
   /** Events produced by the most recent action. */
   events: GameEvent[];
+  /**
+   * The events of every action so far, oldest first, so the whole log can be shown when a game is opened again
+   * (Djabooty, 2026-10-11). Games saved before it began keep only what happened since.
+   */
+  history?: GameEvent[][];
 }
+
+/** What spells can teach a piece, for the card viewer and the rules. */
+export const ABILITIES: Record<Ability, { name: string; text: string }> = {
+  lavaBreath: {
+    name: 'Lava Breath',
+    text: `Once a turn, spend ${LAVA_COST} mana to spit lava onto an empty square this piece could move to. No piece can move onto it or be summoned onto it until the other player has taken ${LAVA_TURNS} more turns.`,
+  },
+};
 
 /** A card as the client needs to draw it. */
 export interface ViewCard {
@@ -45,6 +60,16 @@ export interface ViewCard {
   /** Pieces: the evolution line and the level in it, 1 to 3. */
   line?: string;
   level?: number;
+  /** The card's type (Warrior, Mage, Paladin, Dragon, Beast, Zealot); for a spell, the type it is made for. */
+  tribe?: string;
+  /** Pieces: printed under how it moves, for a piece that does more (the Initiate's any path). */
+  abilityText?: string;
+  /** Pieces: any level-2 card can be played onto it (the Initiate). */
+  anyPath?: boolean;
+  /** Spells: the ability it teaches a piece. */
+  grants?: Ability;
+  /** The longer rules for the card viewer. */
+  detail?: string;
 }
 
 export interface ViewPiece {
@@ -59,6 +84,16 @@ export interface ViewPiece {
   active: boolean;
   /** Summoned during its owner's current turn: it cannot move until the owner's next turn either. */
   justSummoned: boolean;
+  /** Abilities spells taught it. */
+  abilities?: Ability[];
+}
+
+export interface ViewLava {
+  square: Square;
+  /** Who made it. */
+  by: Color;
+  /** Turns of the other player it still blocks, counting the one being played. */
+  turnsLeft: number;
 }
 
 export interface ViewSeal {
@@ -87,20 +122,29 @@ export interface PlayerView {
   pieces: ViewPiece[];
   /** Seals are public, including the card they will hatch into. */
   seals: ViewSeal[];
+  lava: ViewLava[];
   setupDeployed: Record<Color, number>;
   setupTotal: number;
   actionTaken: boolean;
   cardPlayed: boolean;
+  /** The side to move pitched a card this turn. */
+  pitched: boolean;
+  /** Mana each side's next turn brings (the side to move: the turn it is playing). */
+  income: Record<Color, number>;
   inCheck: boolean;
   /** Legal actions for the side to move when it is you (or both sides, in a practice game). */
   legalActions: Action[];
   /** Every card that appears in this game. */
   cards: Record<string, ViewCard>;
+  /** Every action's events so far, oldest first; sent when asked for (`ViewOptions.history`). */
+  history?: GameEvent[][];
 }
 
 export interface ViewOptions {
   /** Practice game: one person plays both sides, so the viewer sees the side to move. */
   hotseat?: boolean;
+  /** Include the whole game's events, for a player opening the game. */
+  history?: boolean;
 }
 
 const sortKey = (dirs: ReadonlyArray<readonly [number, number]>): string =>
@@ -117,12 +161,17 @@ const SETS: Record<string, string> = {
   [sortKey([[2, 0], [-2, 0], [0, 2], [0, -2]])]: '2 squares straight',
 };
 
+/**
+ * "Steps", "Slides" and "Leaps" move and capture alike. A rule that only moves reads "Moves", one that only captures
+ * "Captures", like a chess pawn's "moves forward, captures diagonally", so the card text stays short.
+ */
 function describeRule(rule: MoveRule): string {
   const where = SETS[sortKey(rule.dirs)] ?? `along ${rule.dirs.length} fixed direction${rule.dirs.length === 1 ? '' : 's'}`;
-  const reach = rule.leap ? `Leaps ${where}` : rule.range >= 7 ? `Slides ${where}, any distance` : rule.range === 1 ? `Steps ${where}, 1 square` : `Slides ${where}, up to ${rule.range} squares`;
-  if (rule.mode === 'move') return `${reach} (cannot capture that way)`;
-  if (rule.mode === 'capture') return `Captures ${where}${rule.leap ? '' : ', 1 square'} (cannot move there otherwise)`;
-  return reach;
+  const distance = rule.leap ? '' : rule.range >= 7 ? ', any distance' : rule.range === 1 ? ', 1 square' : `, up to ${rule.range} squares`;
+  if (rule.mode === 'move') return `Moves ${where}${distance}`;
+  if (rule.mode === 'capture') return `Captures ${where}${distance}`;
+  const verb = rule.leap ? 'Leaps' : rule.range === 1 ? 'Steps' : 'Slides';
+  return `${verb} ${where}${distance}`;
 }
 
 /** A short plain-English description of how a piece moves. */
@@ -155,20 +204,33 @@ function viewCard(card: Card): ViewCard {
       : { id: card.id, type: 'spell', name: card.name, cost: card.cost, text: card.text };
   if (card.art) out.art = card.art;
   if (card.darkArt) out.darkArt = card.darkArt;
+  if (card.tribe) out.tribe = card.tribe;
+  if (card.detail) out.detail = card.detail;
   if (card.type === 'piece') {
     if (card.boardArt) out.boardArt = card.boardArt;
     if (card.darkBoardArt) out.darkBoardArt = card.darkBoardArt;
     if (card.evolvesFrom) out.evolvesFrom = card.evolvesFrom;
     if (card.line) out.line = card.line;
     if (card.level) out.level = card.level;
+    if (card.abilityText) out.abilityText = card.abilityText;
+    if (card.anyPath) out.anyPath = true;
+  } else if (card.effect.kind === 'grant') {
+    out.grants = card.effect.ability;
   }
   return out;
+}
+
+/** Turns of `by`'s opponent a lava square still blocks, counting the one being played. */
+function lavaTurnsLeft(state: GameState, by: Color, untilTurn: number): number {
+  const other = opposite(by);
+  return untilTurn - state.turns[other] + (state.active === other ? 1 : 0);
 }
 
 export function viewFor(record: GameRecord, you: Color, opts: ViewOptions = {}): PlayerView {
   const { state } = record;
   const viewer: Color = opts.hotseat ? state.active : you;
   const playing = state.status.kind === 'playing';
+  const nextTurn = (color: Color) => state.turns[color] + (state.active === color ? 0 : 1);
   return {
     you: viewer,
     active: state.active,
@@ -192,14 +254,25 @@ export function viewFor(record: GameRecord, you: Color, opts: ViewOptions = {}):
       king: !!p.def.king,
       active: isActive(state, p),
       justSummoned: p.summonedOnTurn === state.turns[p.owner],
+      ...(p.abilities?.length ? { abilities: p.abilities } : {}),
     })),
     seals: state.seals.map((s) => ({ id: s.id, owner: s.owner, square: s.square, cardId: s.card.id, timer: s.timer })),
+    lava: (state.lava ?? []).map((l) => ({ square: l.square, by: l.by, turnsLeft: lavaTurnsLeft(state, l.by, l.untilTurn) })),
     setupDeployed: state.setupDeployed,
     setupTotal: SETUP_PIECES,
     actionTaken: state.actionTaken,
     cardPlayed: state.cardPlayed === true,
+    pitched: state.pitched === true,
+    income: { white: incomeFor(nextTurn('white')), black: incomeFor(nextTurn('black')) },
     inCheck: playing && state.phase === 'play' && isInCheck(state, state.active),
     legalActions: playing && state.active === viewer ? legalActions(state) : [],
     cards: Object.fromEntries(Object.values(state.catalog).map((c) => [c.id, viewCard(c)])),
+    ...(opts.history ? { history: record.history ?? (record.events.length ? [record.events] : []) } : {}),
   };
+}
+
+/** The record after an action: its events become the latest, and are added to the game's history. */
+export function nextRecord(record: GameRecord, state: GameState, events: GameEvent[]): GameRecord {
+  const before = record.history ?? (record.events.length ? [record.events] : []);
+  return { state, seq: record.seq + 1, events, history: [...before, events] };
 }

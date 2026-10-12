@@ -65,7 +65,8 @@ const WYRMLING: PieceDef = {
   name: 'Wyrmling',
   rules: [rule({ dirs: [[2, 0], [-2, 0], [0, 2], [0, -2]], range: 1, leap: true })],
 };
-const MYSTIC_DRAGON: PieceDef = { kind: 'mystic_dragon', name: 'Mystic Dragon', rules: [rule({ dirs: ALL8, range: 3 })] };
+// The Mystic Dragon reaches 2, not 3, so it is not a queen too early (Djabooty, 2026-10-11).
+const MYSTIC_DRAGON: PieceDef = { kind: 'mystic_dragon', name: 'Mystic Dragon', rules: [rule({ dirs: ALL8, range: 2 })] };
 const ANCIENT_MYSTIC_DRAGON: PieceDef = {
   kind: 'ancient_mystic_dragon',
   name: 'Ancient Mystic Dragon',
@@ -98,12 +99,28 @@ const pieceFaces = (id: string) => ({ ...faces(id), boardArt: `/art/${id}_white.
  *
  * Costs raised so strong pieces come later (Djabooty, 2026-10-11): a Paladin costs at least 4. Every level costs
  * more than the one below it, and a first level that leaps off the back row (Colt, Wyrmling) costs 2, not 1.
+ *
+ * Every card has a type (Djabooty, 2026-10-11): a line's cards are of that line's type, the Squire is a Warrior, the
+ * Duskfang a Beast and the Initiate a Zealot. A spell made for a type only goes onto pieces of that type.
  */
 export const STARTER_CATALOG: Record<string, Card> = {
-  initiate: { type: 'piece', id: 'initiate', name: 'Initiate', cost: 0, sealTimer: 1, piece: INITIATE, ...pieceFaces('initiate') },
-  squire: { type: 'piece', id: 'squire', name: 'Squire', cost: 1, sealTimer: 1, piece: SQUIRE, ...pieceFaces('squire') },
+  initiate: {
+    type: 'piece',
+    id: 'initiate',
+    name: 'Initiate',
+    cost: 0,
+    sealTimer: 1,
+    piece: INITIATE,
+    tribe: 'Zealot',
+    anyPath: true,
+    abilityText: 'Any path: evolves into any level 2.',
+    detail:
+      'Any path: an Initiate counts as the first level of every line, so any level-2 card can be played onto it. It costs that card\'s mana plus the mana of the first level it skips.',
+    ...pieceFaces('initiate'),
+  },
+  squire: { type: 'piece', id: 'squire', name: 'Squire', cost: 1, sealTimer: 1, piece: SQUIRE, tribe: 'Warrior', ...pieceFaces('squire') },
 
-  recruit: { type: 'piece', id: 'recruit', name: 'Recruit', cost: 1, sealTimer: 1, piece: RECRUIT, line: 'Warrior', level: 1, ...pieceFaces('recruit') },
+  recruit: { type: 'piece', id: 'recruit', name: 'Recruit', cost: 1, sealTimer: 1, piece: RECRUIT, line: 'Warrior', level: 1, tribe: 'Warrior', ...pieceFaces('recruit') },
   warrior: {
     type: 'piece',
     id: 'warrior',
@@ -114,6 +131,7 @@ export const STARTER_CATALOG: Record<string, Card> = {
     line: 'Warrior',
     level: 2,
     evolvesFrom: 'recruit',
+    tribe: 'Warrior',
     ...pieceFaces('warrior'),
   },
   warlord: {
@@ -126,10 +144,11 @@ export const STARTER_CATALOG: Record<string, Card> = {
     line: 'Warrior',
     level: 3,
     evolvesFrom: 'warrior',
+    tribe: 'Warrior',
     ...pieceFaces('warlord'),
   },
 
-  apprentice: { type: 'piece', id: 'apprentice', name: 'Apprentice', cost: 1, sealTimer: 1, piece: APPRENTICE, line: 'Mage', level: 1, ...pieceFaces('apprentice') },
+  apprentice: { type: 'piece', id: 'apprentice', name: 'Apprentice', cost: 1, sealTimer: 1, piece: APPRENTICE, line: 'Mage', level: 1, tribe: 'Mage', ...pieceFaces('apprentice') },
   mage: {
     type: 'piece',
     id: 'mage',
@@ -140,6 +159,7 @@ export const STARTER_CATALOG: Record<string, Card> = {
     line: 'Mage',
     level: 2,
     evolvesFrom: 'apprentice',
+    tribe: 'Mage',
     ...pieceFaces('mage'),
   },
   archmage: {
@@ -152,10 +172,11 @@ export const STARTER_CATALOG: Record<string, Card> = {
     line: 'Mage',
     level: 3,
     evolvesFrom: 'mage',
+    tribe: 'Mage',
     ...pieceFaces('archmage'),
   },
 
-  colt: { type: 'piece', id: 'colt', name: 'Colt', cost: 2, sealTimer: 1, piece: COLT, line: 'Paladin', level: 1, ...pieceFaces('colt') },
+  colt: { type: 'piece', id: 'colt', name: 'Colt', cost: 2, sealTimer: 1, piece: COLT, line: 'Paladin', level: 1, tribe: 'Paladin', ...pieceFaces('colt') },
   paladin: {
     type: 'piece',
     id: 'paladin',
@@ -166,6 +187,7 @@ export const STARTER_CATALOG: Record<string, Card> = {
     line: 'Paladin',
     level: 2,
     evolvesFrom: 'colt',
+    tribe: 'Paladin',
     ...pieceFaces('paladin'),
   },
   dawn_paladin: {
@@ -178,6 +200,7 @@ export const STARTER_CATALOG: Record<string, Card> = {
     line: 'Paladin',
     level: 3,
     evolvesFrom: 'paladin',
+    tribe: 'Paladin',
     ...pieceFaces('dawn_paladin'),
   },
   eclipse_knight: {
@@ -190,10 +213,11 @@ export const STARTER_CATALOG: Record<string, Card> = {
     line: 'Paladin',
     level: 3,
     evolvesFrom: 'paladin',
+    tribe: 'Paladin',
     ...pieceFaces('eclipse_knight'),
   },
 
-  wyrmling: { type: 'piece', id: 'wyrmling', name: 'Wyrmling', cost: 2, sealTimer: 1, piece: WYRMLING, line: 'Dragon', level: 1, ...pieceFaces('wyrmling') },
+  wyrmling: { type: 'piece', id: 'wyrmling', name: 'Wyrmling', cost: 2, sealTimer: 1, piece: WYRMLING, line: 'Dragon', level: 1, tribe: 'Dragon', ...pieceFaces('wyrmling') },
   mystic_dragon: {
     type: 'piece',
     id: 'mystic_dragon',
@@ -204,6 +228,7 @@ export const STARTER_CATALOG: Record<string, Card> = {
     line: 'Dragon',
     level: 2,
     evolvesFrom: 'wyrmling',
+    tribe: 'Dragon',
     ...pieceFaces('mystic_dragon'),
   },
   ancient_mystic_dragon: {
@@ -216,30 +241,57 @@ export const STARTER_CATALOG: Record<string, Card> = {
     line: 'Dragon',
     level: 3,
     evolvesFrom: 'mystic_dragon',
+    tribe: 'Dragon',
     ...pieceFaces('ancient_mystic_dragon'),
   },
 
-  duskfang: { type: 'piece', id: 'duskfang', name: 'Duskfang', cost: 15, sealTimer: 3, piece: DUSKFANG, ...pieceFaces('duskfang') },
+  // 15 mana made it a card nobody could play (Djabooty, 2026-10-11).
+  duskfang: { type: 'piece', id: 'duskfang', name: 'Duskfang', cost: 9, sealTimer: 3, piece: DUSKFANG, tribe: 'Beast', ...pieceFaces('duskfang') },
 
-  insight: { type: 'spell', id: 'insight', name: 'Insight', cost: 2, effect: { kind: 'draw', count: 2 }, text: 'Draw 2 cards.', ...faces('insight') },
+  // Draws 1 and pays 1 back, so it no longer costs a turn's mana to dig (Djabooty, 2026-10-11).
+  insight: {
+    type: 'spell',
+    id: 'insight',
+    name: 'Insight',
+    cost: 2,
+    effect: { kind: 'draw', count: 1, mana: 1 },
+    text: 'Draw 1 card and gain 1 mana.',
+    ...faces('insight'),
+  },
   dispel: {
     type: 'spell',
     id: 'dispel',
     name: 'Dispel',
     cost: 3,
     effect: { kind: 'destroySeal' },
-    text: 'Destroy a sacrifice before its piece arrives. Its card goes to the discard pile.',
+    text: 'Destroy a sacrifice before its piece arrives.',
+    detail: 'Drop it on any sacrifice on the board. The sacrifice is destroyed before its piece arrives, and its card goes to its owner\'s discard pile.',
     ...faces('dispel'),
+  },
+  lava_breath: {
+    type: 'spell',
+    id: 'lava_breath',
+    name: 'Lava Breath',
+    cost: 2,
+    effect: { kind: 'grant', ability: 'lavaBreath' },
+    tribe: 'Dragon',
+    text: 'Your Dragon learns to spit lava: 1 mana, once a turn.',
+    detail:
+      'Drop it on one of your Dragons. From then on, once a turn, that Dragon can spend 1 mana to spit lava onto an empty square it could move to. No piece can move onto lava or be summoned onto it until the other player has taken 2 more turns; pieces still pass over it. The Dragon keeps Lava Breath when it evolves.',
+    ...faces('lava_breath'),
   },
 };
 
-/** A saved game keeps the costs and moves its cards had when it began, but shows today's pictures. */
+/**
+ * A saved game keeps the costs, moves and rules its cards had when it began, but shows today's pictures and type
+ * lines.
+ */
 export function withCurrentArt(catalog: Record<string, Card>): Record<string, Card> {
   const out: Record<string, Card> = {};
   for (const [id, card] of Object.entries(catalog)) {
     const now = STARTER_CATALOG[id];
     if (card.type === 'piece' && now?.type === 'piece') {
-      out[id] = { ...card, art: now.art, darkArt: now.darkArt, boardArt: now.boardArt, darkBoardArt: now.darkBoardArt };
+      out[id] = { ...card, art: now.art, darkArt: now.darkArt, boardArt: now.boardArt, darkBoardArt: now.darkBoardArt, tribe: card.tribe ?? now.tribe };
     } else if (card.type === 'spell' && now?.type === 'spell') {
       out[id] = { ...card, art: now.art, darkArt: now.darkArt };
     } else {
@@ -250,8 +302,8 @@ export function withCurrentArt(catalog: Record<string, Card>): Record<string, Ca
 }
 
 /**
- * A 24-card starter deck: 2 Initiates and 1 Squire; per line two level-1 cards and one of each higher level
- * (both Paladin final forms); 1 Duskfang; 2 Insight and 1 Dispel. Four cost-2 pieces at most (msg-026).
+ * A 25-card starter deck: 2 Initiates and 1 Squire; per line two level-1 cards and one of each higher level
+ * (both Paladin final forms); 1 Duskfang; 2 Insight, 1 Dispel and 1 Lava Breath. Four cost-2 pieces at most (msg-026).
  */
 export function starterDeck(): string[] {
   const counts: Record<string, number> = {
@@ -273,6 +325,7 @@ export function starterDeck(): string[] {
     duskfang: 1,
     insight: 2,
     dispel: 1,
+    lava_breath: 1,
   };
   return Object.entries(counts).flatMap(([id, n]) => Array.from({ length: n }, () => id));
 }

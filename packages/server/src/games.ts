@@ -77,7 +77,7 @@ export function parseChatGif(raw: unknown): ChatGif | null {
 /** A fresh rules-2 game. Every game uses the starter deck for now: v2 deck building waits for the real cards. */
 function newRecord(): v2.GameRecord {
   const seed = randomBytes(4).readInt32LE();
-  return { state: v2.newGame({ seed, decks: { white: v2.starterDeck(), black: v2.starterDeck() } }), seq: 1, events: [] };
+  return { state: v2.newGame({ seed, decks: { white: v2.starterDeck(), black: v2.starterDeck() } }), seq: 1, events: [], history: [] };
 }
 
 function randomCode(len = 5): string {
@@ -236,7 +236,7 @@ export class LiveGame {
     else this.row.clock_black_ms = 0;
     const status: GameStatus = { kind: 'timeout', winner: opposite(mover) };
     if (this.record) {
-      this.record = { state: { ...this.record.state, status }, seq: this.record.seq + 1, events: [{ type: 'gameOver', status }] };
+      this.record = v2.nextRecord(this.record, { ...this.record.state, status }, [{ type: 'gameOver', status }]);
     } else if (this.state) {
       this.state.status = status;
       this.state.events = [{ type: 'gameOver', status }];
@@ -306,7 +306,7 @@ export class LiveGame {
     const color = this.colorOf(t.userId)!;
     t.send({ type: 'seated', gameId: this.id, code: this.row.code, color: this.seatOf(t.userId) ?? color, room: this.info(), solo: this.solo, arena: this.arena, rules: this.rules });
     this.broadcastRoom();
-    this.sendState(t);
+    this.sendState(t, true);
     t.send({ type: 'chat', messages: this.chat });
   }
 
@@ -332,7 +332,7 @@ export class LiveGame {
       if (current.state.status.kind !== 'playing') return;
       this.settleClock(now);
       const status: GameStatus = { kind: 'resigned', winner: opposite(this.solo ? current.state.active : color) };
-      this.record = { state: { ...current.state, status }, seq: current.seq + 1, events: [{ type: 'gameOver', status }] };
+      this.record = v2.nextRecord(current, { ...current.state, status }, [{ type: 'gameOver', status }]);
       this.save(now);
       this.broadcastState();
       this.finished();
@@ -350,12 +350,12 @@ export class LiveGame {
       throw new GameError('That is not a legal action.');
     }
     const next = result.state;
-    if (action.type === 'spell' || action.type === 'summon' || action.type === 'seal' || action.type === 'evolve') this.cardsThisTurn++;
+    if (action.type !== 'move' && action.type !== 'endTurn' && action.type !== 'deploy') this.cardsThisTurn++;
     if (next.active !== before || next.status.kind !== 'playing') {
       this.settleClock(now, next.active !== before ? this.replayGrace() : 0);
       this.cardsThisTurn = 0;
     }
-    this.record = { state: next, seq: current.seq + 1, events: result.events };
+    this.record = v2.nextRecord(current, next, result.events);
     this.save(now);
     this.broadcastState();
     this.finished();
@@ -519,11 +519,12 @@ export class LiveGame {
     for (const w of this.watchers) this.sendState(w);
   }
 
-  private sendState(t: Transport): void {
+  /** `history`: a player opening the game gets every event so far, to show the whole log. */
+  private sendState(t: Transport, history = false): void {
     if (this.record) {
       // Practice follows the side to move (the view's own hotseat mode); otherwise your seat.
       const seat = this.seatOf(t.userId) ?? 'white';
-      t.send({ type: 'stateV2', view: v2.viewFor(this.record, seat, { hotseat: this.solo }), clocks: this.clocks() });
+      t.send({ type: 'stateV2', view: v2.viewFor(this.record, seat, { hotseat: this.solo, history }), clocks: this.clocks() });
       return;
     }
     if (!this.state) return;

@@ -3,7 +3,7 @@
 // in fx.ts); this only makes the noise. White's magic rings in D major, Black's an octave lower in D minor.
 
 import type { v2 } from '@chessx/engine';
-import { BURST_MS, CARD_DIVE_MS, HATCH_T0_MS } from './fx.js';
+import { BURST_MS, CARD_DIVE_MS, HATCH_T0_MS, LAVA_FLIGHT_MS } from './fx.js';
 
 type Color = v2.Color;
 
@@ -163,6 +163,12 @@ export class Sfx {
     this.whoosh(0, 0.18, 1200, 2600, 0.2);
   }
 
+  /** A card is pitched for mana: it burns away with a soft rush and a bright two-note chime. */
+  pitch(): void {
+    this.whoosh(0, 0.3, 2400, 500, 0.16);
+    this.bells(0.2, [88, 95], 0.06, 0.05);
+  }
+
   /** New cards slide into the hand one after another, 90 ms apart as they appear. */
   deal(count: number): void {
     for (let i = 0; i < Math.min(count, 5); i++) {
@@ -271,6 +277,21 @@ export class Sfx {
     const at = delayMs / 1000;
     this.glass(at, 1.4);
     this.boom(at, 0.5);
+  }
+
+  /** A Dragon spits lava: a deep roar, a hiss as the ball flies and a heavy, crackling splash where it lands. */
+  lava(): void {
+    this.noise({ at: 0, brown: true, attack: 0.06, decay: 0.5, peak: 0.3, room: 0.35, filter: { type: 'lowpass', freq: 400, to: 1500, time: 0.35, q: 1.2 } });
+    this.whoosh(0.08, LAVA_FLIGHT_MS / 1000, 900, 2600, 0.13);
+    const land = LAVA_FLIGHT_MS / 1000;
+    this.boom(land, 0.45);
+    this.noise({ at: land, attack: 0.01, decay: 0.7, peak: 0.16, room: 0.4, filter: { type: 'bandpass', freq: 1200, to: 400, time: 0.6, q: 0.8 } });
+    this.crackle(land + 0.05, 0.7, 0.3);
+  }
+
+  /** Lava cools: a long hiss of steam. */
+  cool(delayMs: number): void {
+    this.noise({ at: delayMs / 1000, attack: 0.1, decay: 0.9, peak: 0.12, room: 0.4, filter: { type: 'highpass', freq: 2500, to: 5000, time: 0.8 } });
   }
 
   /** A spell is cast: a rising rush and a chord, unsettling for Dispel and bright for the rest. */
