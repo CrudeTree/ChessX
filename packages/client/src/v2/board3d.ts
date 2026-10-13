@@ -52,7 +52,11 @@ const SMALL_BOARD = 520;
 /** The eye's distance from the board (the CSS perspective), in board widths. */
 const DEPTH = 1.9;
 /** Models lean back toward the eye a little, to be seen more from the front than from above. */
-const LEAN = 12 * DEG;
+const LEAN = 20 * DEG;
+/** Seen from above a model looks shorter than a cut-out of the same height, so it stands this much taller. */
+const MODEL_TALL = 1.3;
+/** Models may spread wider than cut-outs (wings over the next squares). */
+const MODEL_MAX_WIDTH = 1.7;
 /** The canvas reaches past the board (in board widths), for heads and wings over its edges. */
 const PAD_X = 0.08;
 const PAD_TOP = 0.08;
@@ -506,7 +510,7 @@ class Piece {
     this.ring.position.y = BASE_H * cell;
     let tall = this.f.height * cell;
     if (this.model) {
-      tall = Math.min(tall, (MAX_WIDTH * cell) / this.model.width);
+      tall = Math.min(tall * MODEL_TALL, (MODEL_MAX_WIDTH * cell) / this.model.width);
       this.holder.scale.setScalar(tall);
       this.body.rotation.x = -LEAN;
       this.tall = tall;
