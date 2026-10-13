@@ -126,7 +126,7 @@ interface CardDrag {
   scrollFrom: number | null;
   ghost: HTMLElement | null;
   hover: v2.Square | null;
-  /** Over your player bar, where letting go pitches the card for mana. */
+  /** Over your discard pile, where letting go pitches the card for mana. */
   pitch: boolean;
 }
 
@@ -327,6 +327,13 @@ export class GameScreen {
   private readonly dropTagEl = el('div', 'g2-droptag');
   private readonly oppEl = el('div', 'g2-player');
   private readonly meEl = el('div', 'g2-player');
+  /**
+   * Right of the board, each side's discard pile at its own end: out of the way of a card pulled up from the hand.
+   * Phones have no room beside the board, so there the piles stay in the bars.
+   */
+  private readonly pilesEl = el('div', 'g2-piles');
+  private readonly oppPileEl = el('div', 'g2-pile-slot');
+  private readonly mePileEl = el('div', 'g2-pile-slot');
   private readonly resignBtn = el('button', 'danger', 'Resign');
   private readonly inspectEl = el('div', 'g2-inspect hidden');
   /** Wide screens: the column left of the board that holds the card viewer. */
@@ -379,10 +386,11 @@ export class GameScreen {
     boardBox.append(this.boardEl, this.cueEl);
     this.fx = new BoardFx(this.boardEl, boardBox, (square) => this.cells[square]);
     boardBox.append(this.raiseEl);
-    boardWrap.append(this.oppEl, boardBox, this.meEl);
+    this.pilesEl.append(this.oppPileEl, this.mePileEl);
+    boardWrap.append(this.oppEl, boardBox, this.meEl, this.pilesEl);
     main.append(boardWrap, this.handEl);
-    // The bars are rebuilt every second for the clocks, so a discard pile is pointed at through its bar.
-    for (const bar of [this.oppEl, this.meEl]) {
+    // The bars and piles are rebuilt every second for the clocks, so a discard pile is pointed at through what holds it.
+    for (const bar of [this.oppEl, this.meEl, this.pilesEl]) {
       bar.addEventListener('pointerover', (e) => {
         if (e.pointerType !== 'mouse' || this.drag?.ghost) return;
         const pile = (e.target as HTMLElement).closest<HTMLElement>('.g2-pile:not(.empty)');
@@ -447,7 +455,10 @@ export class GameScreen {
     root.append(this.detailEl, main, side, this.sheetShade);
     this.placeStatus();
     this.placeInspect();
-    this.narrow.addEventListener('change', () => this.placeStatus());
+    this.narrow.addEventListener('change', () => {
+      this.placeStatus();
+      this.renderPlayers();
+    });
     this.wide.addEventListener('change', () => this.placeInspect());
 
     this.endBtn.onclick = () => this.hooks.act({ type: 'endTurn' });
@@ -1809,9 +1820,9 @@ export class GameScreen {
     }
   };
 
-  /** Whether the pointer is over the player bar that takes a pitched card (see `renderPlayers`). */
+  /** Whether the pointer is over the discard pile that takes a pitched card (see `renderPlayers`). */
   private overPitch(x: number, y: number): boolean {
-    return !!document.elementFromPoint(x, y)?.closest('.g2-player.pitch-drop');
+    return !!document.elementFromPoint(x, y)?.closest('.g2-pile.pitch-drop');
   }
 
   /**
@@ -1906,7 +1917,7 @@ export class GameScreen {
     const drops = this.dropTargets(drag.uid);
     const square = e.type === 'pointerup' ? this.squareAt(e.clientX, e.clientY, (sq) => drops.has(sq)) : null;
     const pitch = e.type === 'pointerup' && square === null && this.overPitch(e.clientX, e.clientY) ? this.pitchAction(drag.uid) : null;
-    const gem = pitch ? document.querySelector('.g2-player.pitch-drop .g2-gem')?.getBoundingClientRect() : undefined;
+    const gem = pitch ? this.root.querySelector(`.g2-player.${this.view?.you} .g2-gem`)?.getBoundingClientRect() : undefined;
     const action = this.dropAction(drag.uid, square);
     this.drag = null;
     if (pitch) {
@@ -2584,12 +2595,13 @@ export class GameScreen {
   private renderPlayers(): void {
     const view = this.view;
     const top: Color = this.seat === 'white' ? 'black' : 'white';
-    for (const [elx, color] of [
-      [this.oppEl, top],
-      [this.meEl, this.seat],
+    for (const [elx, slot, color] of [
+      [this.oppEl, this.oppPileEl, top],
+      [this.meEl, this.mePileEl, this.seat],
     ] as const) {
       elx.innerHTML = '';
       elx.className = `g2-player ${color}`;
+      slot.replaceChildren();
       const seat = this.room?.players[color];
       const label = this.solo ? sideName(color) : seat ? seat.name + (color === this.seat ? ' (you)' : '') : 'Waiting for opponent…';
       if (seat && !seat.connected && !this.solo) elx.classList.add('offline');
@@ -2613,13 +2625,9 @@ export class GameScreen {
           mana.prepend(this.manaStep(color, -1));
           mana.append(this.manaStep(color, 1));
         }
-        // Holding a card you can pitch: the bar takes it (see `onDragEnd`).
+        // Holding a card you can pitch: your discard pile takes it (see `onDragEnd`).
         const held = this.drag?.ghost ? this.drag : null;
-        if (held && color === view.you && this.pitchAction(held.uid)) {
-          elx.classList.add('pitch-drop');
-          if (held.pitch) elx.classList.add('pitch-over');
-          who.replaceChildren(el('span', 'g2-pitch-label', `Drop here to pitch it: +${v2.PITCH_MANA} mana`));
-        }
+        const pitch = held && color === view.you && this.pitchAction(held.uid) ? (held.pitch ? 'over' : 'open') : null;
         const hand = el('span', 'g2-count hand', `Hand ${view.handCount[color]}`);
         // The hand you cannot see is shown as card backs.
         if (color !== view.you && view.handCount[color] > 0) {
@@ -2627,7 +2635,10 @@ export class GameScreen {
           for (let i = 0; i < Math.min(view.handCount[color], 8); i++) backs.append(cardBack());
           hand.prepend(backs);
         }
-        stats.append(mana, hand, el('span', 'g2-count', `Deck ${view.deckCount[color]}`), this.discardPile(color, view));
+        stats.append(mana, hand, el('span', 'g2-count', `Deck ${view.deckCount[color]}`));
+        const pile = this.discardPile(color, view, pitch);
+        if (this.narrow.matches) stats.append(pile);
+        else slot.append(pile);
         elx.appendChild(stats);
       }
     }
@@ -2681,9 +2692,10 @@ export class GameScreen {
 
   /**
    * A player's discard pile: its newest card face up and how many it holds. Point at it to read that card in the
-   * card viewer; click it to keep it there with the whole pile.
+   * card viewer; click it to keep it there with the whole pile. While you hold a card you can pitch (`pitch`), your
+   * pile takes it: lit up, and brighter (`over`) with the card over it.
    */
-  private discardPile(color: Color, view: v2.PlayerView): HTMLElement {
+  private discardPile(color: Color, view: v2.PlayerView, pitch: 'open' | 'over' | null = null): HTMLElement {
     const held = this.pileHeld[color];
     const pile = held && performance.now() < held.until ? view.discard[color].slice(0, held.length) : view.discard[color];
     const top = pile.at(-1);
@@ -2694,7 +2706,15 @@ export class GameScreen {
     btn.dataset.pile = color;
     const thumb = el('span', 'g2-pile-card');
     if (top) this.paintThumb(thumb, card, top.cardId, color);
-    btn.append(thumb, el('span', 'g2-pile-count', `Discard ${pile.length}`));
+    const count = el('span', 'g2-pile-count', `Discard ${pile.length}`);
+    btn.append(thumb, count);
+    if (pitch) {
+      btn.classList.add('pitch-drop');
+      if (pitch === 'over') btn.classList.add('pitch-over');
+      count.textContent = this.narrow.matches ? `Pitch +${v2.PITCH_MANA}` : `Pitch: +${v2.PITCH_MANA} mana`;
+      btn.title = `Let go here to pitch the card: +${v2.PITCH_MANA} mana`;
+      return btn;
+    }
     if (!top) {
       btn.disabled = true;
       btn.title = 'Discard pile: empty';

@@ -4053,6 +4053,63 @@ button,
   width: 100%;
 }
 
+.g2-piles {
+  display: none;
+}
+
+/*
+ * Beside the board, a column for the discard piles: the board stays in the middle while there is room either side,
+ * and gives up only the piles' width when there is not.
+ */
+@media (min-width: 900px) {
+  .g2-boardwrap {
+    --pile-w: 70px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, var(--board-size)) minmax(calc(var(--pile-w) + 10px), 1fr);
+    justify-items: center;
+    column-gap: 0;
+  }
+
+  .g2-boardwrap > .g2-player,
+  .g2-boardwrap > .g2-boardbox {
+    grid-column: 2;
+  }
+
+  .g2-piles {
+    grid-column: 3;
+    grid-row: 1 / span 3;
+    align-self: stretch;
+    justify-self: start;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    width: var(--pile-w);
+    margin-left: 10px;
+  }
+
+  .g2-piles .g2-pile {
+    width: 100%;
+    flex-direction: column;
+    gap: 5px;
+    padding: 6px 6px 5px;
+    border-radius: 10px;
+    font-size: 11px;
+    line-height: 1.2;
+    white-space: normal;
+    text-align: center;
+  }
+
+  .g2-piles .g2-pile-card {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 5 / 7;
+    margin: 0;
+    border-width: 2px;
+    border-radius: 5px;
+    font-size: 24px;
+  }
+}
+
 .g2-player {
   width: min(100%, var(--board-size));
   min-width: 300px;
@@ -4192,35 +4249,28 @@ button,
   font-weight: 700;
 }
 
-/* Holding a card you can pitch: your bar takes it, for mana. */
-.g2-player.pitch-drop {
+/* Holding a card you can pitch: your discard pile takes it, for mana. */
+.g2-pile.pitch-drop {
   border: 1px dashed rgba(120, 200, 255, 0.85);
-  box-shadow: 0 0 0 1px rgba(90, 180, 255, 0.3), 0 0 22px rgba(90, 180, 255, 0.35), 0 6px 18px rgba(0, 0, 0, 0.35);
+  background: rgba(40, 110, 200, 0.16);
+  color: #bfe3ff;
+  font-weight: 700;
+  box-shadow: 0 0 0 1px rgba(90, 180, 255, 0.3), 0 0 18px rgba(90, 180, 255, 0.4);
   animation: g2-pitch-glow 1.4s ease-in-out infinite;
 }
 
-.g2-player.pitch-drop.pitch-over {
+.g2-pile.pitch-drop.pitch-over {
   border-style: solid;
   border-color: #bfe3ff;
   background: linear-gradient(180deg, rgba(36, 70, 120, 0.96), rgba(20, 36, 70, 0.96));
-  box-shadow: 0 0 0 2px rgba(150, 215, 255, 0.6), 0 0 32px rgba(110, 200, 255, 0.75), 0 6px 18px rgba(0, 0, 0, 0.35);
-  animation: none;
-}
-
-.g2-pitch-label {
-  color: #bfe3ff;
-  font-size: 13px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.g2-player.pitch-over .g2-pitch-label {
   color: #fff;
+  box-shadow: 0 0 0 2px rgba(150, 215, 255, 0.6), 0 0 28px rgba(110, 200, 255, 0.8);
+  animation: none;
 }
 
 @keyframes g2-pitch-glow {
   50% {
-    box-shadow: 0 0 0 1px rgba(90, 180, 255, 0.5), 0 0 30px rgba(90, 180, 255, 0.6), 0 6px 18px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 0 0 1px rgba(90, 180, 255, 0.5), 0 0 26px rgba(90, 180, 255, 0.65);
   }
 }
 
