@@ -32,6 +32,7 @@ import {
   type ServerMessage,
 } from '@chessx/protocol';
 import { randomBytes } from 'node:crypto';
+import { inlineThinker, type BotThinker } from './bot.js';
 import { newId, parseChat, parseRecord, parseState, type Db, type GameRow } from './db.js';
 
 export interface Transport {
@@ -94,6 +95,18 @@ const REVEAL_MS_PER_CARD = 2200;
 const TURN_GRACE_BASE_MS = 1000;
 const TURN_GRACE_MAX_MS = 15_000;
 
+/** The least time from the start of the bot's turn to its first play, so it does not land on top of your move. */
+const BOT_THINK_MS = 900;
+/** The bot's pause after each kind of play, long enough to watch it land (a spell's reveal is the longest). */
+const BOT_PAUSE_MS: Partial<Record<v2.Action['type'], number>> = { spell: 1500, summon: 1200, seal: 1200, evolve: 1300, pitch: 900, lava: 1000 };
+/** Plans asked for in one bot turn before it plays any legal action to keep the game going. */
+const BOT_MAX_PLANS = 8;
+
+export interface BotSeat {
+  color: Color;
+  level: v2.BotLevel;
+}
+
 export class LiveGame {
   /** State of a rules-1 game (the original 8x8 rules). Null for rules-2 games and before a game starts. */
   state: GameState | null;
@@ -106,6 +119,14 @@ export class LiveGame {
   private cardsThisTurn = 0;
   /** Testing arena: free setup, memory only (also `solo`). */
   arena = false;
+  /** The computer's seat, in a game against the bot. Such a game is memory only, like practice. */
+  bot: BotSeat | null = null;
+  /** Plans the bot's turns. */
+  thinker: BotThinker = inlineThinker;
+  /** Waits between the bot's plays. */
+  botPause: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  private botPlaying = false;
+  private disposed = false;
 
   /** Fired after anything that changes how the game appears on the home page. */
   onChanged: (game: LiveGame) => void = () => {};
@@ -160,6 +181,11 @@ export class LiveGame {
     return this.row.solo === 1;
   }
 
+  /** Practice and bot games: never saved, no clocks, no rewards. */
+  get memoryOnly(): boolean {
+    return this.solo || this.bot !== null;
+  }
+
   get hasWatchers(): boolean {
     return this.watchers.size > 0;
   }
@@ -189,9 +215,9 @@ export class LiveGame {
 
   // ----------------------------------------------------------------- clocks
 
-  /** Clocks only run in a started, unfinished, two-player game. */
+  /** Clocks only run in a started, unfinished game between two people. */
   private clockRunning(): boolean {
-    return this.started && this.status().kind === 'playing' && !this.solo && this.row.turn_started_at !== null;
+    return this.started && this.status().kind === 'playing' && !this.memoryOnly && this.row.turn_started_at !== null;
   }
 
   clocks(now = Date.now()): Clocks {
@@ -250,7 +276,7 @@ export class LiveGame {
 
   /** Called whenever the status leaves 'playing'. Rewards are granted exactly once per game. */
   private finished(): void {
-    if (this.solo || this.row.rewarded || !this.started || this.status().kind === 'playing') return;
+    if (this.memoryOnly || this.row.rewarded || !this.started || this.status().kind === 'playing') return;
     this.row.rewarded = 1;
     this.save(Date.now(), false);
     this.onFinished(this);
@@ -290,6 +316,7 @@ export class LiveGame {
 
   info(): RoomInfo {
     const side = (c: Color) => {
+      if (this.bot?.color === c) return { name: v2.BOT_NAMES[this.bot.level], connected: true };
       const uid = c === 'white' ? this.row.white_user_id : this.row.black_user_id;
       if (!uid) return null;
       const connected = [...this.watchers].some((w) => w.userId === uid);
@@ -304,7 +331,17 @@ export class LiveGame {
     this.watchers.add(t);
     this.checkTimeout();
     const color = this.colorOf(t.userId)!;
-    t.send({ type: 'seated', gameId: this.id, code: this.row.code, color: this.seatOf(t.userId) ?? color, room: this.info(), solo: this.solo, arena: this.arena, rules: this.rules });
+    t.send({
+      type: 'seated',
+      gameId: this.id,
+      code: this.row.code,
+      color: this.seatOf(t.userId) ?? color,
+      room: this.info(),
+      solo: this.solo,
+      arena: this.arena,
+      ...(this.bot ? { bot: this.bot.level } : {}),
+      rules: this.rules,
+    });
     this.broadcastRoom();
     this.sendState(t, true);
     t.send({ type: 'chat', messages: this.chat });
@@ -341,6 +378,12 @@ export class LiveGame {
 
     if (current.state.status.kind !== 'playing') throw new GameError('The game is over.');
     if (current.state.active !== color) throw new GameError('It is not your turn.');
+    this.playV2(action, now);
+  }
+
+  /** Plays an action for the side to move and tells everyone; the bot takes its turn if it is next. */
+  private playV2(action: v2.Action, now: number): void {
+    const current = this.record!;
     const before = current.state.active;
     let result: v2.ApplyResult;
     // The engine ends the turn with the move itself, or End turn when no move is left; cards keep it open.
@@ -359,10 +402,71 @@ export class LiveGame {
     this.save(now);
     this.broadcastState();
     this.finished();
-    if (!this.solo && next.status.kind === 'playing' && next.active !== before) {
+    if (!this.memoryOnly && next.status.kind === 'playing' && next.active !== before) {
       const nextUser = next.active === 'white' ? this.row.white_user_id : this.row.black_user_id;
       if (nextUser) this.onYourTurn(this, nextUser);
     }
+    this.wakeBot();
+  }
+
+  // -------------------------------------------------------------------- bot
+
+  private botToMove(): boolean {
+    const state = this.record?.state;
+    return !!this.bot && !this.disposed && state?.status.kind === 'playing' && state.active === this.bot.color;
+  }
+
+  /** Starts the bot's turn if it is the bot's move and it is not playing already. */
+  wakeBot(): void {
+    if (this.botPlaying || !this.botToMove()) return;
+    this.botPlaying = true;
+    void this.playBotTurn(this.bot!)
+      .catch((error) => console.error(`[game ${this.row.code}] the bot's turn failed`, error))
+      .finally(() => {
+        this.botPlaying = false;
+      });
+  }
+
+  /** The bot's whole turn at a pace you can watch. A plan that runs out, or stops being legal, is made again. */
+  private async playBotTurn(bot: BotSeat): Promise<void> {
+    const startedAt = Date.now();
+    let lastPlay: v2.Action['type'] | null = null;
+    const pause = (): Promise<void> =>
+      this.botPause(lastPlay ? (BOT_PAUSE_MS[lastPlay] ?? 0) : Math.max(0, BOT_THINK_MS - (Date.now() - startedAt)));
+    for (let round = 0; round < BOT_MAX_PLANS && this.botToMove(); round++) {
+      let plan: v2.Action[] = [];
+      try {
+        plan = await this.thinker.plan(this.record!.state, bot.level, randomBytes(4).readInt32LE());
+      } catch (error) {
+        console.error(`[game ${this.row.code}] the bot could not plan`, error);
+      }
+      for (const action of plan) {
+        await pause();
+        if (!this.botToMove()) return;
+        try {
+          this.playV2(action, Date.now());
+        } catch {
+          break;
+        }
+        lastPlay = action.type;
+        if (!this.botToMove()) return;
+      }
+    }
+    // The planner never finished the turn: any legal play keeps the game going, a move first.
+    while (this.botToMove()) {
+      const options = v2.legalActions(this.record!.state);
+      const fallback = options.find((a) => a.type === 'move' || a.type === 'endTurn') ?? options[0];
+      if (!fallback) return;
+      await pause();
+      if (!this.botToMove()) return;
+      this.playV2(fallback, Date.now());
+      lastPlay = fallback.type;
+    }
+  }
+
+  /** The game was dropped from memory: the bot stops. */
+  dispose(): void {
+    this.disposed = true;
   }
 
   act(t: Transport, action: Action): void {
@@ -488,8 +592,8 @@ export class LiveGame {
     this.row.turn = this.turnColor();
     this.row.chat_json = JSON.stringify(this.chat);
     this.row.updated_at = now;
-    // Practice games live in memory only: nothing is written and the home page is not told.
-    if (this.solo) return;
+    // Practice and bot games live in memory only: nothing is written and the home page is not told.
+    if (this.memoryOnly) return;
     this.db.updateGame(this.row);
     if (notify) this.onChanged(this);
   }
@@ -548,6 +652,10 @@ export class GameManager {
   onFinished: (game: LiveGame) => void = () => {};
   onYourTurn: (game: LiveGame, userId: string) => void = () => {};
   onChat: (game: LiveGame, fromUserId: string, toUserId: string, msg: ChatMessage) => void = () => {};
+  /** Plans the bot's turns in every bot game. */
+  thinker: BotThinker = inlineThinker;
+  /** Waits between the bot's plays; undefined keeps each game's real-time pause. */
+  botPause: ((ms: number) => Promise<void>) | undefined;
 
   constructor(
     private db: Db,
@@ -628,6 +736,49 @@ export class GameManager {
     return this.track(new LiveGame(row, this.db, this.userName));
   }
 
+  /**
+   * A game against the bot, which starts at once (with the bot's first turn if it plays White). Memory only, like
+   * practice: no clock, no rewards, and nobody can join it by code. It stays in memory a while after you leave, so a
+   * reload picks it up again.
+   */
+  createBot(userId: string, level: v2.BotLevel, side: Color | 'random'): LiveGame {
+    // Bot games you have left are dropped when you start another, so they cannot pile up.
+    for (const [id, g] of this.live) {
+      if (!g.bot || g.hasWatchers || (g.row.white_user_id !== userId && g.row.black_user_id !== userId)) continue;
+      g.dispose();
+      this.live.delete(id);
+    }
+    const now = Date.now();
+    const color: Color = side === 'random' ? (randomBytes(1)[0]! < 128 ? 'white' : 'black') : side;
+    const row: GameRow = {
+      id: newId(),
+      code: randomCode(),
+      rules_version: 2,
+      solo: 0,
+      white_user_id: color === 'white' ? userId : null,
+      black_user_id: color === 'black' ? userId : null,
+      state_json: null,
+      status_kind: 'playing',
+      turn: 'white',
+      clock_white_ms: TURN_CLOCK_MS,
+      clock_black_ms: TURN_CLOCK_MS,
+      turn_started_at: now,
+      chat_json: '[]',
+      white_deck_json: null,
+      black_deck_json: null,
+      rewarded: 0,
+      created_at: now,
+      updated_at: now,
+    };
+    const game = this.track(new LiveGame(row, this.db, this.userName));
+    game.bot = { color: opposite(color), level };
+    game.thinker = this.thinker;
+    if (this.botPause) game.botPause = this.botPause;
+    game.record = newRecord();
+    game.wakeBot();
+    return game;
+  }
+
   /** An account was deleted: vacate its seats in games held in memory so a later save does not resurrect it. */
   forgetUser(userId: string): void {
     for (const [id, g] of this.live) {
@@ -641,7 +792,10 @@ export class GameManager {
         touched = true;
       }
       if (!touched) continue;
-      if (!g.row.white_user_id && !g.row.black_user_id) this.live.delete(id);
+      if (!g.row.white_user_id && !g.row.black_user_id) {
+        g.dispose();
+        this.live.delete(id);
+      }
     }
   }
 
@@ -651,15 +805,16 @@ export class GameManager {
   }
 
   /**
-   * Graceful shutdown (deploy/restart): practice games live only in memory and will
+   * Graceful shutdown (deploy/restart): practice and bot games live only in memory and will
    * not survive, so send their players home with a note rather than leaving them
    * on a board that silently stops responding. Persistent games resume on reconnect.
    */
   shutdown(): void {
     for (const g of this.live.values()) {
-      if (!g.solo) continue;
+      if (!g.memoryOnly) continue;
+      g.dispose();
       for (const t of g.watchersList()) {
-        t.send({ type: 'notice', message: 'The server is restarting for an update — practice games end here. Start a new one in a moment.' });
+        t.send({ type: 'notice', message: 'The server is restarting for an update — practice and bot games end here. Start a new one in a moment.' });
         g.detach(t);
         t.send({ type: 'left' });
       }
@@ -699,7 +854,9 @@ export class GameManager {
       g?.checkTimeout(now);
     }
     for (const [id, g] of this.live) {
-      if (!g.hasWatchers && now - g.row.updated_at > 10 * 60_000) this.live.delete(id);
+      if (g.hasWatchers || now - g.row.updated_at <= 10 * 60_000) continue;
+      g.dispose();
+      this.live.delete(id);
     }
   }
 }

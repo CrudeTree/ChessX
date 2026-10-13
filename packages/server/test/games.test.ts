@@ -196,6 +196,109 @@ describe('cards, then a move that ends the turn (Djabooty, 2026-10-10)', () => {
   });
 });
 
+describe('games against the bot', () => {
+  /** A manager whose bot plays without pausing. */
+  function botSetup() {
+    const ctx = setup();
+    ctx.games.botPause = () => Promise.resolve();
+    return ctx;
+  }
+
+  it('start at once with the bot in the other seat, memory only and without a clock', () => {
+    const { db, games, alice } = botSetup();
+    const game = games.createBot(alice.id, 'medium', 'white');
+    const t = transport(alice.id);
+    game.attach(t);
+    expect(game.started).toBe(true);
+    expect(game.memoryOnly).toBe(true);
+    expect(t.messages.find((m) => m.type === 'seated')).toMatchObject({
+      color: 'white',
+      solo: false,
+      bot: 'medium',
+      room: { players: { white: { name: 'Alice' }, black: { name: 'Medium bot', connected: true } } },
+    });
+    expect(game.clocks().running).toBe(false);
+    expect(db.gameById(game.id)).toBeUndefined();
+    expect(games.summariesFor(alice.id)).toEqual([]);
+  });
+
+  it('the bot answers your move with a whole turn of its own', async () => {
+    const { games, alice } = botSetup();
+    const game = games.createBot(alice.id, 'easy', 'white');
+    const t = transport(alice.id);
+    game.attach(t);
+    game.actV2(t, pick(game.record!.state, (a) => a.type === 'move'));
+    await vi.waitFor(() => expect(game.record!.state.active).toBe('white'));
+    expect(game.record!.state.turns.black).toBe(1);
+    const latest = [...t.messages].reverse().find((m) => m.type === 'stateV2');
+    expect(latest?.type === 'stateV2' && latest.view.you).toBe('white');
+  });
+
+  it('the bot moves first when it plays White', async () => {
+    const { games, alice } = botSetup();
+    const game = games.createBot(alice.id, 'hard', 'black');
+    expect(game.bot).toEqual({ color: 'white', level: 'hard' });
+    await vi.waitFor(() => expect(game.record!.state.active).toBe('black'));
+    expect(game.record!.state.turns.white).toBe(1);
+  });
+
+  it('you cannot move for the bot; resigning stops it, with no rewards', async () => {
+    const { games, alice } = botSetup();
+    const finished = vi.fn();
+    games.onFinished = finished;
+    let release: (() => void) | undefined;
+    games.botPause = () => new Promise<void>((resolve) => (release = resolve));
+    const game = games.createBot(alice.id, 'easy', 'black');
+    const t = transport(alice.id);
+    game.attach(t);
+    await vi.waitFor(() => expect(release).toBeDefined());
+    expect(() => game.actV2(t, pick(game.record!.state, (a) => a.type === 'move'))).toThrow(GameError);
+    game.actV2(t, { type: 'resign' });
+    const seq = game.record!.seq;
+    release!();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(game.record!.state.status).toEqual({ kind: 'resigned', winner: 'white' });
+    expect(game.record!.seq).toBe(seq);
+    expect(finished).not.toHaveBeenCalled();
+  });
+
+  it('a planner that never finishes the turn cannot stall the game', async () => {
+    const { games, alice } = botSetup();
+    let asked = 0;
+    games.thinker = {
+      plan: async () => {
+        asked += 1;
+        return [];
+      },
+    };
+    const game = games.createBot(alice.id, 'easy', 'black');
+    await vi.waitFor(() => expect(game.record!.state.active).toBe('black'));
+    expect(asked).toBe(8);
+  });
+
+  it('starting another drops the bot games you left, but not one still open', () => {
+    const { games, alice, bob } = botSetup();
+    const left = games.createBot(alice.id, 'easy', 'white');
+    const open = games.createBot(alice.id, 'easy', 'white');
+    open.attach(transport(alice.id));
+    const bobs = games.createBot(bob.id, 'easy', 'white');
+    games.createBot(alice.id, 'easy', 'white');
+    expect(games.get(left.id)).toBeUndefined();
+    expect(games.get(open.id)).toBe(open);
+    expect(games.get(bobs.id)).toBe(bobs);
+  });
+
+  it('sends you home when the server restarts', () => {
+    const { games, alice } = botSetup();
+    const game = games.createBot(alice.id, 'easy', 'white');
+    const t = transport(alice.id);
+    game.attach(t);
+    games.shutdown();
+    expect(t.messages.some((m) => m.type === 'notice')).toBe(true);
+    expect(t.messages.at(-1)).toEqual({ type: 'left' });
+  });
+});
+
 describe('chat', () => {
   const GIF = { url: 'https://static.klipy.com/ii/ffd4ac143e63/e8/3a/y1i7SXbN.webp', width: 220, height: 180, title: 'Happy dance' };
 

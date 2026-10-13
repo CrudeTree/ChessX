@@ -3,7 +3,7 @@
 //  - /ws         game traffic, authenticated by the session cookie — WebSocket
 //  - everything else: the built client (production)
 
-import { allCards, currentBalance, hasCard, hasPieceDef, STANDARD_KINDS, type ArenaOp } from '@chessx/engine';
+import { allCards, currentBalance, hasCard, hasPieceDef, STANDARD_KINDS, v2, type ArenaOp } from '@chessx/engine';
 import { PROTOCOL_VERSION, decode, encode, levelFor, type ClientMessage, type PlayerInfo, type ServerMessage, type SiteStats } from '@chessx/protocol';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { WebSocket, WebSocketServer } from 'ws';
 import { Admin, AdminError } from './admin.js';
 import { Auth, AuthError, configFromEnv, setAdminCheck, toUserInfo } from './auth.js';
+import { workerThinker } from './bot.js';
 import { Db } from './db.js';
 import { GameError, GameManager, type LiveGame, type Transport } from './games.js';
 import { Notifier } from './notify.js';
@@ -30,6 +31,7 @@ setAdminCheck((u) => admin.isAdmin(u), (u) => admin.isOwner(u));
 admin.loadBalance(); // before any game is loaded or created
 const auth = new Auth(db, configFromEnv(process.env));
 const games = new GameManager(db, (id) => db.userById(id)?.name ?? 'Player');
+games.thinker = workerThinker();
 const progression = new Progression(db);
 progression.purgeRetiredCards();
 setInterval(() => db.purgeExpiredSessions(), 60 * 60_000).unref();
@@ -476,6 +478,14 @@ function handleMessage(t: SocketTransport, msg: ClientMessage): void {
       const game = games.create(t.userId, true, [], { arena: true });
       open(t, game);
       console.log(`[game ${game.row.code}] arena by ${t.userId}`);
+      return;
+    }
+    case 'createBot': {
+      if (!v2.isBotLevel(msg.level)) return t.error('Pick how hard the bot plays.');
+      const side = msg.color === 'white' || msg.color === 'black' ? msg.color : 'random';
+      const game = games.createBot(t.userId, msg.level, side);
+      open(t, game);
+      console.log(`[game ${game.row.code}] ${msg.level} bot game by ${t.userId}`);
       return;
     }
     case 'joinGame': {

@@ -545,12 +545,14 @@ export class GameScreen {
 
   // ------------------------------------------------------------------ lifecycle
 
-  open(opts: { code: string; solo: boolean; you: Color }): void {
+  /** `bot`: the other side is the computer, which nobody can join by code and which does not chat. */
+  open(opts: { code: string; solo: boolean; you: Color; bot?: boolean }): void {
     this.reset();
     this.code = opts.code;
     this.solo = opts.solo;
     this.seat = opts.solo ? 'white' : opts.you;
     this.codeEl.textContent = opts.solo ? 'PRACTICE' : opts.code;
+    for (const part of [this.codeBlock, this.chatBtn, this.chatSlot]) part.classList.toggle('hidden', !!opts.bot);
     this.buildBoard();
     this.renderPlayers();
   }

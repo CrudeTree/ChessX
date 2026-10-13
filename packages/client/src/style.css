@@ -847,6 +847,62 @@ button.danger {
   margin-bottom: 18px;
 }
 
+.bot-card {
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+}
+
+.bot-sides {
+  display: flex;
+  margin: 14px 0 16px;
+  border: 1px solid #3a3a52;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.bot-sides button {
+  flex: 1;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.bot-sides button + button {
+  border-left: 1px solid #3a3a52;
+}
+
+.bot-sides button[aria-pressed='true'] {
+  background: rgba(212, 162, 76, 0.18);
+  color: var(--text);
+}
+
+.bot-levels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.bot-levels button {
+  padding: 16px 10px;
+  font-size: 18px;
+  font-weight: 800;
+  border-radius: 12px;
+}
+
+.bot-levels button:hover {
+  filter: none;
+  border-color: var(--accent);
+}
+
+.bot-cancel {
+  margin-top: 14px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+
 .reward-cards .bcard {
   width: 170px;
   cursor: default;
@@ -1978,7 +2034,7 @@ button.danger {
 /* ------------------------------------------------------------ Home: modes */
 .hx-modes {
   display: grid;
-  grid-template-columns: 1.3fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 12px;
   margin-top: 24px;
 }
@@ -2076,16 +2132,6 @@ button.danger {
   90%,
   100% {
     transform: translateX(330%) skewX(-18deg);
-  }
-}
-
-@media (max-width: 1279px) {
-  .hx-modes {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .hx-play {
-    grid-column: 1 / -1;
   }
 }
 

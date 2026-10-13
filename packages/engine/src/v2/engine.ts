@@ -221,14 +221,14 @@ export function isFrozen(state: GameState, piece: Piece): boolean {
   return piece.frozenOnTurn !== undefined && piece.frozenOnTurn === ownerTurn;
 }
 
-interface Reach {
+export interface Reach {
   to: Square;
   mode: 'both' | 'move' | 'capture';
   occupant: Color | null;
 }
 
 /** Every square a piece's rules reach, stopping rays at the first piece or seal. */
-function reaches(state: GameState, piece: Piece): Reach[] {
+export function reaches(state: GameState, piece: Piece): Reach[] {
   const out: Reach[] = [];
   const fwd = forward(piece.owner);
   const file = fileOf(piece.square);
@@ -606,7 +606,8 @@ function moveActions(state: GameState): Action[] {
     for (const reach of reaches(state, piece)) {
       const empty = reach.occupant === null;
       const victim = reach.occupant === opposite(color) ? pieceAt(state, reach.to) : undefined;
-      const enemy = reach.occupant === opposite(color) && !(victim && isShielded(state, victim));
+      // A King is never taken, also when a spell (Smite, Dispel) opened a line onto it this turn: that is check.
+      const enemy = reach.occupant === opposite(color) && !(victim && (isShielded(state, victim) || victim.def.king));
       const canMove = empty && reach.mode !== 'capture' && !lavaAt(state, reach.to);
       const canCapture = enemy && reach.mode !== 'move' && !sick;
       if (!canMove && !canCapture) continue;
@@ -880,10 +881,18 @@ export function applyLegalAction(state: GameState, action: Action): ApplyResult 
   // Apply the engine's own copy of the matching action, never the caller's object.
   const matched = legalActions(state).find((candidate) => sameAction(candidate, action));
   if (!matched) throw new Error(`Illegal action: ${JSON.stringify(action)}`);
+  return applyTrustedAction(state, matched);
+}
+
+/**
+ * Applies an action taken from `legalActions(state)` to a copy without checking it again, for look-ahead. With
+ * `startNext` false a move leaves the other side's turn unstarted; an End turn then starts it.
+ */
+export function applyTrustedAction(state: GameState, action: Action, startNext = true): ApplyResult {
   const next = clone(state);
   const events: GameEvent[] = [];
-  applyAction(next, matched, events);
-  if (next.phase === 'setup' && matched.type === 'deploy') settleSetup(next, events);
-  if (ENDS_TURN.has(matched.type)) endTurn(next, events);
+  applyAction(next, action, events);
+  if (next.phase === 'setup' && action.type === 'deploy') settleSetup(next, events);
+  if (startNext && ENDS_TURN.has(action.type)) endTurn(next, events);
   return { state: next, events };
 }

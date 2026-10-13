@@ -1,4 +1,4 @@
-import { applyBalance, DEFAULT_RULES, EMPTY_BALANCE, getCardDef, type Balance, type Color, type PlayerView } from '@chessx/engine';
+import { applyBalance, DEFAULT_RULES, EMPTY_BALANCE, getCardDef, type Balance, type Color, type PlayerView, type v2 } from '@chessx/engine';
 import {
   levelFor,
   xpForLevel,
@@ -65,6 +65,8 @@ let you: Color | null = null;
 let room: RoomInfo | null = null;
 let solo = false;
 let arena = false;
+/** The open game is against the bot, at this level. */
+let bot: v2.BotLevel | null = null;
 /** Rules of the open game: 1 = the original 8x8 game (Pixi board), 2 = the mana/sealing game (also 8x8). */
 let rules: 1 | 2 = 1;
 let currentGameId: string | null = null;
@@ -459,6 +461,37 @@ $('practice').onclick = () => {
 $('arena-start').onclick = () => {
   net.send({ type: 'createArena' });
 };
+
+// A game against the bot: pick a side, then a level, which starts it.
+const botPick = $('bot-pick');
+const BOT_SIDE_KEY = 'chessx.botSide';
+let botSide: Color | 'random' = 'random';
+const botSides = [...botPick.querySelectorAll<HTMLButtonElement>('[data-side]')];
+function chooseBotSide(side: string | null): void {
+  botSide = side === 'white' || side === 'black' ? side : 'random';
+  for (const b of botSides) b.setAttribute('aria-pressed', String(b.dataset.side === botSide));
+}
+chooseBotSide(localStorage.getItem(BOT_SIDE_KEY));
+for (const b of botSides) {
+  b.onclick = () => {
+    chooseBotSide(b.dataset.side ?? null);
+    localStorage.setItem(BOT_SIDE_KEY, botSide);
+  };
+}
+for (const b of botPick.querySelectorAll<HTMLButtonElement>('[data-level]')) {
+  b.onclick = () => {
+    botPick.classList.add('hidden');
+    net.send({ type: 'createBot', level: b.dataset.level as v2.BotLevel, color: botSide });
+  };
+}
+$('bot-start').onclick = () => botPick.classList.remove('hidden');
+$('bot-pick-close').onclick = () => botPick.classList.add('hidden');
+botPick.addEventListener('pointerdown', (e) => {
+  if (e.target === botPick) botPick.classList.add('hidden');
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') botPick.classList.add('hidden');
+});
 $<HTMLFormElement>('join-form').onsubmit = (e) => {
   e.preventDefault();
   const code = $<HTMLInputElement>('join-code').value.trim().toUpperCase();
@@ -653,7 +686,7 @@ const screen2 = new GameScreen(game2Screen, {
   leave: () => goBack(),
   names: () => names(),
   clock: (color) => {
-    const c = arena || solo ? null : currentClocks;
+    const c = arena || solo || bot ? null : currentClocks;
     if (!c) return null;
     const ms = remaining(c, color);
     return { text: fmtClock(ms), running: c.running && c.turn === color, low: ms < 6 * 3600_000 };
@@ -670,6 +703,7 @@ function leaveGameUi(): void {
   room = null;
   solo = false;
   arena = false;
+  bot = null;
   rules = 1;
   screen2.reset();
   gameView.arena = false;
@@ -1148,6 +1182,7 @@ net.onMessage = async (msg: ServerMessage) => {
       room = msg.room;
       solo = msg.solo;
       arena = !!msg.arena;
+      bot = msg.bot ?? null;
       rules = msg.rules;
       currentGameId = msg.gameId;
       rememberOpenGame(msg.gameId);
@@ -1156,7 +1191,7 @@ net.onMessage = async (msg: ServerMessage) => {
       seatChat();
       if (rules === 2) {
         // New rules: the plain-DOM board. The state follows in a `stateV2` message.
-        screen2.open({ code: msg.code, solo, you: msg.color });
+        screen2.open({ code: msg.code, solo, you: msg.color, bot: !!bot });
         screen2.setRoom(msg.room);
         show('game2');
         return;

@@ -1,6 +1,7 @@
 export * from './types.js';
 export * from './catalog.js';
 export * from './view.js';
+export * from './bot.js';
 export {
   HAND_SIZE,
   KING_FILE,
@@ -10,6 +11,7 @@ export {
   SETUP_PIECES,
   START_MANA,
   applyLegalAction,
+  applyTrustedAction,
   bountyFor,
   cloneState,
   evolveCost,
@@ -25,7 +27,9 @@ export {
   legalActions,
   newGame,
   pieceAt,
+  reaches,
   sealAt,
   type ApplyResult,
   type NewGameOptions,
+  type Reach,
 } from './engine.js';

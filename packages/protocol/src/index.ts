@@ -235,6 +235,8 @@ export type ClientMessage =
   | { type: 'createSolo'; deckSlot: number }
   /** Testing arena: empty sandbox board. Memory only, no rewards, no deck required. */
   | { type: 'createArena' }
+  /** A game against the computer at `level`, you playing `color`. Memory only, like practice: no clock, no rewards. */
+  | { type: 'createBot'; level: v2.BotLevel; color: Color | 'random' }
   /** Place or grant something in the testing arena. */
   | { type: 'arenaSetup'; op: ArenaOp }
   | { type: 'joinGame'; code: string; deckSlot: number }
@@ -269,8 +271,8 @@ export type ServerMessage =
   /** Your account changed (e.g. you were made a developer). */
   | { type: 'user'; user: UserInfo }
   | { type: 'games'; games: GameSummary[] }
-  /** This tab is now attached to a game. */
-  | { type: 'seated'; gameId: string; code: string; color: Color; room: RoomInfo; solo: boolean; arena?: boolean; rules: 1 | 2 }
+  /** This tab is now attached to a game. `bot`: the other seat is the computer, at that level. */
+  | { type: 'seated'; gameId: string; code: string; color: Color; room: RoomInfo; solo: boolean; arena?: boolean; bot?: v2.BotLevel; rules: 1 | 2 }
   | { type: 'room'; room: RoomInfo }
   | { type: 'state'; view: PlayerView; clocks: Clocks }
   /** The same, for a rules-2 game. */

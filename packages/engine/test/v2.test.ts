@@ -873,6 +873,18 @@ describe('Mana Surge, Resurrect, Shield, Freeze and Smite (Djabooty, 2026-10-12)
     expect(casts(state, smite)).toEqual([]);
   });
 
+  it('a Smite that opens a line onto the enemy King gives check: the King is never taken', () => {
+    const state = bare(10);
+    piece(state, 'white', 'warlord', 'd3');
+    piece(state, 'black', 'recruit', 'd6');
+    const smite = give(state, 'white', 'smite');
+    const opened = act(state, { type: 'spell', cardUid: smite, target: S('d6') });
+    expect(legalActions(opened).some((a) => a.type === 'move' && a.to === S('d8'))).toBe(false);
+    const { state: next, events } = applyLegalAction(opened, { type: 'move', from: S('d3'), to: S('d4') });
+    expect(next.status.kind).toBe('playing');
+    expect(events).toContainEqual({ type: 'check', color: 'black' });
+  });
+
   it('no spell answers a check, not even a Smite on the checking piece', () => {
     const state = bare(10);
     piece(state, 'black', 'recruit', 'd2');

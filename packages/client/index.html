@@ -95,6 +95,10 @@
                 <span class="hx-mode-icon" aria-hidden="true">&#x2694;&#xFE0E;</span>
                 <span class="hx-mode-text"><b>New game</b></span>
               </button>
+              <button id="bot-start" class="hx-mode" title="Play the computer">
+                <span class="hx-mode-icon" aria-hidden="true">&#x2699;&#xFE0E;</span>
+                <span class="hx-mode-text"><b>Bot</b></span>
+              </button>
               <button id="practice" class="hx-mode" title="Play both sides">
                 <span class="hx-mode-icon" aria-hidden="true">♞</span>
                 <span class="hx-mode-text"><b>Practice</b></span>
@@ -212,6 +216,25 @@
           <button id="discard-next" class="nav" title="Newer">›</button>
         </div>
         <button id="discard-close" class="primary">Close</button>
+      </div>
+    </div>
+
+    <!-- Game against the bot: your side, then how hard it plays -->
+    <div id="bot-pick" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="bot-pick-title">
+      <div class="modal-card bot-card">
+        <h2 id="bot-pick-title">Play the bot</h2>
+        <div class="bot-sides" role="group" aria-label="You play">
+          <button type="button" data-side="white">White</button>
+          <button type="button" data-side="random">Random</button>
+          <button type="button" data-side="black">Black</button>
+        </div>
+        <div class="bot-levels">
+          <button type="button" data-level="easy" title="Plays fast and loose, and misses threats">Easy</button>
+          <button type="button" data-level="medium" title="Plays its own turn well">Medium</button>
+          <button type="button" data-level="hard" title="Checks your best reply first">Hard</button>
+          <button type="button" data-level="expert" title="Looks three turns ahead">Expert</button>
+        </div>
+        <button type="button" id="bot-pick-close" class="bot-cancel">Cancel</button>
       </div>
     </div>
 
