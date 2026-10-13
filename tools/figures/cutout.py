@@ -15,9 +15,10 @@ from PIL import Image, ImageFilter
 from rembg import new_session, remove
 from scipy import ndimage
 
-from figures import ART, BORROWED_OUTLINE, FIGURES, WORK
+from figures import ART, BORROWED_OUTLINE, FIGURES, ISOLATE, WORK
 
 OUT = WORK / "cutouts"
+_sam = None
 
 
 def keep_creature(alpha: Image.Image) -> Image.Image:
@@ -30,6 +31,29 @@ def keep_creature(alpha: Image.Image) -> Image.Image:
     keep = 1 + np.flatnonzero(areas >= areas.max() * 0.15)
     a[~np.isin(labels, keep)] = 0
     return Image.fromarray(a)
+
+
+def isolate(picture: Image.Image, points: dict) -> Image.Image:
+    """Only the creature the keep points are on, without what stands behind it, cropped to it again."""
+    global _sam
+    _sam = _sam or new_session("sam")
+    w, h = picture.size
+    prompt = [
+        {"type": "point", "data": [round(x * w), round(y * h)], "label": label}
+        for label, key in ((1, "keep"), (0, "drop"))
+        for x, y in points[key]
+    ]
+    flat = Image.new("RGB", picture.size, (255, 255, 255))
+    flat.paste(picture, mask=picture.getchannel("A"))
+    mask = np.array(remove(flat, session=_sam, sam_prompt=prompt, only_mask=True)) > 127
+    # Segment Anything leaves slivers of what it drops along its edges: keep the creature's one piece, whole.
+    mask = ndimage.binary_opening(mask)
+    labels, count = ndimage.label(mask)
+    if count:
+        mask = ndimage.binary_fill_holes(labels == 1 + np.argmax(np.bincount(labels.ravel())[1:]))
+    alpha = Image.fromarray((np.array(picture.getchannel("A")) * mask).astype(np.uint8))
+    picture.putalpha(alpha)
+    return picture.crop(alpha.getbbox())
 
 
 def main() -> None:
@@ -54,6 +78,8 @@ def main() -> None:
         picture = Image.open(src).convert("RGBA")
         picture.putalpha(alpha)
         picture = picture.crop(alpha.getbbox())
+        if name in ISOLATE:
+            picture = isolate(picture, ISOLATE[name])
         picture.save(dst)
         print(f"{name}: {picture.size}")
 

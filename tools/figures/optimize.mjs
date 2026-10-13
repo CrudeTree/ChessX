@@ -1,5 +1,6 @@
-// Shrinks the generated models for the web: tools/figures/work/raw/<name>.glb becomes
-// packages/client/public/figures/<name>.glb, listed in figures/index.json beside the cut-outs.
+// Shrinks the generated models for the web: tools/figures/work/raw/<name>.glb (or work/trimmed/<name>.glb, cut
+// off its slab by trim.py) becomes packages/client/public/figures/<name>.glb, listed in figures/index.json beside
+// the cut-outs.
 //
 //     node tools/figures/optimize.mjs [name ...]
 
@@ -10,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const raw = join(here, 'work', 'raw');
+const trimmed = join(here, 'work', 'trimmed');
 const out = join(here, '..', '..', 'packages', 'client', 'public', 'figures');
 mkdirSync(out, { recursive: true });
 
@@ -18,8 +20,8 @@ const names = process.argv.length > 2
   : readdirSync(raw).filter((f) => f.endsWith('.glb')).map((f) => f.slice(0, -4));
 
 for (const name of names) {
-  const src = join(raw, `${name}.glb`);
-  if (!existsSync(src)) {
+  const src = [join(trimmed, `${name}.glb`), join(raw, `${name}.glb`)].find(existsSync);
+  if (!src) {
     console.log(`${name}: no model yet`);
     continue;
   }

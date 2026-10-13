@@ -83,6 +83,8 @@ const FROST_TINT = new THREE.Color(0.62, 0.84, 1.15);
 const FROST_RING = '#9fe0ff';
 /** Models that do not face front as generated: how far to turn them, in degrees. */
 const YAW: Record<string, number> = {};
+/** Figures that look bigger than their height says (a baby dragon, all head): how much smaller they stand. */
+const SIZE: Record<string, number> = { wyrmling: 0.7 };
 /** Picking a cut-out: its opaque parts, on a grid this many cells a side. */
 const MASK = 32;
 /** How solid a figure is while it stands in front of a square the player can choose; the picked one, a little more. */
@@ -230,6 +232,8 @@ function badgeTexture(text: string, color: string): { texture: THREE.Texture; as
 class Kit {
   cell = 1;
   tilt = TILT;
+  /** The side at the near edge, before the eye: its models face away, toward the other side's, which face the eye. */
+  near: v2.Color = 'white';
   readonly eye = new THREE.Vector3();
   readonly centres: THREE.Vector3[] = [];
   readonly baseGeo = new THREE.CylinderGeometry(1, 1.06, 1, 48).translate(0, 0.5, 0);
@@ -508,7 +512,7 @@ class Piece {
     this.base.scale.set(BASE_R * cell, BASE_H * cell, BASE_R * cell);
     this.ring.scale.setScalar(BASE_R * cell);
     this.ring.position.y = BASE_H * cell;
-    let tall = this.f.height * cell;
+    let tall = this.f.height * (SIZE[this.f.name.replace(/_(white|dark)$/, '')] ?? 1) * cell;
     if (this.model) {
       tall = Math.min(tall * MODEL_TALL, (MODEL_MAX_WIDTH * cell) / this.model.width);
       this.holder.scale.setScalar(tall);
@@ -540,10 +544,11 @@ class Piece {
     this.face();
   }
 
-  /** Turn to the eye. */
+  /** Turn to the eye, or a near-side model away from it, to face the other side; a cut-out has no back to turn. */
   private face(): void {
     const p = this.root.position;
-    this.holder.rotation.y = Math.atan2(this.kit.eye.x - p.x, this.kit.eye.z - p.z);
+    const away = this.model && this.f.owner === this.kit.near ? Math.PI : 0;
+    this.holder.rotation.y = Math.atan2(this.kit.eye.x - p.x, this.kit.eye.z - p.z) + away;
   }
 
   private slideTo(square: Square): void {
@@ -809,6 +814,7 @@ export class Board3D {
     this.size = S;
     this.kit.tilt = tilt;
     this.kit.cell = first.offsetWidth;
+    this.kit.near = first.offsetTop > S / 2 ? 'white' : 'black';
     const board = this.board.style;
     board.transformOrigin = '50% 100%';
     board.transform = `perspective(${eye}px) rotateX(${tilt / DEG}deg)`;
