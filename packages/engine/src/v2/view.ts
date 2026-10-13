@@ -230,6 +230,11 @@ function viewCard(card: Card): ViewCard {
   return out;
 }
 
+/** Every card of a catalog as the client draws it, by id: a game's cards, or the Binder's. */
+export function viewCards(catalog: Record<string, Card>): Record<string, ViewCard> {
+  return Object.fromEntries(Object.values(catalog).map((c) => [c.id, viewCard(c)]));
+}
+
 /** Turns of `by`'s opponent a lava square still blocks, counting the one being played. */
 function lavaTurnsLeft(state: GameState, by: Color, untilTurn: number): number {
   const other = opposite(by);
@@ -278,7 +283,7 @@ export function viewFor(record: GameRecord, you: Color, opts: ViewOptions = {}):
     income: { white: incomeFor(nextTurn('white')), black: incomeFor(nextTurn('black')) },
     inCheck: playing && state.phase === 'play' && isInCheck(state, state.active),
     legalActions: playing && state.active === viewer ? legalActions(state) : [],
-    cards: Object.fromEntries(Object.values(state.catalog).map((c) => [c.id, viewCard(c)])),
+    cards: viewCards(state.catalog),
     ...(opts.history ? { history: record.history ?? (record.events.length ? [record.events] : []) } : {}),
   };
 }

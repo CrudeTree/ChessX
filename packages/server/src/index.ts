@@ -3,7 +3,7 @@
 //  - /ws         game traffic, authenticated by the session cookie — WebSocket
 //  - everything else: the built client (production)
 
-import { allCards, currentBalance, hasCard, hasPieceDef, STANDARD_KINDS, v2, type ArenaOp } from '@chessx/engine';
+import { currentBalance, v2 } from '@chessx/engine';
 import { PROTOCOL_VERSION, decode, encode, levelFor, type ClientMessage, type PlayerInfo, type ServerMessage, type SiteStats } from '@chessx/protocol';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -444,23 +444,6 @@ function open(t: SocketTransport, game: LiveGame): void {
   game.attach(t);
 }
 
-/** Players may only grant/spawn cards they own; developers may use the full catalog. */
-function assertArenaAllowed(userId: string, op: ArenaOp): void {
-  const row = db.userById(userId);
-  const isDev = !!row && admin.isAdmin(row);
-  if (op.type === 'giveCard' || op.type === 'dropCard') {
-    if (!hasCard(op.cardId)) throw new GameError('Unknown card.');
-    if (!isDev && !progression.owns(userId, op.cardId)) throw new GameError('You have not unlocked that card.');
-    return;
-  }
-  if (op.type === 'spawnPiece') {
-    if (!hasPieceDef(op.kind)) throw new GameError('Unknown piece.');
-    if (STANDARD_KINDS.includes(op.kind) || isDev) return;
-    const card = allCards().find((c) => c.type === 'summon' && c.piece.kind === op.kind);
-    if (!card || !progression.owns(userId, card.id)) throw new GameError('You have not unlocked that piece.');
-  }
-}
-
 function handleMessage(t: SocketTransport, msg: ClientMessage): void {
   switch (msg.type) {
     case 'listGames':
@@ -475,7 +458,7 @@ function handleMessage(t: SocketTransport, msg: ClientMessage): void {
       return;
     }
     case 'createArena': {
-      const game = games.create(t.userId, true, [], { arena: true });
+      const game = games.createArena(t.userId);
       open(t, game);
       console.log(`[game ${game.row.code}] arena by ${t.userId}`);
       return;
@@ -531,9 +514,8 @@ function handleMessage(t: SocketTransport, msg: ClientMessage): void {
       if (!t.game) return t.error('You are not in a game.');
       t.game.actV2(t, msg.action);
       return;
-    case 'arenaSetup':
+    case 'arenaV2':
       if (!t.game) return t.error('You are not in a game.');
-      assertArenaAllowed(t.userId, msg.op);
       t.game.arenaOp(t, msg.op);
       return;
 

@@ -11,13 +11,13 @@ import {
   type UserInfo,
 } from '@chessx/protocol';
 import { initAttention, notice as attention } from './attention.js';
-import { Binder, cardElement } from './binder.js';
+import { Binder } from './binder.js';
 import { Chat } from './chat.js';
 import { BalanceEditor } from './editor.js';
 import { FriendsPanel } from './friends.js';
 import { initHome } from './home.js';
+import { cardElement } from './oldCard.js';
 import { initPush, onServiceWorkerMessage } from './push.js';
-import { ArenaPalette, ownedCardIds } from './arena.js';
 import { GameView } from './game/GameView.js';
 import { configureLayout, MOBILE } from './game/layout.js';
 import { InspectPanel } from './inspect.js';
@@ -58,8 +58,6 @@ const net = new Net();
 const chat = new Chat(chatEl);
 chat.onSend = (text, gif) => net.send({ type: 'chat', text, ...(gif ? { gif } : {}) });
 const gameView = new GameView();
-const arenaPalette = new ArenaPalette(gameView);
-arenaPalette.onOp = (op) => net.send({ type: 'arenaSetup', op });
 let user: UserInfo | null = null;
 let you: Color | null = null;
 let room: RoomInfo | null = null;
@@ -195,7 +193,7 @@ function applyRoute(route: Route): void {
   applyingRoute = true;
   try {
     if (route.screen === 'game') openGame(route.id);
-    else if (route.screen === 'binder') void openBinder();
+    else if (route.screen === 'binder') openBinder();
     else if (route.screen === 'editor') openEditor();
     else goHome();
   } finally {
@@ -239,24 +237,14 @@ async function refreshProfile(): Promise<void> {
   }
 }
 
-function fillArenaCatalog(): void {
-  arenaPalette.setCatalog(ownedCardIds(profile?.collection ?? []), !!user?.admin);
-}
-
 function setProfile(p: Profile): void {
   profile = p;
-  if (arena) fillArenaCatalog();
   const level = levelFor(p.xp);
   const from = xpForLevel(level);
   const to = xpForLevel(level + 1);
   $('level-badge').textContent = `Lv ${level}`;
   $('xp-fill').style.width = `${Math.round(((p.xp - from) / (to - from)) * 100)}%`;
   $('xp-text').textContent = `${p.xp - from} / ${to - from} XP`;
-
-  const fresh = p.collection.filter((c) => c.isNew).length;
-  const pill = $('binder-new');
-  pill.classList.toggle('hidden', fresh === 0);
-  pill.textContent = `${fresh} new`;
 
   // Deck picker: only decks that are legal to play are selectable.
   const prev = deckSelect.value;
@@ -282,20 +270,17 @@ function chosenDeckSlot(): number {
   return opt && !opt.disabled ? Number(opt.value) : 1;
 }
 
-const binder = new Binder(() => goBack());
-binder.onProfileChanged = (p) => setProfile(p);
+const binder = new Binder(binderScreen, () => goBack());
 
 const friends = new FriendsPanel((m) => net.send(m), () => chosenDeckSlot());
 
-async function openBinder(): Promise<void> {
-  await refreshProfile();
-  if (!profile) return;
+function openBinder(): void {
   show('binder');
-  binder.open(profile);
+  binder.open();
   if (!applyingRoute) pushRoute({ screen: 'binder' });
 }
 
-$('open-binder').onclick = () => void openBinder();
+$('open-binder').onclick = () => openBinder();
 
 // ---------------------------------------------------------------------------
 // Card editor (admin only). Balance patches arrive with `welcome` and whenever
@@ -329,9 +314,7 @@ function rerenderAfterBalance(): void {
     renderStatus(currentView);
     void gameView.refreshArt(); // loads any new images, then rebuilds pieces and hand
   }
-  if (!binderScreen.classList.contains('hidden') && profile) void refreshProfile().then(() => profile && binder.open(profile));
   if (!discardEl.classList.contains('hidden')) renderDiscard();
-  if (arena) fillArenaCatalog();
 }
 
 // ---------------------------------------------------------------------------
@@ -692,6 +675,7 @@ const screen2 = new GameScreen(game2Screen, {
     return { text: fmtClock(ms), running: c.running && c.turn === color, low: ms < 6 * 3600_000 };
   },
   chatShown: () => chat.scrollToEnd(),
+  arena: (op) => net.send({ type: 'arenaV2', op }),
 });
 chat.onClose = () => (rules === 2 ? screen2.openChat(false) : setSheet(null));
 
@@ -706,9 +690,6 @@ function leaveGameUi(): void {
   bot = null;
   rules = 1;
   screen2.reset();
-  gameView.arena = false;
-  arenaPalette.setActive(false);
-  document.querySelector<HTMLElement>('#mtabs [data-sheet="chat"]')?.classList.remove('hidden');
   currentGameId = null;
   currentView = null;
   currentClocks = null;
@@ -759,10 +740,7 @@ function showGame(): Promise<void> {
     gameInit = (async () => {
       configureLayout(window.innerWidth);
       // Desktop: park the chat under the card panel so it never overlaps anything.
-      if (!MOBILE) {
-        $('side').appendChild($('arena'));
-        $('inspect').appendChild(chatEl);
-      }
+      if (!MOBILE) $('inspect').appendChild(chatEl);
       const mount = $('board-mount');
       try {
         await gameView.init(mount);
@@ -782,7 +760,6 @@ function showGame(): Promise<void> {
       }
       viewReady = true;
       gameView.onAction = (action) => net.send({ type: 'action', action });
-      gameView.onArena = (op) => net.send({ type: 'arenaSetup', op });
       gameView.onOpenDiscard = (color) => openDiscard(color);
       inspect.render(null);
       setupMobileChrome();
@@ -809,7 +786,7 @@ let openSheet: string | null = null;
  */
 function setSheet(id: string | null, opts: { peek?: boolean } = {}): void {
   const peek = !!opts.peek && id === 'inspect';
-  for (const s of ['inspect', 'side', 'chat', 'arena']) $(s).classList.toggle('open', MOBILE && id === s);
+  for (const s of ['inspect', 'side', 'chat']) $(s).classList.toggle('open', MOBILE && id === s);
   $('inspect').classList.toggle('peek', MOBILE && peek);
   for (const b of document.querySelectorAll<HTMLButtonElement>('#mtabs button')) b.classList.toggle('active', b.dataset.sheet === id);
   $('sheet-backdrop').classList.toggle('hidden', !MOBILE || id === null || peek);
@@ -845,13 +822,6 @@ function setupMobileChrome(): void {
     setSheet(null);
     origAction(a);
   };
-  const origArena = gameView.onArena;
-  gameView.onArena = (op) => {
-    setSheet(null);
-    origArena(op);
-  };
-  arenaPalette.onDragStart = () => setSheet(null);
-  arenaPalette.onSelect = () => setSheet('inspect', { peek: true });
 }
 
 function renderMobileBar(view: PlayerView | null): void {
@@ -867,7 +837,7 @@ function renderMobileBar(view: PlayerView | null): void {
     const el = $(id);
     const name = el.querySelector('.pname')?.textContent ?? '';
     const clock = el.querySelector('.clock')?.textContent ?? '';
-    const turn = !arena && !!view && view.status.kind === 'playing' && view.turn === color;
+    const turn = !!view && view.status.kind === 'playing' && view.turn === color;
     return { html: `<b>${name}</b>${clock ? ` · ${clock}` : ''}`, turn };
   };
   const o = who('opp', opp);
@@ -894,7 +864,7 @@ function panelColors(): { me: Color; opp: Color } {
 
 function renderRoom(): void {
   if (!room || !you) return;
-  roomCode.textContent = arena ? 'ARENA' : solo ? 'PRACTICE' : room.code;
+  roomCode.textContent = solo ? 'PRACTICE' : room.code;
   const { me, opp } = panelColors();
   for (const [id, color] of [
     ['me', me],
@@ -918,7 +888,7 @@ function renderRoom(): void {
 }
 
 function renderClocks(): void {
-  const c = arena ? null : currentClocks;
+  const c = currentClocks;
   const { me, opp } = panelColors();
   for (const [id, color] of [
     ['me', me],
@@ -945,15 +915,6 @@ setInterval(() => {
 }, 1000);
 
 function renderStatus(view: PlayerView): void {
-  if (arena) {
-    statusEl.className = 'status';
-    statusEl.textContent = view.pendingGrant
-      ? 'Choose a highlighted unit to grant +1 DEF.'
-      : 'Sandbox — drag pieces and cards. No turns.';
-    endTurnBtn.classList.add('hidden');
-    turnTrack.classList.add('hidden');
-    return;
-  }
   const mine = view.turn === view.you;
   statusEl.className = 'status';
   // The move ends the turn by itself; the button only appears as a Pass when no move exists.
@@ -1142,7 +1103,7 @@ net.onMessage = async (msg: ServerMessage) => {
             net.send({ type: 'openGame', gameId: remembered });
           } else {
             net.send({ type: 'listGames' });
-            if (route.screen === 'binder') void openBinder();
+            if (route.screen === 'binder') openBinder();
             else if (route.screen === 'editor') openEditor();
           }
         }
@@ -1191,17 +1152,12 @@ net.onMessage = async (msg: ServerMessage) => {
       seatChat();
       if (rules === 2) {
         // New rules: the plain-DOM board. The state follows in a `stateV2` message.
-        screen2.open({ code: msg.code, solo, you: msg.color, bot: !!bot });
+        screen2.open({ code: msg.code, solo, you: msg.color, bot: !!bot, arena });
         screen2.setRoom(msg.room);
         show('game2');
         return;
       }
       gameView.hotseat = solo;
-      gameView.arena = arena;
-      fillArenaCatalog();
-      arenaPalette.setActive(arena);
-      chatEl.classList.toggle('hidden', arena);
-      document.querySelector<HTMLElement>('#mtabs [data-sheet="chat"]')?.classList.toggle('hidden', arena);
       renderRoom();
       renderClocks();
       renderMobileBar(currentView);

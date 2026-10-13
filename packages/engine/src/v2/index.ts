@@ -2,6 +2,7 @@ export * from './types.js';
 export * from './catalog.js';
 export * from './view.js';
 export * from './bot.js';
+export * from './arena.js';
 export {
   HAND_SIZE,
   KING_FILE,

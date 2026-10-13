@@ -5,6 +5,7 @@ import { v2 } from '@chessx/engine';
 import type { ChatMessage, RoomInfo } from '@chessx/protocol';
 import { cardBack, fillFrame, hourglass, tiltWithPointer, tribeClass, type FrameCard } from './cardFrame.js';
 import { BoardFx, CARD_DIVE_MS, LAVA_FLIGHT_MS, SPELL_HOLD_MS, SPELL_LANDS_MS, type BannerTone } from './fx.js';
+import { CardLibrary, type LibraryTool } from './library.js';
 import { describeEvents, type PieceMemory } from './log.js';
 import { movementPanel } from './movement.js';
 import { sound } from './sound.js';
@@ -29,6 +30,8 @@ export interface GameScreenHooks {
   clock(color: Color): ClockText | null;
   /** The chat box was opened or moved; a moved box forgets how far it was scrolled. */
   chatShown(): void;
+  /** Send an edit to the arena's board (place, give, move or remove something, mana, pass, undo, reset). */
+  arena(op: v2.ArenaOp): void;
 }
 
 /**
@@ -71,6 +74,28 @@ const LINE_GLYPH: Record<string, string> = { Warrior: '♜', Mage: '♝', Paladi
 const evolveForce = (card: v2.ViewCard | undefined): number => ((card?.level ?? 2) >= 3 ? 1 : 0.6);
 /** Picture window of a spell card that has no picture yet. */
 const SPELL_GLYPH = '✦\uFE0E';
+
+/** A card drawn with `owner`'s face; `cards` names the card it evolves from, `learned` what spells taught its piece. */
+export function frameOfCard(card: v2.ViewCard, owner: Color, cards: Record<string, v2.ViewCard>, learned: string[] = []): FrameCard {
+  return {
+    kind: card.type,
+    id: card.id,
+    name: card.name,
+    cost: card.cost,
+    sealTimer: card.sealTimer,
+    line: card.line,
+    level: card.level,
+    evolvesFrom: card.evolvesFrom ? (cards[card.evolvesFrom]?.name ?? card.evolvesFrom) : undefined,
+    tribe: card.tribe,
+    text: card.text,
+    ability: card.abilityText,
+    learned,
+    art: v2.faceArt(card, owner).art,
+    glyph: card.type === 'spell' ? SPELL_GLYPH : glyphFor(card.id, card.name),
+    owner,
+    rules: card.rules,
+  };
+}
 
 /**
  * A press on a card in the hand. `ghost` is null until the pointer has moved past the threshold.
@@ -117,14 +142,17 @@ const TAP_MS = 450;
 
 /**
  * Whose card the card viewer shows: a piece or seal (followed as it moves), a card in your hand (tapped on a touch
- * screen, or clicked while the viewer sits beside the board), or a discard pile, `id` being whose: its newest card,
- * or the one `pick` names.
+ * screen, or clicked while the viewer sits beside the board), a discard pile, `id` being whose: its newest card,
+ * or the one `pick` names; or a card in the arena's library, by card id.
  */
 interface Inspected {
-  kind: 'piece' | 'seal' | 'card' | 'discard';
+  kind: 'piece' | 'seal' | 'card' | 'discard' | 'library';
   id: string;
   pick?: string;
 }
+
+/** Where a card from the arena's library would go: onto a square, into a hand, or onto a discard pile. */
+type LibraryTarget = { kind: 'square'; square: v2.Square } | { kind: 'hand' | 'pile'; color: Color };
 
 /** Token animations in style.css and how long each runs: a piece appearing, sliding, a seal settling or ticking. */
 const TOKEN_FX_MS = { 'fx-rise': 900, 'fx-slide': 300, 'fx-seal-in': 800, 'fx-tick': 650, 'fx-lava-in': 700 } as const;
@@ -151,6 +179,10 @@ const SPELL_HIT_DELAY = SPELL_HOLD_MS;
 const DRAW_MS = 560;
 /** The card viewer sits beside the board from this width; narrower screens float it over the board. */
 const DOCKED_QUERY = '(min-width: 1200px)';
+/** Arena mana buttons: held this long they start repeating, this often; a run of steps is sent once it rests this long. */
+const MANA_HOLD_MS = 400;
+const MANA_REPEAT_MS = 80;
+const MANA_SEND_MS = 300;
 /** Phones: how long a new message shows over the status row while the chat is closed. */
 const CHAT_PEEK_MS = 4500;
 
@@ -231,6 +263,26 @@ export class GameScreen {
 
   private readonly memory: PieceMemory = new Map();
   private lastSeq = -1;
+
+  /** The arena: a sandbox where any card can be put anywhere from the library, and any piece moved or taken off. */
+  private arena = false;
+  private readonly library: CardLibrary;
+  /** Library card under the mouse; it is shown in the card viewer until the mouse leaves. */
+  private hoverLib: string | null = null;
+  /** Where a library card held over the game would go; it lights up. */
+  private libTarget: LibraryTarget | null = null;
+  /** Where a piece from the library was just put down, so it rises there with a summon. */
+  private placedAt: v2.Square | null = null;
+  /** Pieces just let go off the board: they burst where they were let go, not again on their square. */
+  private readonly arenaGone = new Set<string>();
+  /** A piece let go off the board stays hidden on its square until the server takes it away. */
+  private vanishing: { square: v2.Square; timer: number } | null = null;
+  /** Mana set with the − and + buttons, shown before the server's answer. */
+  private manaShown: Partial<Record<Color, number>> = {};
+  /** A run of mana steps waiting to be sent, by side. */
+  private manaSend: Partial<Record<Color, number>> = {};
+  /** The held − or + button's repeat (a timeout, then an interval). */
+  private manaHold = 0;
 
   private readonly tokenFx = new Map<string, TokenFx>();
   /** Squares a held card was just dropped on, so its summon does not show the card a second time. */
@@ -348,7 +400,18 @@ export class GameScreen {
     leave.onclick = () => this.hooks.leave();
     this.resignBtn.onclick = () => this.hooks.resign();
     buttons.append(this.resignBtn, leave);
-    side.append(sheetClose, this.codeBlock, this.statusBlock, logBlock, this.chatSlot, soundBlock, buttons);
+    this.library = new CardLibrary(
+      {
+        give: (cardId, color, tile) => this.giveFromLibrary(cardId, color, tile),
+        ghost: (cardId, color) => this.libraryGhost(cardId, color),
+        hover: (cardId, x, y) => this.hoverLibrary(cardId, x, y),
+        drop: (cardId, color, at, ghost) => this.dropFromLibrary(cardId, color, at, ghost),
+        preview: (cardId, pinned) => this.previewLibrary(cardId, pinned),
+        tool: (tool) => this.arenaTool(tool),
+      },
+      () => this.narrow.matches,
+    );
+    side.append(sheetClose, this.codeBlock, this.statusBlock, this.library.el, logBlock, this.chatSlot, soundBlock, buttons);
     this.sheetShade.onclick = () => {
       this.toggleSheet(false);
       this.openChat(false);
@@ -379,7 +442,7 @@ export class GameScreen {
       if (tap && cell) this.onSquare(Number(cell.dataset.sq), tap === 'quick');
     });
     this.boardEl.addEventListener('pointermove', (e) => {
-      if (e.pointerType !== 'mouse' || !this.docked || this.drag || this.pieceDrag?.ghost) return;
+      if (e.pointerType !== 'mouse' || !this.docked || this.drag || this.pieceDrag?.ghost || this.library.dragging) return;
       const cell = (e.target as HTMLElement).closest<HTMLElement>('[data-sq]');
       this.setBoardHover(cell ? Number(cell.dataset.sq) : null);
     });
@@ -391,6 +454,12 @@ export class GameScreen {
       this.inspected = null;
       this.hoverCard = null;
       this.render();
+    });
+    window.addEventListener('keydown', (e) => {
+      if (!this.arena || this.root.classList.contains('hidden') || e.key.toLowerCase() !== 'z' || !(e.ctrlKey || e.metaKey) || e.shiftKey) return;
+      if (e.target instanceof Element && e.target.closest('input, textarea, [contenteditable]')) return;
+      e.preventDefault();
+      this.arenaTool('undo');
     });
   }
 
@@ -437,6 +506,7 @@ export class GameScreen {
       this.toggleSheet(false);
       this.openChat(false);
     }
+    this.statusBlock.after(this.library.el);
     this.hooks.chatShown();
   }
 
@@ -545,14 +615,22 @@ export class GameScreen {
 
   // ------------------------------------------------------------------ lifecycle
 
-  /** `bot`: the other side is the computer, which nobody can join by code and which does not chat. */
-  open(opts: { code: string; solo: boolean; you: Color; bot?: boolean }): void {
+  /**
+   * `bot`: the other side is the computer, which nobody can join by code and which does not chat. `arena`: the
+   * sandbox, played from both sides like practice, with the card library and no log or resigning.
+   */
+  open(opts: { code: string; solo: boolean; you: Color; bot?: boolean; arena?: boolean }): void {
     this.reset();
     this.code = opts.code;
     this.solo = opts.solo;
+    this.arena = !!opts.arena;
     this.seat = opts.solo ? 'white' : opts.you;
-    this.codeEl.textContent = opts.solo ? 'PRACTICE' : opts.code;
-    for (const part of [this.codeBlock, this.chatBtn, this.chatSlot]) part.classList.toggle('hidden', !!opts.bot);
+    this.codeEl.textContent = this.arena ? 'ARENA' : opts.solo ? 'PRACTICE' : opts.code;
+    for (const part of [this.codeBlock, this.chatBtn, this.chatSlot]) part.classList.toggle('hidden', !!opts.bot || this.arena);
+    for (const part of [this.logBlock, this.resignBtn]) part.classList.toggle('hidden', this.arena);
+    this.root.classList.toggle('g2-arena', this.arena);
+    this.library.show(this.arena);
+    this.library.setSide('white');
     this.buildBoard();
     this.renderPlayers();
   }
@@ -562,6 +640,16 @@ export class GameScreen {
     this.cancelPieceDrag();
     this.clearDropped();
     this.clearReturning();
+    this.library.cancel();
+    this.clearVanishing();
+    this.hoverLib = null;
+    this.libTarget = null;
+    this.placedAt = null;
+    this.arenaGone.clear();
+    this.stopManaHold();
+    for (const timer of Object.values(this.manaSend)) clearTimeout(timer);
+    this.manaSend = {};
+    this.manaShown = {};
     sound.setBattle(false);
     this.view = null;
     this.room = null;
@@ -625,18 +713,26 @@ export class GameScreen {
     else if (!prev && playing) sound.sfx?.battle();
     sound.setBattle(playing);
     if (changed && prev && this.fx.enabled) this.queueFx(prev, view);
-    // After queueFx, which does not slide a piece that was dragged to its square.
+    if (changed && prev && this.arena) this.arenaFx(prev, view);
+    // After queueFx and arenaFx, which do not slide a piece that was dragged to its square.
     if (changed) {
       this.clearDropped();
       this.clearReturning();
+      this.clearVanishing();
+      for (const color of ['white', 'black'] as const) if (this.manaSend[color] === undefined) delete this.manaShown[color];
+    }
+    if (this.arena) {
+      this.library.setCards(view.cards);
+      // The library hands out the cards of the side to move, until it is switched.
+      if (prev?.active !== view.active) this.library.setSide(view.active);
     }
     this.appendLog(view);
     this.render();
   }
 
-  /** Refresh clocks (called every second by the host). */
+  /** Refresh clocks (called every second by the host). The arena has none. */
   tick(): void {
-    this.renderPlayers();
+    if (!this.arena) this.renderPlayers();
   }
 
   // --------------------------------------------------------------------- board
@@ -1081,12 +1177,16 @@ export class GameScreen {
   /** Fly a dropped card into its square; the summon that follows then skips showing it again. */
   private land(ghost: HTMLElement, square: v2.Square): void {
     const cell = this.cells[square];
-    if (!cell || !this.fx.enabled) {
+    if (cell && this.fx.enabled) this.landed.set(square, performance.now());
+    this.sinkInto(ghost, cell?.getBoundingClientRect());
+  }
+
+  /** A dropped card shrinks into `box` and fades. */
+  private sinkInto(ghost: HTMLElement, box: DOMRect | undefined): void {
+    if (!box || !this.fx.enabled) {
       ghost.remove();
       return;
     }
-    this.landed.set(square, performance.now());
-    const box = cell.getBoundingClientRect();
     ghost.classList.add('landing');
     ghost.style.left = `${box.left + box.width / 2 - ghost.offsetWidth / 2}px`;
     ghost.style.top = `${box.top + box.height / 2 - ghost.offsetHeight / 2}px`;
@@ -1155,25 +1255,33 @@ export class GameScreen {
   }
 
   private exists(view: v2.PlayerView, it: Inspected): boolean {
+    if (it.kind === 'library') return this.arena && view.cards[it.id] !== undefined;
     if (it.kind === 'card') return !!view.hand?.some((c) => c.uid === it.id);
     if (it.kind === 'discard') return (view.discard[it.id as Color]?.length ?? 0) > 0;
     if (it.kind === 'piece') return view.pieces.some((p) => p.id === it.id);
     return view.seals.some((s) => s.id === it.id);
   }
 
-  /** Shows, in order: the hand card or discard pile under the mouse, the piece or seal under the mouse, the one tapped. */
+  /**
+   * Shows, in order: the hand card, library card or discard pile under the mouse, the piece or seal under the mouse,
+   * the one tapped.
+   */
   private renderInspect(view: v2.PlayerView): void {
     const box = this.inspectEl;
     if (this.hoverCard && !view.hand?.some((c) => c.uid === this.hoverCard)) this.hoverCard = null;
+    if (this.hoverLib && !this.exists(view, { kind: 'library', id: this.hoverLib })) this.hoverLib = null;
     if (this.hoverPile && !view.discard[this.hoverPile].length) this.hoverPile = null;
     if (this.hoverBoard && !this.exists(view, this.hoverBoard)) this.hoverBoard = null;
     if (this.inspected && !this.exists(view, this.inspected)) this.inspected = null;
     const shown: Inspected | null = this.hoverCard
       ? { kind: 'card', id: this.hoverCard }
-      : this.hoverPile
-        ? { kind: 'discard', id: this.hoverPile }
-        : (this.hoverBoard ?? this.inspected);
+      : this.hoverLib
+        ? { kind: 'library', id: this.hoverLib }
+        : this.hoverPile
+          ? { kind: 'discard', id: this.hoverPile }
+          : (this.hoverBoard ?? this.inspected);
     const handCard = shown?.kind === 'card' ? view.hand?.find((c) => c.uid === shown.id) : undefined;
+    const libCard = shown?.kind === 'library' ? view.cards[shown.id] : undefined;
     const piece = shown?.kind === 'piece' ? view.pieces.find((p) => p.id === shown.id) : undefined;
     const seal = shown?.kind === 'seal' ? view.seals.find((s) => s.id === shown.id) : undefined;
     const pileOf = shown?.kind === 'discard' ? (shown.id as Color) : undefined;
@@ -1230,6 +1338,7 @@ export class GameScreen {
           ),
         );
       }
+      if (this.arena && !piece.king) buttons.push(this.removeButton(piece.square));
     } else if (seal) {
       card = view.cards[seal.cardId];
       owner = seal.owner;
@@ -1237,6 +1346,14 @@ export class GameScreen {
       const whose = this.solo ? `${sideName(owner)}'s` : owner === view.you ? 'your' : "your opponent's";
       const when = seal.timer <= 1 ? `at the start of ${whose} next turn` : `in ${seal.timer} of ${whose} turns`;
       notes.push(`A sacrifice: this piece arrives ${when}.`);
+      if (this.arena) buttons.push(this.removeButton(seal.square));
+    } else if (libCard) {
+      card = libCard;
+      owner = this.library.side;
+      frame = this.frameFor(card, card.id, owner);
+      if (card.type === 'piece' && card.detail) notes.push(card.detail);
+      const next = this.evolvesInto(card.id, view);
+      if (next) notes.push(next);
     } else if (pileOf && discarded) {
       card = view.cards[discarded.cardId];
       owner = pileOf;
@@ -1252,7 +1369,12 @@ export class GameScreen {
       return;
     }
 
-    const key = handCard ? `card:${handCard.uid}` : piece ? `piece:${piece.id}` : seal ? `seal:${seal.id}` : `discard:${pileOf}:${discarded!.uid}`;
+    const key =
+      handCard ? `card:${handCard.uid}`
+      : piece ? `piece:${piece.id}`
+      : seal ? `seal:${seal.id}`
+      : libCard ? `library:${libCard.id}:${owner}`
+      : `discard:${pileOf}:${discarded!.uid}`;
     const entering = key !== this.inspectKey;
     this.inspectKey = key;
     // Floating over the board: over the half away from the piece; a hand card goes up top, clear of your back row.
@@ -1279,7 +1401,7 @@ export class GameScreen {
       chips.append(timer);
     }
     head.append(title, chips);
-    const pinned = !this.hoverCard && !this.hoverBoard && this.inspected !== null;
+    const pinned = !this.hoverCard && !this.hoverLib && !this.hoverBoard && this.inspected !== null;
     if (pinned || !this.docked) {
       const close = el('button', 'g2-inspect-close', '×');
       close.type = 'button';
@@ -1308,8 +1430,13 @@ export class GameScreen {
     box.replaceChildren(face, info);
   }
 
+  /** Arena: take a piece or sacrifice off the board from the card viewer. */
+  private removeButton(square: v2.Square): HTMLButtonElement {
+    return this.inspectButton('Remove', 'Take it off the board', 'remove', () => this.hooks.arena({ type: 'remove', square }));
+  }
+
   /** A button in the card viewer; using it closes a viewer that floats over the board. */
-  private inspectButton(text: string, title: string, tone: 'mana' | 'lava', run: () => void): HTMLButtonElement {
+  private inspectButton(text: string, title: string, tone: 'mana' | 'lava' | 'remove', run: () => void): HTMLButtonElement {
     const btn = el('button', `g2-inspect-action ${tone}`, text);
     btn.type = 'button';
     btn.title = title;
@@ -1368,24 +1495,7 @@ export class GameScreen {
   private frameFor(card: v2.ViewCard | undefined, kind: string, owner: Color, name = card?.name ?? kind, learned: readonly v2.Ability[] = []): FrameCard {
     const taught = learned.map((a) => v2.ABILITIES[a].name);
     if (!card) return { kind: 'piece', id: kind, name, text: '', glyph: glyphFor(kind, name), owner, learned: taught };
-    return {
-      kind: card.type,
-      id: card.id,
-      name: card.name,
-      cost: card.cost,
-      sealTimer: card.sealTimer,
-      line: card.line,
-      level: card.level,
-      evolvesFrom: card.evolvesFrom ? (this.view?.cards[card.evolvesFrom]?.name ?? card.evolvesFrom) : undefined,
-      tribe: card.tribe,
-      text: card.text,
-      ability: card.abilityText,
-      learned: taught,
-      art: v2.faceArt(card, owner).art,
-      glyph: card.type === 'spell' ? SPELL_GLYPH : glyphFor(card.id, card.name),
-      owner,
-      rules: card.rules,
-    };
+    return frameOfCard(card, owner, this.view?.cards ?? {}, taught);
   }
 
   /** 0 for the top row of the board as this player sees it. */
@@ -1793,13 +1903,17 @@ export class GameScreen {
 
   // ---------------------------------------------------------------- piece drag
 
-  /** A press on one of your pieces that can move. Dragging it moves it; letting go without dragging is a tap. */
+  /**
+   * A press on one of your pieces that can move (in the arena, on any piece). Dragging it moves it; letting go without
+   * dragging is a tap.
+   */
   private pressPiece(e: PointerEvent): void {
     if (e.button !== 0 || !e.isPrimary || this.drag || this.pieceDrag || this.dropped || !this.view) return;
     const cell = (e.target as HTMLElement).closest<HTMLElement>('.g2-cell');
     if (!cell || !this.boardEl.contains(cell)) return;
     const from = Number(cell.dataset.sq);
-    if (!this.movers(this.view).has(from)) return;
+    const loose = this.arena && this.view.pieces.some((p) => p.square === from);
+    if (!this.movers(this.view).has(from) && !loose) return;
     // Stops the browser starting a text selection; the click still fires.
     if (e.pointerType === 'mouse') e.preventDefault();
     this.pieceDrag = { from, pointerId: e.pointerId, pointerType: e.pointerType, startX: e.clientX, startY: e.clientY, ghost: null, hover: null };
@@ -1822,13 +1936,31 @@ export class GameScreen {
     ghost.style.left = `${e.clientX - ghost.offsetWidth / 2}px`;
     ghost.style.top = `${e.clientY - ghost.offsetHeight / 2 - lift}px`;
     const square = this.squareAt(e.clientX, e.clientY);
-    const hover = square !== null && this.targets().has(square) ? square : null;
+    const legal = square !== null && this.targets().has(square);
+    const hover = legal || (square !== null && this.canRelocate(drag.from, square)) ? square : null;
+    ghost.classList.toggle('off', this.canTakeOff(drag.from, e.clientX, e.clientY));
     if (hover === drag.hover) return;
-    if (drag.hover !== null) this.cells[drag.hover]?.classList.remove('drag-over');
-    if (hover !== null) this.cells[hover]?.classList.add('drag-over');
+    if (drag.hover !== null) this.cells[drag.hover]?.classList.remove('drag-over', 'arena-over');
+    if (hover !== null) this.cells[hover]?.classList.add(legal ? 'drag-over' : 'arena-over');
     drag.hover = hover;
     ghost.classList.toggle('over', hover !== null);
   };
+
+  /** Arena: whether a piece can be put down on `to` out of turn and out of the rules (anywhere but on a King). */
+  private canRelocate(from: v2.Square, to: v2.Square): boolean {
+    return this.arena && to !== from && !this.kingAt(to);
+  }
+
+  /** Arena: whether letting go of the piece from `from` at (`x`, `y`) takes it off the board (any piece but a King). */
+  private canTakeOff(from: v2.Square, x: number, y: number): boolean {
+    if (!this.arena || this.kingAt(from)) return false;
+    const box = this.boardEl.getBoundingClientRect();
+    return x < box.left || x > box.right || y < box.top || y > box.bottom;
+  }
+
+  private kingAt(square: v2.Square): boolean {
+    return !!this.view?.pieces.some((p) => p.square === square && p.king);
+  }
 
   /** Past the threshold: a copy of the piece follows the pointer, and the squares it can go to light up. */
   private liftPiece(drag: PieceDrag): HTMLElement | null {
@@ -1872,15 +2004,19 @@ export class GameScreen {
     const ghost = drag.ghost;
     // Never dragged: the click that follows picks the piece up, or puts it down (`onSquare`).
     if (!ghost) return;
-    if (drag.hover !== null) this.cells[drag.hover]?.classList.remove('drag-over');
-    const square = e.type === 'pointerup' ? this.squareAt(e.clientX, e.clientY) : null;
+    if (drag.hover !== null) this.cells[drag.hover]?.classList.remove('drag-over', 'arena-over');
+    const up = e.type === 'pointerup';
+    const square = up ? this.squareAt(e.clientX, e.clientY) : null;
     const move = square === null ? undefined : this.targets().get(square);
-    if (move && square !== null) this.dropPiece(drag.from, square, move, ghost);
-    else this.returnPiece(drag.from, ghost);
+    const from = drag.from;
+    if (move && square !== null) this.dropPiece(from, square, () => this.hooks.act(move), ghost);
+    else if (square !== null && this.canRelocate(from, square)) this.dropPiece(from, square, () => this.hooks.arena({ type: 'relocate', from, to: square }), ghost);
+    else if (up && square === null && this.canTakeOff(from, e.clientX, e.clientY)) this.takeOff(from, ghost);
+    else this.returnPiece(from, ghost);
   };
 
   /** Let go on a lit square: the move is sent, and the piece waits on its new square until the server answers. */
-  private dropPiece(from: v2.Square, to: v2.Square, move: Action, ghost: HTMLElement): void {
+  private dropPiece(from: v2.Square, to: v2.Square, send: () => void, ghost: HTMLElement): void {
     this.clearDropped();
     ghost.classList.add('landing');
     this.placeOn(ghost, to);
@@ -1889,9 +2025,33 @@ export class GameScreen {
       this.render();
     }, DROP_WAIT_MS);
     this.dropped = { from, to, ghost, timer };
-    this.hooks.act(move);
+    send();
     this.clearSelection();
     this.render();
+  }
+
+  /** Arena: a piece let go off the board bursts there, and is gone from its square until the server agrees. */
+  private takeOff(from: v2.Square, ghost: HTMLElement): void {
+    const piece = this.view?.pieces.find((p) => p.square === from);
+    if (piece) this.arenaGone.add(piece.id);
+    ghost.classList.add('poof');
+    window.setTimeout(() => ghost.remove(), 320);
+    sound.sfx?.capture(0);
+    this.clearVanishing();
+    const timer = window.setTimeout(() => {
+      this.clearVanishing();
+      this.render();
+    }, DROP_WAIT_MS);
+    this.vanishing = { square: from, timer };
+    this.hooks.arena({ type: 'remove', square: from });
+    this.clearSelection();
+    this.render();
+  }
+
+  private clearVanishing(): void {
+    if (!this.vanishing) return;
+    clearTimeout(this.vanishing.timer);
+    this.vanishing = null;
   }
 
   /** Let go anywhere else: the piece flies back to its square and stays picked up, so a tap can still move it. */
@@ -1937,7 +2097,7 @@ export class GameScreen {
     this.pieceDrag = null;
     document.body.classList.remove('g2-grabbing');
     drag.ghost?.remove();
-    if (drag.hover !== null) this.cells[drag.hover]?.classList.remove('drag-over');
+    if (drag.hover !== null) this.cells[drag.hover]?.classList.remove('drag-over', 'arena-over');
   }
 
   private removePieceListeners(): void {
@@ -1993,6 +2153,183 @@ export class GameScreen {
     row.scrollLeft = scroll;
   }
 
+  // --------------------------------------------------------------------- arena
+
+  private arenaTool(tool: LibraryTool): void {
+    if (!this.arena) return;
+    sound.sfx?.select();
+    this.hooks.arena({ type: tool });
+  }
+
+  /** The card that follows the pointer out of the library: the whole card, with `color`'s face. */
+  private libraryGhost(cardId: string, color: Color): HTMLElement {
+    const card = this.view?.cards[cardId];
+    return fillFrame(el('div', `g2-card g2-drag-ghost g2-lib-ghost ${card?.type ?? ''}`), this.frameFor(card, cardId, color));
+  }
+
+  /** Where a library card let go at (`x`, `y`) goes: a piece onto any square but a King's; any card into a hand or onto a pile. */
+  private libraryTarget(cardId: string, x: number, y: number): LibraryTarget | null {
+    const card = this.view?.cards[cardId];
+    if (!card) return null;
+    const square = this.squareAt(x, y);
+    if (square !== null) return card.type === 'piece' && !this.kingAt(square) ? { kind: 'square', square } : null;
+    const hit = document.elementFromPoint(x, y);
+    if (!hit || !this.root.contains(hit)) return null;
+    const pile = hit.closest<HTMLElement>('.g2-pile')?.dataset.pile;
+    if (pile === 'white' || pile === 'black') return { kind: 'pile', color: pile };
+    if (this.meEl.contains(hit)) return { kind: 'hand', color: this.seat };
+    if (this.oppEl.contains(hit)) return { kind: 'hand', color: v2.opposite(this.seat) };
+    if (this.handEl.contains(hit) && this.view) return { kind: 'hand', color: this.view.you };
+    return null;
+  }
+
+  private hoverLibrary(cardId: string, x: number, y: number): boolean {
+    const target = this.libraryTarget(cardId, x, y);
+    if (JSON.stringify(target) !== JSON.stringify(this.libTarget)) {
+      this.libTarget = target;
+      this.paintLibraryTarget();
+    }
+    return target !== null;
+  }
+
+  /** Lights up where the held library card would go: a square, a player's bar and hand, or a discard pile. */
+  private paintLibraryTarget(): void {
+    const t = this.libTarget;
+    this.cells.forEach((cell, square) => cell.classList.toggle('lib-drop', t?.kind === 'square' && t.square === square));
+    const hand = t?.kind === 'hand' ? t.color : null;
+    const pile = t?.kind === 'pile' ? t.color : null;
+    this.meEl.classList.toggle('lib-drop', hand === this.seat);
+    this.oppEl.classList.toggle('lib-drop', hand !== null && hand !== this.seat);
+    this.handEl.classList.toggle('lib-drop', hand !== null && hand === this.view?.you);
+    for (const p of this.root.querySelectorAll<HTMLElement>('.g2-pile')) p.classList.toggle('lib-drop', pile !== null && p.dataset.pile === pile);
+  }
+
+  private dropFromLibrary(cardId: string, color: Color, at: { x: number; y: number } | null, ghost: HTMLElement): boolean {
+    const target = at ? this.libraryTarget(cardId, at.x, at.y) : null;
+    this.libTarget = null;
+    this.paintLibraryTarget();
+    if (!target) return false;
+    sound.sfx?.cardDrop();
+    if (target.kind === 'square') {
+      this.placedAt = target.square;
+      this.sinkInto(ghost, this.cells[target.square]?.getBoundingClientRect());
+      this.hooks.arena({ type: 'place', cardId, color, square: target.square });
+    } else if (target.kind === 'pile') {
+      this.sinkInto(ghost, this.pileTarget(target.color)?.getBoundingClientRect());
+      this.hooks.arena({ type: 'bury', cardId, color: target.color });
+    } else {
+      this.sinkInto(ghost, this.handBox(target.color));
+      this.hooks.arena({ type: 'give', cardId, color: target.color });
+    }
+    return true;
+  }
+
+  /** A tap on a library card: into the hand on show it deals itself in; into the other, a copy flies to its count. */
+  private giveFromLibrary(cardId: string, color: Color, tile: HTMLElement): void {
+    if (!this.view) return;
+    if (color !== this.view.you && this.fx.enabled) {
+      const ghost = this.libraryGhost(cardId, color);
+      const from = tile.getBoundingClientRect();
+      document.body.append(ghost);
+      ghost.style.left = `${from.left + from.width / 2 - ghost.offsetWidth / 2}px`;
+      ghost.style.top = `${from.top + from.height / 2 - ghost.offsetHeight / 2}px`;
+      ghost.getBoundingClientRect();
+      this.sinkInto(ghost, this.handBox(color));
+      sound.sfx?.cardDrop();
+    }
+    this.hooks.arena({ type: 'give', cardId, color });
+  }
+
+  /** Where a card put into `color`'s hand flies: the end of the hand on show, or the hand count on their bar. */
+  private handBox(color: Color): DOMRect | undefined {
+    if (color === this.view?.you) {
+      const row = this.handEl.querySelector('.g2-handrow');
+      return (row?.querySelector('.g2-card:last-child') ?? row)?.getBoundingClientRect();
+    }
+    return (color === this.seat ? this.meEl : this.oppEl).querySelector('.g2-count.hand')?.getBoundingClientRect();
+  }
+
+  /** A library card under the mouse shows in the viewer beside the board; one held down by a finger opens there. */
+  private previewLibrary(cardId: string | null, pinned: boolean): void {
+    const view = this.view;
+    if (!view) return;
+    if (pinned) {
+      this.inspected = cardId ? { kind: 'library', id: cardId } : null;
+      this.render();
+      return;
+    }
+    if (!this.docked || cardId === this.hoverLib) return;
+    this.hoverLib = cardId;
+    this.renderInspect(view);
+  }
+
+  /**
+   * The arena's edits come without events, so what one changed is found by comparing the board with the one before:
+   * a piece put down from the library rises with a summon, one moved slides, one taken away bursts (Undo and Reset
+   * play the same way). Whatever the events tell of (a move, a capture, a summon...) is left to `queueFx`.
+   */
+  private arenaFx(prev: v2.PlayerView, view: v2.PlayerView): void {
+    const told = new Set<string>();
+    const hatchedAt = new Set<v2.Square>();
+    for (const e of view.events) {
+      if ('pieceId' in e) told.add(e.pieceId);
+      if ('sealId' in e) told.add(e.sealId);
+      if (e.type === 'evolved') told.add(e.fromPieceId);
+      if (e.type === 'sealed') told.add(e.consumedPieceId);
+      if (e.type === 'hatched') hatchedAt.add(e.square);
+    }
+    const now = performance.now();
+    const fx = this.fx.enabled;
+    const sfx = sound.sfx;
+    const before = new Map(prev.pieces.map((p) => [p.id, p]));
+    const after = new Set(view.pieces.map((p) => p.id));
+    let rose = false;
+    let slid = false;
+    let burst = false;
+    for (const piece of view.pieces) {
+      if (told.has(piece.id)) continue;
+      const old = before.get(piece.id);
+      if (!old) {
+        if (this.placedAt === piece.square) {
+          const force = Math.min(1, (piece.cardId ? (view.cards[piece.cardId]?.cost ?? 0) : 0) / 5);
+          if (fx) this.fx.summon(piece.square, piece.owner, null, 0, force);
+          sfx?.summon(piece.owner, false, force);
+        } else {
+          rose = true;
+        }
+        if (fx) this.tokenFx.set(piece.id, { kind: 'fx-rise', at: now });
+      } else if (old.square !== piece.square && !(this.dropped?.from === old.square && this.dropped.to === piece.square)) {
+        const from = this.cells[old.square];
+        const to = this.cells[piece.square];
+        if (fx && from && to) {
+          const vars = { '--from-x': `${from.offsetLeft - to.offsetLeft}px`, '--from-y': `${from.offsetTop - to.offsetTop}px` };
+          this.tokenFx.set(piece.id, { kind: 'fx-slide', at: now, vars });
+        }
+        slid = true;
+      }
+    }
+    for (const old of prev.pieces) {
+      if (told.has(old.id) || after.has(old.id) || this.arenaGone.has(old.id)) continue;
+      if (fx) this.fx.vanish(old.square, this.pieceToken(old, prev), 'capture', 0);
+      burst = true;
+    }
+    const sealsBefore = new Set(prev.seals.map((s) => s.id));
+    const sealsAfter = new Set(view.seals.map((s) => s.id));
+    for (const seal of view.seals) {
+      if (fx && !told.has(seal.id) && !sealsBefore.has(seal.id)) this.tokenFx.set(seal.id, { kind: 'fx-seal-in', at: now });
+    }
+    for (const seal of prev.seals) {
+      if (told.has(seal.id) || sealsAfter.has(seal.id) || hatchedAt.has(seal.square)) continue;
+      if (fx) this.fx.vanish(seal.square, this.sealToken(seal, prev), 'shatter', 0);
+      burst = true;
+    }
+    if (burst) sfx?.capture(0);
+    else if (slid) sfx?.move();
+    else if (rose) sfx?.cardReturn();
+    this.placedAt = null;
+    this.arenaGone.clear();
+  }
+
   // -------------------------------------------------------------------- render
 
   private name(color: Color): string {
@@ -2015,7 +2352,7 @@ export class GameScreen {
     const movers = this.movers(view);
     // A dragged piece leaves a faint copy on its square, also while it flies back; one dropped elsewhere is gone from it.
     const lifted = this.pieceDrag?.ghost ? this.pieceDrag.from : (this.returning?.from ?? null);
-    const away = this.dropped?.from ?? null;
+    const away = this.dropped?.from ?? this.vanishing?.square ?? null;
     const aiming = this.aimLava !== null && this.aimLava === this.selectedSquare;
 
     for (let square = 0; square < v2.FILES * v2.RANKS; square++) {
@@ -2025,7 +2362,9 @@ export class GameScreen {
       const lava = view.lava.find((l) => l.square === square);
       const classes = ['g2-cell', (v2.fileOf(square) + v2.rankOf(square)) % 2 === 0 ? 'dark' : 'light'];
       if (movers.has(square) && square !== away) classes.push('movable');
+      else if (this.arena && piece && square !== away) classes.push('grab');
       if (targets.has(square)) classes.push(this.pieceDrag?.hover === square ? 'target drag-over' : 'target');
+      else if (this.pieceDrag?.hover === square) classes.push('arena-over');
       if (aiming && targets.has(square)) classes.push('lava-aim');
       const drop = drops.get(square);
       if (drop) {
@@ -2072,6 +2411,7 @@ export class GameScreen {
     this.renderPlayers();
     this.renderStatus(view);
     this.renderCue(view);
+    this.paintLibraryTarget();
   }
 
   private renderPlayers(): void {
@@ -2099,8 +2439,13 @@ export class GameScreen {
         if (turn) elx.classList.add('turn');
         const mana = el('span', 'g2-mana');
         const income = view.income[color];
-        mana.title = `${view.mana[color]} mana. ${turn ? 'This' : 'The next'} turn brings ${income}; every 5th turn brings 1 more, up to 4.`;
-        mana.append(el('i', 'g2-gem'), el('b', '', String(view.mana[color])), el('span', 'g2-mana-word', ' mana'), el('span', 'g2-income', `+${income}`));
+        const amount = this.manaShown[color] ?? view.mana[color];
+        mana.title = `${amount} mana. ${turn ? 'This' : 'The next'} turn brings ${income}; every 5th turn brings 1 more, up to 4.`;
+        mana.append(el('i', 'g2-gem'), el('b', '', String(amount)), el('span', 'g2-mana-word', ' mana'), el('span', 'g2-income', `+${income}`));
+        if (this.arena) {
+          mana.prepend(this.manaStep(color, -1));
+          mana.append(this.manaStep(color, 1));
+        }
         // Holding a card you can pitch: the bar takes it (see `onDragEnd`).
         const held = this.drag?.ghost ? this.drag : null;
         if (held && color === view.you && this.pitchAction(held.uid)) {
@@ -2119,7 +2464,53 @@ export class GameScreen {
         elx.appendChild(stats);
       }
     }
+    this.paintLibraryTarget();
   }
+
+  /**
+   * Arena: a button that takes 1 mana from a side or gives it 1, again and again while it is held. The bars are
+   * rebuilt with every step, so it acts on the press, and a run of steps is sent once it stops (one step to undo).
+   */
+  private manaStep(color: Color, by: 1 | -1): HTMLButtonElement {
+    const btn = el('button', 'g2-mana-step', by > 0 ? '+' : '−');
+    btn.type = 'button';
+    btn.title = by > 0 ? 'One more mana' : 'One less mana';
+    btn.setAttribute('aria-label', `${sideName(color)}: ${btn.title.toLowerCase()}`);
+    btn.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.stopManaHold();
+      this.stepMana(color, by);
+      this.manaHold = window.setTimeout(() => (this.manaHold = window.setInterval(() => this.stepMana(color, by), MANA_REPEAT_MS)), MANA_HOLD_MS);
+      window.addEventListener('pointerup', this.stopManaHold);
+      window.addEventListener('pointercancel', this.stopManaHold);
+    });
+    // Enter or Space on the focused button.
+    btn.onclick = (e) => {
+      if (e.detail === 0) this.stepMana(color, by);
+    };
+    return btn;
+  }
+
+  private stepMana(color: Color, by: 1 | -1): void {
+    const now = this.manaShown[color] ?? this.view?.mana[color] ?? 0;
+    const mana = Math.max(0, Math.min(v2.ARENA_MAX_MANA, now + by));
+    if (mana === now) return;
+    this.manaShown[color] = mana;
+    clearTimeout(this.manaSend[color]);
+    this.manaSend[color] = window.setTimeout(() => {
+      delete this.manaSend[color];
+      this.hooks.arena({ type: 'mana', color, mana });
+    }, MANA_SEND_MS);
+    this.renderPlayers();
+  }
+
+  private readonly stopManaHold = (): void => {
+    clearTimeout(this.manaHold);
+    window.removeEventListener('pointerup', this.stopManaHold);
+    window.removeEventListener('pointercancel', this.stopManaHold);
+  };
 
   /**
    * A player's discard pile: its newest card face up and how many it holds. Point at it to read that card in the

@@ -77,7 +77,7 @@ export function cloneState(state: GameState): GameState {
 
 const clone = cloneState;
 
-function newId(state: GameState, prefix: string): string {
+export function newId(state: GameState, prefix: string): string {
   state.nextId += 1;
   return `${prefix}${state.nextId}`;
 }
@@ -894,5 +894,17 @@ export function applyTrustedAction(state: GameState, action: Action, startNext =
   applyAction(next, action, events);
   if (next.phase === 'setup' && action.type === 'deploy') settleSetup(next, events);
   if (startNext && ENDS_TURN.has(action.type)) endTurn(next, events);
+  return { state: next, events };
+}
+
+/**
+ * The arena's Pass (arena.ts): the side to move ends its turn as it stands, also without a move or after the game
+ * ended, and the other side's turn starts as usual.
+ */
+export function passTurn(state: GameState): ApplyResult {
+  const next = clone(state);
+  const events: GameEvent[] = [];
+  next.status = { kind: 'playing' };
+  endTurn(next, events);
   return { state: next, events };
 }

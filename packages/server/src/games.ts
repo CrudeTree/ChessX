@@ -5,8 +5,6 @@
 
 import {
   applyAction,
-  applyArenaOp,
-  createArenaGame,
   createGame,
   IllegalActionError,
   opposite,
@@ -16,7 +14,6 @@ import {
   v2,
   viewFor,
   type Action,
-  type ArenaOp,
   type Color,
   type GameState,
   type GameStatus,
@@ -101,6 +98,8 @@ const BOT_THINK_MS = 900;
 const BOT_PAUSE_MS: Partial<Record<v2.Action['type'], number>> = { spell: 1500, summon: 1200, seal: 1200, evolve: 1300, pitch: 900, lava: 1000 };
 /** Plans asked for in one bot turn before it plays any legal action to keep the game going. */
 const BOT_MAX_PLANS = 8;
+/** How many steps the arena's Undo goes back. */
+const ARENA_UNDO_STEPS = 100;
 
 export interface BotSeat {
   color: Color;
@@ -117,8 +116,10 @@ export class LiveGame {
   private lastChatAt = new Map<string, number>();
   /** Cards played during the current turn (drives the opponent's clock grace). */
   private cardsThisTurn = 0;
-  /** Testing arena: free setup, memory only (also `solo`). */
+  /** The arena: a sandbox where any card can be placed or given (`arenaOp`), played from both sides like practice. */
   arena = false;
+  /** The arena's earlier positions, oldest first, for Undo. */
+  private arenaPast: v2.GameState[] = [];
   /** The computer's seat, in a game against the bot. Such a game is memory only, like practice. */
   bot: BotSeat | null = null;
   /** Plans the bot's turns. */
@@ -398,6 +399,7 @@ export class LiveGame {
       this.settleClock(now, next.active !== before ? this.replayGrace() : 0);
       this.cardsThisTurn = 0;
     }
+    if (this.arena) this.rememberArena(current.state);
     this.record = v2.nextRecord(current, next, result.events);
     this.save(now);
     this.broadcastState();
@@ -513,20 +515,34 @@ export class LiveGame {
     }
   }
 
-  /** Testing-arena setup: grant a card, spawn/move/remove a piece, or set mana. */
-  arenaOp(t: Transport, op: ArenaOp): void {
-    if (!this.arena) throw new GameError('That only works in the testing arena.');
-    if (!this.state) throw new GameError('Waiting for an opponent to join.');
+  /** An arena edit (`v2.applyArenaEdit`), Undo or Reset. `raw` comes straight off the socket. */
+  arenaOp(t: Transport, raw: unknown): void {
+    const current = this.record;
+    if (!this.arena || !current) throw new GameError('That only works in the arena.');
     if (!this.isParticipant(t.userId)) throw new GameError('You are not a player in this game.');
-    let next: GameState;
+    let next: v2.ApplyResult;
     try {
-      next = applyArenaOp(this.state, op);
+      const op = v2.parseArenaOp(raw);
+      if (op.type === 'undo') {
+        const back = this.arenaPast.pop();
+        if (!back) return;
+        next = { state: back, events: [] };
+      } else {
+        next = op.type === 'reset' ? { state: v2.newArena(randomBytes(4).readInt32LE()), events: [] } : v2.applyArenaEdit(current.state, op);
+        this.rememberArena(current.state);
+      }
     } catch (e) {
-      if (e instanceof IllegalActionError) throw new GameError(e.message);
+      if (e instanceof v2.ArenaError) throw new GameError(e.message);
       throw e;
     }
-    this.state = next;
+    this.record = { state: next.state, seq: current.seq + 1, events: next.events };
+    this.save();
     this.broadcastState();
+  }
+
+  private rememberArena(state: v2.GameState): void {
+    this.arenaPast.push(state);
+    if (this.arenaPast.length > ARENA_UNDO_STEPS) this.arenaPast.shift();
   }
 
   /** A chat line: text, a GIF, or both. `rawGif` comes straight off the socket. */
@@ -632,13 +648,9 @@ export class LiveGame {
       return;
     }
     if (!this.state) return;
-    // Practice follows the side to move; arena stays white-at-bottom; otherwise your seat.
-    const color = this.arena ? 'white' : this.solo ? this.state.turn : this.seatOf(t.userId)!;
-    t.send({
-      type: 'state',
-      view: viewFor(this.state, color, this.arena ? { openHands: true, sandbox: true } : undefined),
-      clocks: this.clocks(),
-    });
+    // Practice follows the side to move; otherwise your seat.
+    const color = this.solo ? this.state.turn : this.seatOf(t.userId)!;
+    t.send({ type: 'state', view: viewFor(this.state, color), clocks: this.clocks() });
   }
 }
 
@@ -669,9 +681,9 @@ export class GameManager {
     g.onFinished = (game) => this.onFinished(game);
     g.onYourTurn = (game, uid) => this.onYourTurn(game, uid);
     g.onChat = (game, from, to, msg) => this.onChat(game, from, to, msg);
-    // A practice game vanishes as soon as its player leaves; it was never on disk.
+    // A practice game vanishes as soon as its player leaves; it was never on disk. The arena stays a while, like a bot game.
     g.onEmpty = (game) => {
-      if (game.solo) this.live.delete(game.id);
+      if (game.solo && !game.arena) this.live.delete(game.id);
     };
     this.live.set(g.id, g);
     return g;
@@ -692,19 +704,17 @@ export class GameManager {
     return row ? this.get(row.id) : undefined;
   }
 
-  create(userId: string, solo: boolean, deck: string[], opts?: { arena?: boolean }): LiveGame {
+  create(userId: string, solo: boolean, deck: string[]): LiveGame {
     let code = randomCode();
     while (this.db.codeExists(code)) code = randomCode();
     const now = Date.now();
     const creatorIsWhite = solo || Math.random() < 0.5;
     const deckJson = JSON.stringify(deck);
-    // Live play is v2. v1 is deprecated: only the card-editor arena and games already saved
-    // under the original rules still use it.
-    const rules = opts?.arena ? 1 : 2;
+    // Live play is v2. v1 is deprecated: only games already saved under the original rules still use it.
     const row: GameRow = {
       id: newId(),
       code,
-      rules_version: rules,
+      rules_version: 2,
       solo: solo ? 1 : 0,
       white_user_id: solo || creatorIsWhite ? userId : null,
       black_user_id: solo || !creatorIsWhite ? userId : null,
@@ -722,12 +732,10 @@ export class GameManager {
       updated_at: now,
     };
     if (solo) {
-      // Practice / arena: both seats are the same user, starts immediately, memory only —
+      // Practice: both seats are the same user, starts immediately, memory only —
       // never saved, never listed, no rewards, gone when the player leaves.
       const game = this.track(new LiveGame(row, this.db, this.userName));
-      game.arena = !!opts?.arena;
-      if (game.arena) game.state = createArenaGame();
-      else game.record = newRecord();
+      game.record = newRecord();
       row.turn_started_at = now;
       row.status_kind = 'playing';
       return game;
@@ -742,12 +750,7 @@ export class GameManager {
    * reload picks it up again.
    */
   createBot(userId: string, level: v2.BotLevel, side: Color | 'random'): LiveGame {
-    // Bot games you have left are dropped when you start another, so they cannot pile up.
-    for (const [id, g] of this.live) {
-      if (!g.bot || g.hasWatchers || (g.row.white_user_id !== userId && g.row.black_user_id !== userId)) continue;
-      g.dispose();
-      this.live.delete(id);
-    }
+    this.dropLeft(userId, (g) => g.bot !== null);
     const now = Date.now();
     const color: Color = side === 'random' ? (randomBytes(1)[0]! < 128 ? 'white' : 'black') : side;
     const row: GameRow = {
@@ -777,6 +780,48 @@ export class GameManager {
     game.record = newRecord();
     game.wakeBot();
     return game;
+  }
+
+  /**
+   * The arena: a sandbox where any card can be placed or given, played from both sides. Memory only, like practice,
+   * but it stays a while after you leave, like a bot game, so a reload picks it up again.
+   */
+  createArena(userId: string): LiveGame {
+    this.dropLeft(userId, (g) => g.arena);
+    const now = Date.now();
+    const row: GameRow = {
+      id: newId(),
+      code: randomCode(),
+      rules_version: 2,
+      solo: 1,
+      white_user_id: userId,
+      black_user_id: userId,
+      state_json: null,
+      status_kind: 'playing',
+      turn: 'white',
+      clock_white_ms: TURN_CLOCK_MS,
+      clock_black_ms: TURN_CLOCK_MS,
+      turn_started_at: now,
+      chat_json: '[]',
+      white_deck_json: null,
+      black_deck_json: null,
+      rewarded: 0,
+      created_at: now,
+      updated_at: now,
+    };
+    const game = this.track(new LiveGame(row, this.db, this.userName));
+    game.arena = true;
+    game.record = { state: v2.newArena(randomBytes(4).readInt32LE()), seq: 1, events: [] };
+    return game;
+  }
+
+  /** Drops `userId`'s games of a kind that nobody has open when they start another, so they cannot pile up. */
+  private dropLeft(userId: string, kind: (g: LiveGame) => boolean): void {
+    for (const [id, g] of this.live) {
+      if (!kind(g) || g.hasWatchers || !g.isParticipant(userId)) continue;
+      g.dispose();
+      this.live.delete(id);
+    }
   }
 
   /** An account was deleted: vacate its seats in games held in memory so a later save does not resurrect it. */
@@ -814,7 +859,7 @@ export class GameManager {
       if (!g.memoryOnly) continue;
       g.dispose();
       for (const t of g.watchersList()) {
-        t.send({ type: 'notice', message: 'The server is restarting for an update — practice and bot games end here. Start a new one in a moment.' });
+        t.send({ type: 'notice', message: 'The server is restarting for an update — practice, bot and arena games end here. Start a new one in a moment.' });
         g.detach(t);
         t.send({ type: 'left' });
       }

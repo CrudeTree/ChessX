@@ -270,18 +270,6 @@ button.danger {
   font-size: 14px;
 }
 
-.pill {
-  display: inline-block;
-  min-width: 18px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--accent);
-  color: #1a1408;
-  font-size: 11px;
-  font-weight: 800;
-  margin-left: 4px;
-}
-
 .xp {
   display: flex;
   align-items: center;
@@ -515,14 +503,7 @@ button.danger {
   color: var(--muted);
 }
 
-/* ----------------------------------------------------------------- Binder */
-#binder {
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  padding: 16px 32px 24px;
-}
-
+/* ---------------------------------------------------- Page header (editor) */
 .binder-header {
   display: flex;
   align-items: center;
@@ -535,35 +516,6 @@ button.danger {
   font-size: 28px;
 }
 
-.binder-stats {
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.binder-body {
-  flex: 1;
-  display: grid;
-  grid-template-columns: 1fr 380px;
-  gap: 20px;
-  min-height: 0;
-}
-
-.collection,
-.deck-editor {
-  background: var(--panel);
-  border: 1px solid #2f2f44;
-  border-radius: 14px;
-  padding: 14px;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.collection .section-title,
-.deck-editor .section-title {
-  margin: 0 0 10px;
-}
-
 .muted {
   color: var(--muted);
   font-weight: 400;
@@ -571,17 +523,7 @@ button.danger {
   letter-spacing: 0;
 }
 
-.card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 12px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 10px 4px 4px 10px;
-  align-content: start;
-}
-
-/* A card in the binder / deck editor (DOM version of the in-game card). */
+/* A card under the original rules (reward popups, an original-rules discard pile). */
 .bcard {
   position: relative;
   border-radius: 10px;
@@ -720,92 +662,6 @@ button.danger {
 @keyframes newpulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.12); }
-}
-
-.deck-tabs {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 10px;
-}
-
-.deck-tabs button {
-  flex: 1;
-  padding: 8px;
-  font-size: 13px;
-}
-
-.deck-tabs button.active {
-  background: var(--accent-2);
-  border-color: var(--accent-2);
-  color: #fff;
-}
-
-.deck-tabs button.invalid {
-  border-color: var(--danger);
-}
-
-.deck-head {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.deck-head input {
-  margin: 0;
-  flex: 1;
-}
-
-.deck-count {
-  font-variant-numeric: tabular-nums;
-  font-weight: 700;
-  white-space: nowrap;
-  color: var(--ok);
-}
-
-.deck-count.bad { color: var(--danger); }
-
-.deck-head .primary {
-  width: auto;
-}
-
-#deck-msg {
-  min-height: 16px;
-  margin: 8px 0;
-}
-
-.deck-list {
-  flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.deck-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 8px;
-  background: var(--panel-2);
-  font-size: 13px;
-}
-
-.deck-row .g { font-size: 18px; width: 26px; text-align: center; }
-.deck-row .n { flex: 1; font-weight: 600; }
-.deck-row .t { color: var(--muted); font-size: 11px; }
-.deck-row .x { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 700; }
-.deck-row button {
-  padding: 3px 9px;
-  font-size: 13px;
-  line-height: 1;
-}
-
-.deck-list:empty::after {
-  content: 'Click cards in your collection to add them. A deck needs 25–40 cards, max 3 of each.';
-  color: var(--muted);
-  font-size: 13px;
-  padding: 10px;
 }
 
 /* ------------------------------------------------------------------ Modal */
@@ -3197,111 +3053,6 @@ button.danger {
   min-height: 16px;
 }
 
-/* ---------------------------------------------------------- Testing arena */
-#arena {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-height: 0;
-}
-
-#side.arena-host {
-  overflow: hidden;
-}
-
-#side.arena-host .side-block:not(.actions) {
-  display: none;
-}
-
-#side.arena-host .side-block.actions {
-  padding-top: 8px;
-}
-
-#side.arena-host #resign {
-  display: none;
-}
-
-#side.arena-host #arena {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  padding: 0;
-  background: transparent;
-  border: none;
-}
-
-#game.arena-mode #turn-track,
-#game.arena-mode #end-turn,
-#game.arena-mode .clock,
-#game.arena-mode .counts {
-  display: none;
-}
-
-.arena-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.arena-toggles {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.arena-toggles button {
-  padding: 4px 10px;
-  font-size: 12px;
-}
-
-.arena-toggles button.active {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-#arena > .arena-head,
-#arena-search {
-  flex-shrink: 0;
-}
-
-#arena-search {
-  width: 100%;
-}
-
-.arena-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  overflow-y: auto;
-  min-height: 0;
-  flex: 1;
-  padding: 4px 2px 8px;
-  scrollbar-width: thin;
-}
-
-.arena-list .editor-section:first-child {
-  margin-top: 2px;
-}
-
-.arena-list .editor-item {
-  cursor: grab;
-  width: 100%;
-  user-select: none;
-}
-
-.arena-ghost {
-  position: fixed;
-  z-index: 80;
-  pointer-events: none;
-  transform: translate(-50%, -50%);
-  opacity: 0.95;
-  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.55));
-  background: var(--panel);
-  border: 1px solid #3a3a52;
-  border-radius: 8px;
-}
-
 /* ------------------------------------------------------------------- Chat */
 /* Built by chat.ts. Where it sits is up to the game screen; on its own it floats in the bottom-left corner. */
 #chat {
@@ -3999,33 +3750,9 @@ button,
     height: 82px;
   }
 
-  /* -------------------------------------------------------- Binder (phone) */
-  #binder {
-    padding: 12px;
-    overflow: auto;
-    height: auto;
-  }
-
-  .binder-body {
-    grid-template-columns: 1fr;
-  }
-
-  .deck-editor {
-    order: -1; /* the deck you're editing first, collection below */
-  }
-
-  .card-grid {
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    max-height: none;
-    overflow: visible;
-  }
-
+  /* -------------------------------------------------------- Reward cards (phone) */
   .bcard .btext {
     font-size: 10px;
-  }
-
-  .deck-list {
-    max-height: 40vh;
   }
 
   .modal-card {
@@ -4128,8 +3855,7 @@ button,
   /* Side panels become bottom sheets */
   #inspect,
   #side,
-  #chat,
-  #arena {
+  #chat {
     position: fixed;
     left: 0;
     right: 0;
@@ -4151,16 +3877,14 @@ button,
 
   #inspect.open,
   #side.open,
-  #chat.open,
-  #arena.open {
+  #chat.open {
     transform: none;
   }
 
   /* Grab-handle so the sheets read as dismissible. */
   #inspect::before,
   #side::before,
-  #chat::before,
-  #arena::before {
+  #chat::before {
     content: '';
     display: block;
     width: 44px;
@@ -8296,5 +8020,1214 @@ body.g2-grabbing * {
   .g2-chat-slot .chat-pop {
     top: 6px;
     height: auto;
+  }
+}
+
+/* ------------------------------------------------------------------ Binder */
+#binder {
+  position: relative;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  background:
+    radial-gradient(ellipse 70% 45% at 50% -8%, rgba(124, 92, 255, 0.24), transparent 70%),
+    radial-gradient(ellipse 50% 40% at 100% 105%, rgba(212, 162, 76, 0.12), transparent 70%),
+    #0f0e17;
+}
+
+/* Light drifting slowly behind the page. */
+.bd-aurora {
+  position: fixed;
+  inset: -20%;
+  pointer-events: none;
+  background:
+    radial-gradient(28% 24% at 18% 32%, rgba(167, 123, 255, 0.16), transparent 70%),
+    radial-gradient(24% 30% at 82% 22%, rgba(232, 184, 74, 0.1), transparent 70%),
+    radial-gradient(30% 24% at 60% 82%, rgba(70, 201, 111, 0.08), transparent 70%);
+  animation: bd-drift 32s ease-in-out infinite alternate;
+}
+
+@keyframes bd-drift {
+  to {
+    transform: translate(4%, -3%) rotate(8deg) scale(1.1);
+  }
+}
+
+.bd {
+  --bd-card: clamp(11px, 1.15vw, 16px);
+  position: relative;
+  z-index: 1;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 28px 110px;
+}
+
+.bd-head {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 0 26px;
+}
+
+.bd-back {
+  justify-self: start;
+}
+
+.bd-title {
+  margin: 0;
+  font-family: 'Cinzel', var(--card-font);
+  font-size: clamp(30px, 4vw, 52px);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.1em;
+  color: transparent;
+  background: linear-gradient(180deg, #fff6dc 0%, #f0cf86 48%, #b98a3e 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  filter: drop-shadow(0 4px 22px rgba(212, 162, 76, 0.38));
+}
+
+/* Floats at the foot of the screen, in reach wherever the page is scrolled. */
+.bd-face {
+  position: fixed;
+  left: 50%;
+  bottom: calc(20px + env(safe-area-inset-bottom));
+  z-index: 6;
+  display: flex;
+  gap: 2px;
+  padding: 5px;
+  translate: -50% 0;
+  border-radius: 999px;
+  background: rgba(22, 20, 34, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  animation: bd-fade 0.4s ease 0.5s backwards;
+}
+
+.bd-face-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px 6px 8px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.bd-face-btn:hover {
+  filter: none;
+  color: var(--text);
+}
+
+.bd-face-btn i {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: 50%;
+}
+
+.bd-face-btn.white i {
+  background: radial-gradient(circle at 35% 30%, #ffffff, #d9ccb0);
+  box-shadow: 0 0 0 2px #c99d50;
+}
+
+.bd-face-btn.black i {
+  background: radial-gradient(circle at 35% 30%, #6c618f, #120f1a);
+  box-shadow: 0 0 0 2px #a796de;
+}
+
+.bd-face-btn.on {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+
+.bd-face-btn.white.on i {
+  box-shadow: 0 0 0 2px #e8c27a, 0 0 12px rgba(232, 194, 122, 0.85);
+}
+
+.bd-face-btn.black.on i {
+  box-shadow: 0 0 0 2px #c8b8ff, 0 0 12px rgba(167, 150, 222, 0.9);
+}
+
+.bd-body {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* A type's band: its colour, its line from level 1 to 3, the top of the line glowing behind. */
+.bd-band {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: 16px 22px 24px;
+  border-radius: 20px;
+  background:
+    linear-gradient(100deg, color-mix(in srgb, var(--line) 15%, transparent), transparent 55%),
+    linear-gradient(180deg, rgba(30, 27, 44, 0.86), rgba(16, 14, 24, 0.92));
+  border: 1px solid color-mix(in srgb, var(--line) 32%, transparent);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  animation: bd-rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--b, 0) * 80ms) backwards;
+}
+
+.bd-band::before {
+  content: '';
+  position: absolute;
+  z-index: -2;
+  top: -40%;
+  bottom: -40%;
+  left: -12%;
+  width: 50%;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--line) 22%, transparent), transparent);
+  pointer-events: none;
+}
+
+.bd-spells {
+  --line: #a77bff;
+  --line-hi: #dccaff;
+  --line-lo: #47238f;
+  --line-ink: #fdfaff;
+  container-type: inline-size;
+}
+
+.bd-band-glow {
+  position: absolute;
+  z-index: -1;
+  top: 50%;
+  right: 0;
+  width: min(46%, 440px);
+  aspect-ratio: 1;
+  translate: 12% -50%;
+  background: var(--art) center / contain no-repeat;
+  image-rendering: pixelated;
+  opacity: 0.18;
+  -webkit-mask-image: radial-gradient(closest-side, #000 35%, transparent);
+  mask-image: radial-gradient(closest-side, #000 35%, transparent);
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+
+.bd-band:hover .bd-band-glow {
+  opacity: 0.28;
+}
+
+.bd-band-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.bd-band-glyph {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: 50%;
+  font-family: 'Segoe UI Symbol', 'DejaVu Sans', sans-serif;
+  font-size: 21px;
+  line-height: 1;
+  color: var(--line-ink);
+  background: radial-gradient(circle at 35% 30%, var(--line-hi), var(--line) 55%, var(--line-lo));
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.45), 0 0 20px color-mix(in srgb, var(--line) 60%, transparent);
+}
+
+.bd-band-head h2 {
+  margin: 0;
+  font-family: 'Cinzel', var(--card-font);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--line-hi);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.6), 0 0 18px color-mix(in srgb, var(--line) 50%, transparent);
+}
+
+.bd-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  font-size: var(--bd-card);
+}
+
+.bd-spells .bd-row {
+  font-size: max(10px, min(var(--bd-card), calc((100cqw - 7 * 14px) / 80)));
+}
+
+.bd-singles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 22px;
+}
+
+.bd-card {
+  position: relative;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 0.72em;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+  perspective: 60em;
+  -webkit-tap-highlight-color: transparent;
+  animation: bd-deal 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--i, 0) * 32ms + 140ms) backwards;
+}
+
+.bd-card:hover {
+  filter: none;
+}
+
+.bd-card:focus-visible {
+  outline: 2px solid var(--line-hi, #e8c27a);
+  outline-offset: 4px;
+}
+
+.bd-frame {
+  transform: perspective(60em) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+  transition: transform 0.1s linear, translate 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s ease, opacity 0.15s ease;
+}
+
+.bd-card:hover .bd-frame,
+.bd-card:focus-visible .bd-frame {
+  translate: 0 -0.5em;
+  box-shadow:
+    0 0 0 0.06em var(--edge),
+    0 1.4em 2em rgba(0, 0, 0, 0.6),
+    0 0 1.6em color-mix(in srgb, var(--line, #e8c27a) 75%, transparent);
+}
+
+.bd-card:hover .g2-frame-shine,
+.bd-stage:hover .g2-frame-shine {
+  opacity: 1;
+}
+
+/* Its place while it is open big. */
+.bd-card.away .bd-frame,
+.bd-card.away .bd-copies {
+  opacity: 0;
+}
+
+/* Bottom left: the frame's sacrifice timer sits bottom right. */
+.bd-copies {
+  position: absolute;
+  left: -0.45em;
+  bottom: -0.45em;
+  z-index: 4;
+  padding: 0.2em 0.6em;
+  border-radius: 999px;
+  font-family: 'Cinzel', var(--card-font);
+  font-size: 0.95em;
+  font-weight: 700;
+  line-height: 1.1;
+  color: #2b1d05;
+  background: linear-gradient(180deg, #ffe7a3, #d4a24c);
+  box-shadow: 0 0 0 0.12em #2e200c, 0 0.3em 0.6em rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+/* Between the levels of a line: a bar of the type's colour with light running along it. */
+.bd-link {
+  position: relative;
+  flex: none;
+  width: 2.6em;
+  height: 0.42em;
+  margin-right: 0.35em;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, transparent 0 30%, var(--line-hi) 50%, transparent 70% 100%) 0 0 / 250% 100% no-repeat,
+    color-mix(in srgb, var(--line) 40%, transparent);
+  box-shadow: 0 0 0.8em color-mix(in srgb, var(--line) 55%, transparent);
+  animation: bd-flow 1.9s linear infinite;
+}
+
+.bd-link::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: -0.32em;
+  width: 0.85em;
+  height: 0.85em;
+  border-top: 0.24em solid var(--line-hi);
+  border-right: 0.24em solid var(--line-hi);
+  border-radius: 0.1em;
+  translate: 0 -50%;
+  rotate: 45deg;
+  filter: drop-shadow(0 0 0.3em var(--line));
+}
+
+@keyframes bd-flow {
+  from {
+    background-position: 160% 0, 0 0;
+  }
+  to {
+    background-position: -60% 0, 0 0;
+  }
+}
+
+.bd-fork {
+  display: flex;
+  align-items: center;
+  gap: 0.9em;
+}
+
+.bd-or {
+  font-family: 'Cinzel', var(--card-font);
+  font-size: 1.15em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--line-hi);
+  opacity: 0.75;
+}
+
+.bd-sep {
+  flex: none;
+  align-self: stretch;
+  width: 1px;
+  margin: 0.6em 0.8em;
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--line) 60%, transparent), transparent);
+}
+
+@keyframes bd-rise {
+  from {
+    opacity: 0;
+    translate: 0 24px;
+  }
+}
+
+@keyframes bd-deal {
+  from {
+    opacity: 0;
+    translate: 0 2.4em;
+    rotate: -4deg;
+    scale: 0.9;
+  }
+}
+
+/* One card, big: it turns over at a click; the arrows step through the rest. */
+.bd-zoom {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+}
+
+.bd-zoom-shade {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse at 40% 50%, rgba(34, 24, 66, 0.8), rgba(5, 4, 10, 0.94));
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  animation: bd-fade 0.3s ease backwards;
+  transition: opacity 0.3s ease;
+}
+
+.bd-zoom-body {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(28px, 5vw, 80px);
+  margin: auto;
+  padding: 32px 96px;
+  pointer-events: none;
+}
+
+.bd-zoom-body > * {
+  pointer-events: auto;
+}
+
+:where(.bd-stage, .bd-info) {
+  --line: #a77bff;
+  --line-hi: #dccaff;
+  --line-lo: #47238f;
+}
+
+.bd-stage {
+  position: relative;
+  isolation: isolate;
+  flex: none;
+  font-size: clamp(18px, min(2.9vw, 4.3vh), 34px);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Rays of the card's colour turning slowly behind it. */
+.bd-stage::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  top: 50%;
+  left: 50%;
+  width: 230%;
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  background:
+    radial-gradient(closest-side, color-mix(in srgb, var(--line) 50%, transparent), transparent 72%),
+    repeating-conic-gradient(color-mix(in srgb, var(--line-hi) 16%, transparent) 0deg 5deg, transparent 5deg 20deg);
+  -webkit-mask-image: radial-gradient(closest-side, #000 25%, transparent 80%);
+  mask-image: radial-gradient(closest-side, #000 25%, transparent 80%);
+  animation: g2-spin 70s linear infinite;
+  pointer-events: none;
+}
+
+.bd-tilt {
+  transform: perspective(70em) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+  transform-style: preserve-3d;
+  transition: transform 0.1s linear;
+}
+
+.bd-flip {
+  position: relative;
+  width: 10em;
+  height: 14em;
+  transform-style: preserve-3d;
+  transition: transform 0.65s cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+
+.bd-flip.flipped {
+  transform: rotateY(180deg);
+}
+
+.bd-front,
+.bd-backface {
+  position: absolute;
+  inset: 0;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+.bd-backface {
+  transform: rotateY(180deg);
+}
+
+.bd-zoom-frame {
+  box-shadow:
+    0 0 0 0.06em var(--edge),
+    0 1.6em 3em rgba(0, 0, 0, 0.7),
+    0 0 2.6em color-mix(in srgb, var(--line, #e8c27a) 45%, transparent);
+}
+
+.bd-info {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: min(360px, 32vw);
+  color: #d9d5ea;
+}
+
+.bd-info > * {
+  animation: bd-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--k, 0) * 70ms + 90ms) backwards;
+}
+
+@keyframes bd-in {
+  from {
+    opacity: 0;
+    translate: 18px 0;
+  }
+}
+
+.bd-name {
+  margin: 0;
+  font-family: 'Cinzel', var(--card-font);
+  font-size: clamp(26px, 2.6vw, 38px);
+  font-weight: 700;
+  line-height: 1.08;
+  letter-spacing: 0.04em;
+  color: var(--line-hi);
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.6), 0 0 26px color-mix(in srgb, var(--line) 60%, transparent);
+}
+
+.bd-info .g2-move-board {
+  width: min(100%, 230px);
+}
+
+.bd-info .g2-move-board .mark {
+  animation: g2-mark-in 0.34s cubic-bezier(0.2, 0.9, 0.3, 1.5) 0.3s backwards;
+}
+
+.bd-info .g2-move-board .hop {
+  animation: g2-hop-in 0.5s 0.4s ease-out backwards;
+}
+
+.bd-detail {
+  margin: 0;
+  font-family: 'Alegreya', var(--card-font);
+  font-size: 17px;
+  line-height: 1.42;
+  color: #efe6ff;
+}
+
+/* The card's line in small pictures, this card lit. */
+.bd-chain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bd-chain-level {
+  display: flex;
+  gap: 6px;
+}
+
+.bd-chain-arrow {
+  font-size: 22px;
+  line-height: 1;
+  color: var(--line-hi);
+  opacity: 0.6;
+}
+
+.bd-thumb {
+  position: relative;
+  width: 54px;
+  height: 54px;
+  padding: 0;
+  border-radius: 12px;
+  border: 2px solid color-mix(in srgb, var(--line) 40%, transparent);
+  background: #15131f center / cover no-repeat;
+  image-rendering: pixelated;
+  opacity: 0.5;
+  transition: opacity 0.2s ease, translate 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.bd-thumb:hover {
+  filter: none;
+  opacity: 0.9;
+  translate: 0 -2px;
+}
+
+.bd-thumb.on {
+  opacity: 1;
+  border-color: var(--line-hi);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.5), 0 0 18px color-mix(in srgb, var(--line) 70%, transparent);
+}
+
+.bd-thumb b {
+  position: absolute;
+  right: 4px;
+  bottom: 1px;
+  font-family: 'Cinzel', var(--card-font);
+  font-size: 11px;
+  color: #fff;
+  text-shadow: 0 1px 2px #000, 0 0 4px #000;
+}
+
+.bd-nav,
+.bd-close {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 50%;
+  color: #f5e3b3;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  line-height: 1;
+  animation: bd-fade 0.3s ease 0.15s backwards;
+  transition: background 0.2s ease, scale 0.2s ease, opacity 0.18s ease;
+}
+
+.bd-nav:hover,
+.bd-close:hover {
+  filter: none;
+  background: rgba(255, 255, 255, 0.14);
+  scale: 1.08;
+}
+
+.bd-nav {
+  position: fixed;
+  top: 50%;
+  width: 54px;
+  height: 54px;
+  padding-bottom: 5px;
+  font-size: 36px;
+  translate: 0 -50%;
+}
+
+.bd-nav.prev {
+  left: max(16px, 2.5vw);
+}
+
+.bd-nav.next {
+  right: max(16px, 2.5vw);
+}
+
+.bd-close {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  width: 44px;
+  height: 44px;
+  padding-bottom: 3px;
+  font-size: 28px;
+}
+
+.bd-zoom.closing .bd-zoom-shade,
+.bd-zoom.closing .bd-info,
+.bd-zoom.closing .bd-nav,
+.bd-zoom.closing .bd-close {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.bd-zoom.closing .bd-info {
+  transition: opacity 0.18s ease;
+}
+
+@keyframes bd-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (max-width: 899px) {
+  .bd {
+    --bd-card: 10px;
+    padding: 0 12px 96px;
+  }
+
+  .bd-head {
+    gap: 8px;
+    padding: 10px 0 16px;
+  }
+
+  .bd-back {
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+
+  .bd-title {
+    font-size: 26px;
+  }
+
+  .bd-body {
+    gap: 14px;
+  }
+
+  .bd-band {
+    padding: 12px 0 6px;
+    border-radius: 16px;
+  }
+
+  .bd-band-head {
+    margin: 0 14px 6px;
+  }
+
+  .bd-band-glyph {
+    width: 30px;
+    height: 30px;
+    font-size: 17px;
+  }
+
+  .bd-band-head h2 {
+    font-size: 17px;
+  }
+
+  /* Each band scrolls sideways. */
+  .bd-row,
+  .bd-spells .bd-row {
+    flex-wrap: nowrap;
+    gap: 10px;
+    padding: 10px 14px 16px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    font-size: var(--bd-card);
+  }
+
+  .bd-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  .bd-singles {
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .bd-band-glow {
+    width: 70%;
+  }
+
+  .bd-zoom-body {
+    flex-direction: column;
+    gap: 22px;
+    padding: 64px 18px 36px;
+  }
+
+  .bd-stage {
+    font-size: min(5.4vw, 3.4vh);
+  }
+
+  .bd-info {
+    width: min(100%, 420px);
+    align-items: center;
+    text-align: center;
+  }
+
+  .bd-info .g2-move {
+    align-items: center;
+  }
+
+  .bd-name {
+    font-size: 26px;
+  }
+
+  .bd-detail {
+    font-size: 15.5px;
+  }
+
+  .bd-nav {
+    top: calc(64px + min(5.4vw, 3.4vh) * 7);
+    width: 42px;
+    height: 42px;
+    font-size: 28px;
+  }
+
+  .bd-nav.prev {
+    left: 8px;
+  }
+
+  .bd-nav.next {
+    right: 8px;
+  }
+
+  .bd-close {
+    top: 12px;
+    right: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bd-aurora,
+  .bd-band,
+  .bd-card,
+  .bd-link,
+  .bd-stage::before,
+  .bd-info > *,
+  .bd-info .g2-move-board .mark,
+  .bd-info .g2-move-board .hop,
+  .bd-zoom-shade,
+  .bd-nav,
+  .bd-close {
+    animation: none !important;
+  }
+
+  .bd-flip,
+  .bd-frame {
+    transition: none;
+  }
+}
+
+/* ------------------------------------------------------------ arena: the card library */
+.g2-lib {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.g2-lib-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.g2-lib-sides {
+  display: flex;
+  gap: 5px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.g2-lib-side {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  opacity: 0.4;
+  transition: opacity 0.2s ease, scale 0.2s ease, box-shadow 0.2s ease;
+}
+
+.g2-lib-side:hover {
+  filter: none;
+  opacity: 0.75;
+}
+
+.g2-lib-side.white {
+  background: radial-gradient(circle at 35% 30%, #ffffff, #d9ccb0);
+  box-shadow: 0 0 0 2px #c99d50;
+}
+
+.g2-lib-side.black {
+  background: radial-gradient(circle at 35% 30%, #6c618f, #120f1a);
+  box-shadow: 0 0 0 2px #a796de;
+}
+
+.g2-lib-side.on {
+  opacity: 1;
+  scale: 1.1;
+}
+
+.g2-lib-side.white.on {
+  box-shadow: 0 0 0 2px #e8c27a, 0 0 12px rgba(232, 194, 122, 0.85);
+}
+
+.g2-lib-side.black.on {
+  box-shadow: 0 0 0 2px #c8b8ff, 0 0 12px rgba(167, 150, 222, 0.9);
+}
+
+.g2-lib-tools {
+  display: flex;
+  gap: 4px;
+}
+
+.g2-lib-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 7px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.g2-lib-tool svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+.g2-lib-tool.reset:hover {
+  filter: none;
+  color: #ffc2b8;
+  border-color: rgba(255, 120, 100, 0.65);
+}
+
+.g2-lib-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Each evolution line on a row of its own, from level 1; the spells after a rule. */
+.g2-lib-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.g2-lib-row:not(:has(.spell)) + .g2-lib-row:has(.spell) {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(167, 123, 255, 0.25);
+}
+
+.g2-lib-tile {
+  position: relative;
+  aspect-ratio: 1;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 10px;
+  background: #15131f;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  transition: translate 0.15s ease, scale 0.15s ease, box-shadow 0.15s ease, opacity 0.2s ease, filter 0.2s ease;
+}
+
+.g2-lib-tile.spell {
+  --line: #a77bff;
+  --line-hi: #dccaff;
+}
+
+/* The rim in the type's colour, over the picture; a shade at the foot for the level. */
+.g2-lib-tile::before,
+.g2-lib-tile::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.g2-lib-tile::before {
+  background: linear-gradient(180deg, transparent 55%, rgba(8, 6, 12, 0.75));
+}
+
+.g2-lib-tile::after {
+  z-index: 2;
+  box-shadow:
+    inset 0 0 0 2px var(--line, #8f8ca6),
+    inset 0 0 10px color-mix(in srgb, var(--line, #8f8ca6) 45%, transparent);
+}
+
+.g2-lib-art {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: center / cover no-repeat;
+  image-rendering: pixelated;
+  font-family: 'Cinzel', var(--card-font);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--line-hi, #fff);
+  transition: scale 0.25s ease;
+}
+
+.g2-lib-cost {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  color: #fff;
+  background: radial-gradient(circle at 30% 25%, #9ad4ff, #2a74d0 60%, #143a7a);
+  box-shadow: 0 0 0 1.5px #0b1d3d, 0 0 6px rgba(90, 180, 255, 0.7);
+}
+
+.g2-lib-level {
+  position: absolute;
+  right: 5px;
+  bottom: 2px;
+  z-index: 3;
+  font-family: 'Cinzel', var(--card-font);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--line-hi, #fff);
+  text-shadow: 0 1px 2px #000;
+}
+
+.g2-lib-tile:hover {
+  filter: none;
+  translate: 0 -2px;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5), 0 0 14px color-mix(in srgb, var(--line, #8f8ca6) 60%, transparent);
+}
+
+.g2-lib-tile:hover .g2-lib-art {
+  scale: 1.1;
+}
+
+.g2-lib-tile:active {
+  translate: none;
+  scale: 0.95;
+}
+
+.g2-lib-tile:focus-visible {
+  outline: 2px solid var(--line-hi, #fff);
+  outline-offset: 2px;
+}
+
+.g2-lib-tile.lifted {
+  opacity: 0.3;
+  filter: grayscale(0.8);
+}
+
+.g2-lib-hint {
+  font-size: 11.5px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.g2-card.g2-drag-ghost.g2-lib-ghost {
+  font-size: 12px;
+}
+
+/* Arena: any piece can be picked up and moved anywhere, or taken off the board. */
+.g2-cell.grab {
+  cursor: grab;
+  touch-action: none;
+}
+
+.g2-cell.arena-over {
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.85), inset 0 0 2.6cqw rgba(232, 194, 122, 0.7);
+}
+
+/* The square a library card is held over: it is summoned there. */
+.g2-cell.lib-drop {
+  box-shadow: inset 0 0 0 4px #fff, inset 0 0 3.4cqw rgba(160, 255, 200, 0.95);
+}
+
+.g2-cell.lib-drop::after {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  inset: 3%;
+  border-radius: 50%;
+  border: 3px dashed rgba(255, 255, 255, 0.95);
+  box-shadow: 0 0 2cqw rgba(160, 255, 200, 0.9);
+  pointer-events: none;
+  animation: g2-spin 1.8s linear infinite;
+}
+
+.g2-player.lib-drop {
+  border-color: #9ff0c0;
+  box-shadow: 0 0 0 2px rgba(110, 240, 160, 0.5), 0 0 26px rgba(110, 240, 160, 0.45), 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.g2-pile.lib-drop {
+  outline: 2px solid #c8b8ff;
+  outline-offset: 2px;
+  box-shadow: 0 0 16px rgba(167, 123, 255, 0.85);
+}
+
+.g2-hand.lib-drop .g2-handrow {
+  border-radius: 14px;
+  background: rgba(110, 240, 160, 0.06);
+  box-shadow: inset 0 0 0 2px rgba(110, 240, 160, 0.7), 0 0 24px rgba(110, 240, 160, 0.35);
+}
+
+/* A piece held off the board is taken away when let go. */
+.g2-piece.g2-piece-ghost.off {
+  opacity: 0.65;
+  filter: grayscale(0.6) drop-shadow(0 0 0.35em rgba(255, 80, 70, 0.95));
+}
+
+.g2-piece.g2-piece-ghost.poof {
+  opacity: 0;
+  scale: 1.7;
+  filter: blur(4px) brightness(2);
+  transition: opacity 0.3s ease, scale 0.3s ease, filter 0.3s ease;
+}
+
+.g2-arena .g2-mana {
+  padding: 2px 3px;
+}
+
+.g2-mana-step {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(120, 200, 255, 0.55);
+  background: rgba(40, 110, 200, 0.35);
+  color: #e3f3ff;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.g2-mana-step:hover {
+  filter: none;
+  background: rgba(70, 150, 240, 0.6);
+}
+
+.g2-mana-step:active {
+  scale: 0.88;
+}
+
+.g2-inspect-action.remove {
+  border: 1px solid rgba(255, 110, 100, 0.8);
+  background: linear-gradient(180deg, #6e1d1a, #3a0f0d);
+  color: #ffd9d4;
+}
+
+/* Phones: one row of cards under the hand that scrolls sideways; a pull up takes a card out. */
+@media (max-width: 899px) {
+  .g2-lib {
+    order: 4;
+    flex: none;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 8px;
+    border-radius: 10px;
+  }
+
+  .g2-lib-head {
+    flex: none;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .g2-lib-tools {
+    gap: 3px;
+  }
+
+  .g2-lib-tool {
+    padding: 5px 6px;
+  }
+
+  .g2-lib-tool span,
+  .g2-lib-hint {
+    display: none;
+  }
+
+  .g2-lib-grid {
+    flex: 1;
+    flex-direction: row;
+    min-width: 0;
+    padding: 4px 2px 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .g2-lib-grid::-webkit-scrollbar {
+    display: none;
+  }
+
+  .g2-lib-row {
+    display: contents;
+  }
+
+  .g2-lib-tile {
+    flex: none;
+    width: 54px;
+    touch-action: pan-x;
+  }
+
+  .g2-card.g2-drag-ghost.g2-lib-ghost {
+    font-size: 8px;
+  }
+
+  .g2-mana-step {
+    width: 18px;
+    height: 18px;
+    font-size: 13px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .g2-cell.lib-drop::after {
+    animation: none;
+  }
+
+  .g2-lib-tile,
+  .g2-lib-art {
+    transition: none;
   }
 }

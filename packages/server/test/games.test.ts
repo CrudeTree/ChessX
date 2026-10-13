@@ -299,6 +299,92 @@ describe('games against the bot', () => {
   });
 });
 
+describe('the arena', () => {
+  const S = v2.parseSquare;
+
+  function arena() {
+    const ctx = setup();
+    const game = ctx.games.createArena(ctx.alice.id);
+    const t = transport(ctx.alice.id);
+    game.attach(t);
+    return { ...ctx, game, t };
+  }
+
+  function lastView(t: ReturnType<typeof transport>): v2.PlayerView {
+    const m = [...t.messages].reverse().find((x) => x.type === 'stateV2');
+    if (m?.type !== 'stateV2') throw new Error('no state');
+    return m.view;
+  }
+
+  it('opens a v2 sandbox with just the Kings, memory only and played from both sides', () => {
+    const { db, games, alice, game, t } = arena();
+    expect(t.messages.find((m) => m.type === 'seated')).toMatchObject({ rules: 2, solo: true, arena: true });
+    expect(lastView(t).pieces.map((p) => p.name)).toEqual(['King', 'King']);
+    expect(Object.keys(lastView(t).cards)).toHaveLength(Object.keys(v2.STARTER_CATALOG).length);
+    expect(game.memoryOnly).toBe(true);
+    expect(db.gameById(game.id)).toBeUndefined();
+    expect(games.summariesFor(alice.id)).toEqual([]);
+  });
+
+  it('places and gives cards, and Undo steps back over edits and moves alike', () => {
+    const { game, t } = arena();
+    game.arenaOp(t, { type: 'place', cardId: 'warrior', color: 'white', square: S('a4') });
+    game.arenaOp(t, { type: 'give', cardId: 'smite', color: 'black' });
+    game.actV2(t, { type: 'move', from: S('a4'), to: S('a6') });
+    expect(lastView(t).you).toBe('black');
+    expect(lastView(t).hand?.map((c) => c.cardId)).toContain('smite');
+
+    game.arenaOp(t, { type: 'undo' });
+    expect(lastView(t).active).toBe('white');
+    expect(lastView(t).pieces.find((p) => p.square === S('a4'))?.cardId).toBe('warrior');
+    expect(lastView(t).events).toEqual([]);
+    game.arenaOp(t, { type: 'undo' });
+    expect(game.record!.state.hand.black).toEqual([]);
+    game.arenaOp(t, { type: 'undo' });
+    expect(game.record!.state.pieces).toHaveLength(2);
+    const seq = game.record!.seq;
+    game.arenaOp(t, { type: 'undo' });
+    expect(game.record!.seq).toBe(seq);
+  });
+
+  it('resets to the empty board, which Undo can take back', () => {
+    const { game, t } = arena();
+    game.arenaOp(t, { type: 'place', cardId: 'mage', color: 'black', square: S('c5') });
+    game.arenaOp(t, { type: 'pass' });
+    game.arenaOp(t, { type: 'reset' });
+    expect(game.record!.state.pieces).toHaveLength(2);
+    expect(game.record!.state.active).toBe('white');
+    game.arenaOp(t, { type: 'undo' });
+    expect(game.record!.state.active).toBe('black');
+    expect(v2.pieceAt(game.record!.state, S('c5'))?.cardId).toBe('mage');
+  });
+
+  it('refuses what it cannot do with a message, and works nowhere but the arena', () => {
+    const { games, alice, bob, game, t } = arena();
+    expect(() => game.arenaOp(t, { type: 'place', cardId: 'warrior', color: 'white', square: S('d1') })).toThrow(/King/);
+    expect(() => game.arenaOp(t, { type: 'teleport' })).toThrow(GameError);
+    expect(() => game.arenaOp(t, { type: 'give', cardId: 'pawn', color: 'white' })).toThrow(GameError);
+    expect(() => game.arenaOp(transport(bob.id), { type: 'pass' })).toThrow(GameError);
+    const practice = games.create(alice.id, true, []);
+    expect(() => practice.arenaOp(t, { type: 'pass' })).toThrow('That only works in the arena.');
+  });
+
+  it('stays for a reload, and opening another drops the one you left', () => {
+    const { games, alice, game, t } = arena();
+    game.detach(t);
+    expect(games.get(game.id)).toBe(game);
+    const again = games.createArena(alice.id);
+    expect(games.get(game.id)).toBeUndefined();
+    expect(games.get(again.id)).toBe(again);
+
+    const practice = games.create(alice.id, true, []);
+    const p = transport(alice.id);
+    practice.attach(p);
+    practice.detach(p);
+    expect(games.get(practice.id)).toBeUndefined();
+  });
+});
+
 describe('chat', () => {
   const GIF = { url: 'https://static.klipy.com/ii/ffd4ac143e63/e8/3a/y1i7SXbN.webp', width: 220, height: 180, title: 'Happy dance' };
 

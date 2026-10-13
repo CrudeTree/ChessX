@@ -1,4 +1,4 @@
-import type { Action, ArenaOp, Balance, Color, GameStatus, Piece, PlayerView, v2 } from '@chessx/engine';
+import type { Action, Balance, Color, GameStatus, Piece, PlayerView, v2 } from '@chessx/engine';
 
 export const PROTOCOL_VERSION = 3;
 
@@ -233,12 +233,12 @@ export type ClientMessage =
   | { type: 'createGame'; deckSlot: number }
   /** Practice game: you control both sides (the chosen deck is used for both). */
   | { type: 'createSolo'; deckSlot: number }
-  /** Testing arena: empty sandbox board. Memory only, no rewards, no deck required. */
+  /** The arena: a sandbox board with just the Kings, where any card can be tried. Memory only, no rewards. */
   | { type: 'createArena' }
   /** A game against the computer at `level`, you playing `color`. Memory only, like practice: no clock, no rewards. */
   | { type: 'createBot'; level: v2.BotLevel; color: Color | 'random' }
-  /** Place or grant something in the testing arena. */
-  | { type: 'arenaSetup'; op: ArenaOp }
+  /** Place, give, move or remove something in the arena, set mana, pass, undo or reset. */
+  | { type: 'arenaV2'; op: v2.ArenaOp }
   | { type: 'joinGame'; code: string; deckSlot: number }
   /** Open one of your games in this tab. */
   | { type: 'openGame'; gameId: string }

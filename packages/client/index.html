@@ -81,7 +81,7 @@
               Deck
               <select id="deck-select"></select>
             </label>
-            <button id="open-binder" class="hx-navbtn">Binder <span id="binder-new" class="pill hidden"></span></button>
+            <button id="open-binder" class="hx-navbtn">Binder</button>
             <button id="open-editor" class="hx-navbtn hidden" title="Admin: edit card and piece numbers">Card editor</button>
             <button id="logout" class="hx-navbtn quiet">Sign out</button>
           </nav>
@@ -150,30 +150,8 @@
       </div>
     </div>
 
-    <!-- Binder: your collection and decks -->
-    <div id="binder" class="screen hidden">
-      <header class="binder-header">
-        <button id="binder-back">← Back</button>
-        <h1>Binder</h1>
-        <div class="binder-stats" id="binder-stats"></div>
-      </header>
-      <div class="binder-body">
-        <section class="collection">
-          <h2 class="section-title">Your collection <span id="collection-count" class="muted"></span></h2>
-          <div id="collection-grid" class="card-grid"></div>
-        </section>
-        <section class="deck-editor">
-          <div class="deck-tabs" id="deck-tabs"></div>
-          <div class="deck-head">
-            <input id="deck-name" maxlength="24" placeholder="Deck name" />
-            <span id="deck-count" class="deck-count"></span>
-            <button id="deck-save" class="primary" disabled>Save</button>
-          </div>
-          <p id="deck-msg" class="hint"></p>
-          <div id="deck-list" class="deck-list"></div>
-        </section>
-      </div>
-    </div>
+    <!-- Binder: every card in the game, built by src/binder.ts -->
+    <div id="binder" class="screen hidden"></div>
 
     <!-- Card editor (admin only): tweak any number on any card or piece -->
     <div id="editor" class="screen hidden">
@@ -306,25 +284,12 @@
         <button data-sheet="inspect"><span>Card</span><small id="m-card-name"></small></button>
         <button data-sheet="side"><span>Game</span></button>
         <button data-sheet="chat"><span>Chat</span><small id="m-chat-badge"></small></button>
-        <button id="arena-tab" class="hidden" data-sheet="arena"><span>Cards</span></button>
       </div>
       <div id="sheet-backdrop" class="sheet-backdrop hidden"></div>
     </div>
 
     <!-- The game, v2 rules: built by src/v2/GameScreen.ts -->
     <div id="game2" class="screen hidden"></div>
-
-    <div id="arena" class="arena hidden">
-      <div class="arena-head">
-        <div class="label">Cards</div>
-        <div class="arena-toggles">
-          <button id="arena-white" class="active" type="button">White</button>
-          <button id="arena-black" type="button">Black</button>
-        </div>
-      </div>
-      <input id="arena-search" placeholder="Search…" />
-      <div id="arena-list" class="arena-list"></div>
-    </div>
 
     <!-- The game chat: built by src/chat.ts, moved into place by main.ts -->
     <div id="chat" class="chat hidden"></div>
