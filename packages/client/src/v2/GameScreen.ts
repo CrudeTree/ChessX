@@ -3,7 +3,7 @@
 
 import { v2 } from '@chessx/engine';
 import type { ChatMessage, RoomInfo } from '@chessx/protocol';
-import { cardBack, fillFrame, hourglass, tiltWithPointer, type FrameCard } from './cardFrame.js';
+import { cardBack, fillFrame, hourglass, tiltWithPointer, tribeClass, type FrameCard } from './cardFrame.js';
 import { BoardFx, CARD_DIVE_MS, LAVA_FLIGHT_MS, SPELL_HOLD_MS, SPELL_LANDS_MS, type BannerTone } from './fx.js';
 import { describeEvents, type PieceMemory } from './log.js';
 import { movementPanel } from './movement.js';
@@ -62,6 +62,11 @@ const GLYPHS: Record<string, string> = {
 export const glyphFor = (kind: string, name: string): string => GLYPHS[kind] ?? (name[0] ?? '?').toUpperCase();
 /** A piece's level in its evolution line, as printed on its token. */
 const LEVEL_MARK = ['', 'I', 'II', 'III'];
+/**
+ * The chess piece each line moves like, on the badge of every piece in it (Djabooty, 2026-10-12). A piece in no line
+ * shows its own glyph: the Squire's pawn, the Initiate's cross, the Duskfang's moon.
+ */
+const LINE_GLYPH: Record<string, string> = { Warrior: '♜', Mage: '♝', Paladin: '♞', Dragon: '♛' };
 /** How hard an evolution lands (0 to 1): the final forms slam. */
 const evolveForce = (card: v2.ViewCard | undefined): number => ((card?.level ?? 2) >= 3 ? 1 : 0.6);
 /** Picture window of a spell card that has no picture yet. */
@@ -766,10 +771,17 @@ export class GameScreen {
     const card = piece.cardId ? view.cards[piece.cardId] : undefined;
     const boardArt = card ? v2.faceArt(card, piece.owner).boardArt : undefined;
     const state = `${piece.active ? '' : ' sick'}${piece.shielded ? ' shielded' : ''}${piece.frozen ? ' frozen' : ''}`;
-    const tok = el('div', `g2-piece ${piece.owner}${piece.king ? ' king' : ''}${state}${boardArt ? ' art' : ''}`);
+    const tribe = card?.tribe ? ` ${tribeClass(card.tribe)}` : '';
+    const tok = el('div', `g2-piece ${piece.owner}${piece.king ? ' king' : ''}${tribe}${state}${boardArt ? ' art' : ''}`);
     if (boardArt) tok.style.backgroundImage = `url("${boardArt}")`;
     else tok.append(el('span', 'g2-piece-glyph', glyphFor(piece.kind, piece.name)));
-    if (card?.level) tok.append(el('span', 'g2-piece-level', LEVEL_MARK[card.level] ?? String(card.level)));
+    // The badge: what the piece moves like and its level, in its type's colour.
+    if (card) {
+      const badge = el('span', 'g2-piece-badge');
+      badge.append(el('span', 'g2-piece-family', (card.line && LINE_GLYPH[card.line]) || glyphFor(piece.kind, piece.name)));
+      if (card.level) badge.append(LEVEL_MARK[card.level] ?? String(card.level));
+      tok.append(badge);
+    }
     // An ember on a piece that has Lava Breath, burning bright while it can spit.
     if (piece.abilities?.includes('lavaBreath')) tok.append(el('span', `g2-piece-ember${this.canSpit(piece.square) ? ' ready' : ''}`));
     if (piece.shielded) tok.append(el('span', 'g2-piece-shield'));

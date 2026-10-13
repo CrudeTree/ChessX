@@ -36,6 +36,12 @@ export interface FrameCard {
   rules?: ReadonlyArray<v2.MoveRule>;
 }
 
+/**
+ * Every type has its own colour (Djabooty, 2026-10-12), set by this class on a card and on a piece's token:
+ * `tribe-warrior`, `tribe-dragon`... so pieces tell apart from across the board.
+ */
+export const tribeClass = (tribe: string | undefined): string => (tribe ? `tribe-${tribe.toLowerCase()}` : '');
+
 /** "Dragon · Level 2", "Beast", "Dragon Spell": every card shows its type (Djabooty, 2026-10-11). */
 function typeLine(card: FrameCard): string {
   if (card.kind === 'king') return 'King · not a card';
@@ -254,6 +260,7 @@ document.fonts?.addEventListener('loadingdone', refitAll);
 /** Draw `card` into `root`. */
 export function fillFrame(root: HTMLElement, card: FrameCard): HTMLElement {
   root.classList.add('g2-frame', `g2-frame-${card.kind}`);
+  if (card.tribe) root.classList.add(tribeClass(card.tribe));
   const inner = el('div', 'g2-frame-inner');
   const name = el('div', 'g2-frame-name');
   name.append(el('span', '', card.name));

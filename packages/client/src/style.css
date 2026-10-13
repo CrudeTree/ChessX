@@ -5089,9 +5089,10 @@ body.g2-grabbing * {
   pointer-events: none;
   color: #3b2a16;
   background: radial-gradient(circle at 34% 28%, #ffffff 0%, #f4eddd 36%, #dccfb2 70%, #bba985 100%);
+  /* The ring is in the piece's type colour (--line); the King, which has no type, keeps its side's. */
   box-shadow:
-    0 0 0 0.08em #c99d50,
-    0 0 0 0.13em #3b2a12,
+    0 0 0 0.1em var(--line, #c99d50),
+    0 0 0 0.15em #3b2a12,
     0 0.14em 0.26em rgba(0, 0, 0, 0.55),
     inset 0 -0.08em 0.16em rgba(90, 60, 20, 0.35),
     inset 0 0.06em 0.08em rgba(255, 255, 255, 0.9);
@@ -5106,8 +5107,8 @@ body.g2-grabbing * {
   color: #efe9ff;
   background: radial-gradient(circle at 34% 28%, #6c618f 0%, #383150 38%, #1d1929 72%, #0d0b13 100%);
   box-shadow:
-    0 0 0 0.08em #a796de,
-    0 0 0 0.13em #120e1b,
+    0 0 0 0.1em var(--line, #a796de),
+    0 0 0 0.15em #120e1b,
     0 0.14em 0.26em rgba(0, 0, 0, 0.6),
     inset 0 -0.08em 0.16em rgba(0, 0, 0, 0.5),
     inset 0 0.06em 0.08em rgba(255, 255, 255, 0.35);
@@ -5119,8 +5120,8 @@ body.g2-grabbing * {
 
 .g2-piece.king {
   box-shadow:
-    0 0 0 0.08em #e2b75e,
-    0 0 0 0.13em #3b2a12,
+    0 0 0 0.1em #e2b75e,
+    0 0 0 0.15em #3b2a12,
     0 0.14em 0.26em rgba(0, 0, 0, 0.55),
     0 0 0.55em rgba(255, 205, 110, 0.7),
     inset 0 -0.08em 0.16em rgba(90, 60, 20, 0.35),
@@ -5129,8 +5130,8 @@ body.g2-grabbing * {
 
 .g2-piece.black.king {
   box-shadow:
-    0 0 0 0.08em #c4b2ff,
-    0 0 0 0.13em #120e1b,
+    0 0 0 0.1em #c4b2ff,
+    0 0 0 0.15em #120e1b,
     0 0.14em 0.26em rgba(0, 0, 0, 0.6),
     0 0 0.55em rgba(180, 140, 255, 0.75),
     inset 0 -0.08em 0.16em rgba(0, 0, 0, 0.5),
@@ -5145,27 +5146,86 @@ body.g2-grabbing * {
   image-rendering: pixelated;
 }
 
-/* A piece's level in its evolution line: I, II or III. */
-.g2-piece-level {
+/*
+ * A type's colours (Djabooty, 2026-10-12), on its cards and its pieces: --line for the ring and the badge, --line-hi
+ * and --line-lo to shade them, --line-ink for writing on the badge and --line-band behind the card's type line.
+ */
+.tribe-warrior {
+  --line: #e0503f;
+  --line-hi: #ffad9f;
+  --line-lo: #7c1a10;
+  --line-ink: #fff4f0;
+  --line-band: rgba(224, 80, 63, 0.3);
+}
+
+.tribe-mage {
+  --line: #a77bff;
+  --line-hi: #dccaff;
+  --line-lo: #47238f;
+  --line-ink: #fdfaff;
+  --line-band: rgba(167, 123, 255, 0.3);
+}
+
+.tribe-paladin {
+  --line: #e8b84a;
+  --line-hi: #ffe7a3;
+  --line-lo: #7a5410;
+  --line-ink: #2b1d05;
+  --line-band: rgba(232, 184, 74, 0.28);
+}
+
+.tribe-dragon {
+  --line: #46c96f;
+  --line-hi: #aef2c2;
+  --line-lo: #135c2a;
+  --line-ink: #04210d;
+  --line-band: rgba(70, 201, 111, 0.28);
+}
+
+.tribe-beast {
+  --line: #4cb4f0;
+  --line-hi: #b8e4ff;
+  --line-lo: #11507a;
+  --line-ink: #031d33;
+  --line-band: rgba(76, 180, 240, 0.28);
+}
+
+.tribe-zealot {
+  --line: #cfc5b0;
+  --line-hi: #f6f1e6;
+  --line-lo: #6b6252;
+  --line-ink: #2a2418;
+  --line-band: rgba(207, 197, 176, 0.24);
+}
+
+/* A piece's badge: the chess piece its line moves like (♜ ♝ ♞ ♛, or its own) and its level, I to III. */
+.g2-piece-badge {
   position: absolute;
-  right: -0.12em;
-  bottom: -0.08em;
-  min-width: 1.6em;
-  height: 1.6em;
-  padding: 0 0.32em;
+  right: -0.14em;
+  bottom: -0.1em;
+  min-width: 1.7em;
+  height: 1.7em;
+  padding: 0 0.3em;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 0.8em;
+  gap: 0.1em;
+  border-radius: 0.85em;
   font-family: Georgia, 'Times New Roman', serif;
-  font-size: max(8px, 0.3em);
+  font-size: max(9px, 0.32em);
   font-weight: 700;
   line-height: 1;
-  color: #fff6dc;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
-  background: radial-gradient(circle at 35% 30%, #d9a548, #7a4e12 75%);
-  border: 1px solid #fbe3a4;
+  color: var(--line-ink, #fff6dc);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+  background: radial-gradient(circle at 35% 30%, var(--line-hi, #f0c46a), var(--line, #d9a548) 45%, var(--line-lo, #7a4e12) 100%);
+  border: 1px solid var(--line-hi, #fbe3a4);
   box-shadow: 0 0.1em 0.25em rgba(0, 0, 0, 0.6);
+}
+
+.g2-piece-family {
+  font-family: 'Segoe UI Symbol', 'DejaVu Sans', sans-serif;
+  font-size: 1.2em;
+  font-weight: 400;
 }
 
 /* Lava Breath: a flame on the piece, burning bright while it can spit. */
@@ -5355,7 +5415,7 @@ body.g2-grabbing * {
 .g2-piece.sick::after {
   content: '';
   position: absolute;
-  inset: -0.13em;
+  inset: -0.15em;
   border-radius: 50%;
   border: 0.06em dashed rgba(255, 255, 255, 0.75);
   animation: g2-spin 9s linear infinite;
@@ -5707,7 +5767,7 @@ body.g2-grabbing * {
   text-shadow: 0 0 0.12em hsl(var(--hue) 100% 75%), 0 0 0.45em hsl(var(--hue) 100% 60%), 0 0 0.9em hsl(var(--hue) 100% 55% / 0.7), 0 0.04em 0 #000;
 }
 
-/* The card's type ("Dragon · Level 2"), between two little rules. */
+/* The card's type ("Dragon · Level 2"), between two little rules, in the type's colour. */
 .g2-frame-type {
   flex: none;
   display: flex;
@@ -5722,9 +5782,15 @@ body.g2-grabbing * {
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink);
+  color: var(--line-hi, var(--ink));
   text-shadow: 0 0.08em 0 #000;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.07) 30%, rgba(255, 255, 255, 0.07) 70%, transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--line-band, rgba(255, 255, 255, 0.07)) 30%,
+    var(--line-band, rgba(255, 255, 255, 0.07)) 70%,
+    transparent
+  );
   border-top: 0.1em solid rgba(255, 228, 170, 0.28);
   border-bottom: 0.1em solid rgba(0, 0, 0, 0.6);
 }
@@ -8157,6 +8223,8 @@ body.g2-grabbing * {
     padding: 0.3em 0.3em 0.45em;
     border: 0;
     background: linear-gradient(180deg, transparent, rgba(8, 6, 12, 0.9) 45%);
+    /* The type line is hidden here, so a strip in the type's colour runs under the name instead. */
+    box-shadow: inset 0 -0.42em 0 var(--line, transparent);
   }
 
   .g2-card .g2-frame-name span {
