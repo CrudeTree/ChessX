@@ -11,6 +11,10 @@ import {
   legalActions,
   nextRecord,
   newGame,
+  newRecord,
+  stateAt,
+  viewAt,
+  type GameRecord,
   parseSquare,
   pieceAt,
   sealAt,
@@ -1143,6 +1147,61 @@ describe('the game log (Djabooty, 2026-10-11)', () => {
     const old = { state: r1.state, seq: 2, events: first.events };
     expect(viewFor(old, 'black', { history: true }).history).toEqual([first.events]);
     expect(nextRecord(old, second.state, second.events).history).toEqual([first.events, second.events]);
+  });
+});
+
+describe('looking back (Djabooty, 2026-10-13)', () => {
+  /** A random game played through a record, as the server plays it, ended by a resignation if still going. */
+  function played(seed: number, length: number): GameRecord {
+    let record = newRecord(game(seed));
+    let pick = seed * 104729;
+    for (let n = 0; n < length && record.state.status.kind === 'playing'; n++) {
+      const actions = legalActions(record.state);
+      pick = (pick * 1103515245 + 12345) & 0x7fffffff;
+      const result = applyLegalAction(record.state, actions[pick % actions.length]!);
+      record = nextRecord(record, result.state, result.events, result.action);
+    }
+    if (record.state.status.kind === 'playing') {
+      const status = { kind: 'resigned', winner: 'black' } as const;
+      record = nextRecord(record, { ...record.state, status }, [{ type: 'gameOver', status }], { type: 'end', status });
+    }
+    return record;
+  }
+
+  it('a record keeps every step, and replaying them comes back to the game as it is', () => {
+    for (let seed = 1; seed <= 4; seed++) {
+      const record = played(seed, 150);
+      expect(record.steps).toHaveLength(record.history!.length);
+      expect(viewFor(record, 'white').steps).toBe(record.steps!.length);
+      expect(stateAt(record, record.steps!.length)).toEqual(record.state);
+    }
+  });
+
+  it('shows any earlier position as it stood, with what that step did and nothing to play', () => {
+    const record = played(2, 60);
+    const known: GameState[] = [];
+    const start = viewAt(record, 0, 'white', false, known)!;
+    expect(start.events).toEqual([]);
+    expect(start.pieces).toEqual(viewFor({ state: game(2), seq: 1, events: [] }, 'white').pieces);
+    for (const step of [1, 7, 30]) {
+      const past = viewAt(record, step, 'white', false, known)!;
+      expect(past.events).toEqual(record.history![step - 1]);
+      expect(past.legalActions).toEqual([]);
+    }
+    // The states worked out on the way are kept, so stepping back replays nothing again.
+    expect(known.length).toBe(31);
+    expect(viewAt(record, record.steps!.length + 1, 'white')).toBeNull();
+    expect(viewAt(record, -1, 'white')).toBeNull();
+    expect(viewAt(record, 1.5, 'white')).toBeNull();
+  });
+
+  it('a game saved before steps were kept has none, and does not begin them halfway', () => {
+    const old = { state: game(5), seq: 1, events: [], history: [] };
+    const result = applyLegalAction(old.state, legalActions(old.state)[0]!);
+    const next = nextRecord(old, result.state, result.events, result.action);
+    expect(next.steps).toBeUndefined();
+    expect(viewFor(next, 'white').steps).toBeUndefined();
+    expect(viewAt(next, 0, 'white')).toBeNull();
   });
 });
 

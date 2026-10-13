@@ -258,6 +258,8 @@ export type ClientMessage =
   | { type: 'action'; action: Action }
   /** An action in a rules-2 game. Resigning is allowed at any time. */
   | { type: 'actionV2'; action: v2.Action | { type: 'resign' } }
+  /** Look back: ask for the rules-2 game as it stood after `step` steps (0: as it began). */
+  | { type: 'pastV2'; step: number }
   | { type: 'chat'; text: string; gif?: ChatGif }
   /** Detach this tab from its game (the game persists). */
   | { type: 'leave' };
@@ -277,6 +279,8 @@ export type ServerMessage =
   | { type: 'state'; view: PlayerView; clocks: Clocks }
   /** The same, for a rules-2 game. */
   | { type: 'stateV2'; view: v2.PlayerView; clocks: Clocks }
+  /** The rules-2 game as it stood after `step` steps, as you saw it then; nothing can be played in it. */
+  | { type: 'pastV2'; step: number; view: v2.PlayerView }
   /** One or more chat lines (the full history when opening a game). */
   | { type: 'chat'; messages: ChatMessage[] }
   /** A game you were in just finished and you earned something. */

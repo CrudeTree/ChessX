@@ -1,4 +1,4 @@
-import { incomeFor, isActive, isFrozen, isInCheck, isShielded, LAVA_COST, LAVA_TURNS, legalActions, SETUP_PIECES } from './engine.js';
+import { applyLegalAction, cloneState, incomeFor, isActive, isFrozen, isInCheck, isShielded, LAVA_COST, LAVA_TURNS, legalActions, SETUP_PIECES } from './engine.js';
 import {
   opposite,
   type Ability,
@@ -15,6 +15,9 @@ import {
   type Square,
 } from './types.js';
 
+/** One step of a game: an action, or the game ending without one (a resignation or a timeout). */
+export type Step = Action | { type: 'end'; status: GameStatus };
+
 /** What the server persists for a v2 game: the rules state plus what the last action did (for the log and replay). */
 export interface GameRecord {
   state: GameState;
@@ -27,6 +30,13 @@ export interface GameRecord {
    * (Djabooty, 2026-10-11). Games saved before it began keep only what happened since.
    */
   history?: GameEvent[][];
+  /**
+   * The game as it began, without its cards (they never change during a game), and the step behind each entry of
+   * `history`, so the game can be shown as it stood after any step (`stateAt`), for players looking back through it
+   * (Djabooty, 2026-10-13). Games begun before they were kept lack them.
+   */
+  start?: Omit<GameState, 'catalog'>;
+  steps?: Step[];
 }
 
 /** What spells can teach a piece, for the card viewer and the rules. */
@@ -146,6 +156,8 @@ export interface PlayerView {
   cards: Record<string, ViewCard>;
   /** Every action's events so far, oldest first; sent when asked for (`ViewOptions.history`). */
   history?: GameEvent[][];
+  /** How many steps the game can be looked back through (`viewAt`); missing for games begun before steps were kept. */
+  steps?: number;
 }
 
 export interface ViewOptions {
@@ -153,6 +165,8 @@ export interface ViewOptions {
   hotseat?: boolean;
   /** Include the whole game's events, for a player opening the game. */
   history?: boolean;
+  /** An earlier position, being looked back at: nothing can be played in it. */
+  past?: boolean;
 }
 
 const sortKey = (dirs: ReadonlyArray<readonly [number, number]>): string =>
@@ -282,14 +296,55 @@ export function viewFor(record: GameRecord, you: Color, opts: ViewOptions = {}):
     pitched: state.pitched === true,
     income: { white: incomeFor(nextTurn('white')), black: incomeFor(nextTurn('black')) },
     inCheck: playing && state.phase === 'play' && isInCheck(state, state.active),
-    legalActions: playing && state.active === viewer ? legalActions(state) : [],
+    legalActions: playing && !opts.past && state.active === viewer ? legalActions(state) : [],
     cards: viewCards(state.catalog),
     ...(opts.history ? { history: record.history ?? (record.events.length ? [record.events] : []) } : {}),
+    ...(record.start && record.steps ? { steps: record.steps.length } : {}),
   };
 }
 
-/** The record after an action: its events become the latest, and are added to the game's history. */
-export function nextRecord(record: GameRecord, state: GameState, events: GameEvent[]): GameRecord {
+/** A new game's record, which keeps its history and its steps from the start. */
+export function newRecord(state: GameState): GameRecord {
+  const { catalog, ...start } = cloneState(state);
+  return { state, seq: 1, events: [], history: [], start, steps: [] };
+}
+
+/** The record after a step: its events become the latest, and are added to the game's history, and the step to its steps. */
+export function nextRecord(record: GameRecord, state: GameState, events: GameEvent[], step?: Step): GameRecord {
   const before = record.history ?? (record.events.length ? [record.events] : []);
-  return { state, seq: record.seq + 1, events, history: [...before, events] };
+  const next: GameRecord = { state, seq: record.seq + 1, events, history: [...before, events] };
+  // Steps go on only beside a history that began with them, so the two always match.
+  if (record.start && record.steps && step && record.steps.length === before.length) {
+    next.start = record.start;
+    next.steps = [...record.steps, step];
+  }
+  return next;
+}
+
+/**
+ * The game as it stood after the first `step` steps of its record (0: as it began), or null when the record cannot
+ * show it: begun before steps were kept, or a step the rules no longer allow. `known` holds the states worked out so
+ * far, from the start, and is added to, so a player stepping back through a game replays each step only once.
+ */
+export function stateAt(record: GameRecord, step: number, known: GameState[] = []): GameState | null {
+  const { start, steps } = record;
+  if (!start || !steps || !Number.isInteger(step) || step < 0 || step > steps.length) return null;
+  if (!known.length) known.push({ ...start, catalog: record.state.catalog });
+  while (known.length <= step) {
+    const state = known[known.length - 1]!;
+    const next = steps[known.length - 1]!;
+    try {
+      known.push(next.type === 'end' ? { ...state, status: next.status } : applyLegalAction(state, next).state);
+    } catch {
+      return null;
+    }
+  }
+  return known[step]!;
+}
+
+/** `you`'s view of the game as it stood after `step` steps (see `stateAt`), with what that step did as its events. */
+export function viewAt(record: GameRecord, step: number, you: Color, hotseat = false, known?: GameState[]): PlayerView | null {
+  const state = stateAt(record, step, known);
+  if (!state) return null;
+  return viewFor({ state, seq: record.seq, events: record.history?.[step - 1] ?? [] }, you, { hotseat, past: true });
 }

@@ -6490,6 +6490,81 @@ body.g2-grabbing * {
   font-weight: 700;
 }
 
+/* Looking back through the game: what the step shown did. */
+.g2-status.review {
+  border-left-color: #7cc4ff;
+  color: #d7ecff;
+}
+
+/* The arrows that step back and forth through the game, and which step is shown. */
+.g2-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.g2-nav-btn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 34px;
+  padding: 0;
+}
+
+.g2-nav-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.g2-nav-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.g2-nav-count {
+  flex: 1;
+  text-align: center;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.g2-reviewing .g2-nav-count {
+  color: #bfe3ff;
+  font-weight: 700;
+}
+
+/* On the board's top edge while looking back. */
+.g2-live {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  translate: -50% -50%;
+  z-index: 8;
+  width: auto;
+  padding: 5px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(150, 210, 255, 0.85);
+  background: linear-gradient(180deg, rgba(30, 58, 96, 0.97), rgba(16, 30, 56, 0.97));
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5), 0 0 14px rgba(110, 190, 255, 0.35);
+  color: #d7ecff;
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.g2-live:hover {
+  background: linear-gradient(180deg, rgba(42, 80, 130, 0.97), rgba(22, 42, 76, 0.97));
+  color: #fff;
+}
+
+/* It is your turn in the game you are looking back through. */
+.g2-live.mine {
+  border-color: var(--ok);
+  animation: g2pulse 1.6s ease-in-out infinite;
+}
+
 .g2-end {
   font-size: 16px;
   padding: 12px;
@@ -6533,6 +6608,20 @@ body.g2-grabbing * {
 .g2-log .entry.important {
   color: var(--accent);
   font-weight: 600;
+}
+
+.g2-log .entry[data-step] {
+  cursor: pointer;
+}
+
+.g2-log .entry[data-step]:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* The step shown while looking back. */
+.g2-log .entry.shown {
+  background: rgba(110, 190, 255, 0.16);
+  color: #e6f3ff;
 }
 
 /* The chat sits under the log and takes the larger share of the column's spare height. */
@@ -8004,6 +8093,23 @@ body.g2-grabbing * {
   .g2-chat-btn svg {
     width: 22px;
     height: 22px;
+  }
+
+  /* Back and on only; the board's pill comes back to the game. */
+  .g2-nav {
+    flex: none;
+    gap: 4px;
+  }
+
+  .g2-nav-btn {
+    width: 34px;
+    height: 38px;
+  }
+
+  .g2-nav .first,
+  .g2-nav .live,
+  .g2-nav-count {
+    display: none;
   }
 
   .g2-chat-badge {

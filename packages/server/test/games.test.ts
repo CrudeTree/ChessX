@@ -155,6 +155,40 @@ describe('rules 2 games', () => {
     expect(latest.view.you).toBe('black'); // Black is now to move
     expect(db.gameById(game.id)).toBeUndefined();
   });
+
+  it('a player can look back at any earlier position, also after a restart (Djabooty, 2026-10-13)', () => {
+    const { db, games, alice, bob } = setup();
+    const game = games.create(alice.id, false, []);
+    game.join(bob.id, []);
+    const white = transport(game.row.white_user_id!);
+    const black = transport(game.row.black_user_id!);
+    game.attach(white);
+    game.attach(black);
+    const opening = game.record!.state.pieces.map((p) => p.square).sort();
+    game.actV2(white, pick(game.record!.state, (a) => a.type === 'move'));
+    game.actV2(black, pick(game.record!.state, (a) => a.type === 'move'));
+    const latest = [...white.messages].reverse().find((m) => m.type === 'stateV2');
+    expect(latest?.type === 'stateV2' && latest.view.steps).toBe(2);
+
+    const reloaded = new GameManager(db, (id) => db.userById(id)?.name ?? '?').get(game.id)!;
+    const again = transport(game.row.black_user_id!);
+    reloaded.attach(again);
+    reloaded.sendPast(again, 0);
+    reloaded.sendPast(again, 1);
+    const past = again.messages.filter((m) => m.type === 'pastV2');
+    expect(past.map((m) => m.type === 'pastV2' && m.step)).toEqual([0, 1]);
+    if (past[0]?.type !== 'pastV2' || past[1]?.type !== 'pastV2') throw new Error('no past');
+    expect(past[0].view.pieces.map((p) => p.square).sort()).toEqual(opening);
+    expect(past[0].view.you).toBe('black');
+    expect(past[1].view.events).toEqual(game.record!.history![0]);
+    expect(past[1].view.legalActions).toEqual([]);
+
+    // A step the game has not reached gets no answer; someone outside the game is refused.
+    reloaded.sendPast(again, 3);
+    expect(again.messages.filter((m) => m.type === 'pastV2')).toHaveLength(2);
+    const carol = db.createUser({ email: 'carol@x.test', name: 'Carol', password_hash: null, google_id: null, facebook_id: null, avatar_url: null });
+    expect(() => reloaded.sendPast(transport(carol.id), 0)).toThrow(GameError);
+  });
 });
 
 describe('cards, then a move that ends the turn (Djabooty, 2026-10-10)', () => {
@@ -321,6 +355,8 @@ describe('the arena', () => {
     expect(t.messages.find((m) => m.type === 'seated')).toMatchObject({ rules: 2, solo: true, arena: true });
     expect(lastView(t).pieces.map((p) => p.name)).toEqual(['King', 'King']);
     expect(Object.keys(lastView(t).cards)).toHaveLength(Object.keys(v2.STARTER_CATALOG).length);
+    // Undo stands in for looking back here.
+    expect(lastView(t).steps).toBeUndefined();
     expect(game.memoryOnly).toBe(true);
     expect(db.gameById(game.id)).toBeUndefined();
     expect(games.summariesFor(alice.id)).toEqual([]);

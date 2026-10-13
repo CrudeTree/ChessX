@@ -33,6 +33,8 @@ export interface GameScreenHooks {
   chatShown(): void;
   /** Send an edit to the arena's board (place, give, move or remove something, mana, pass, undo, reset). */
   arena(op: v2.ArenaOp): void;
+  /** Ask the server for the game as it stood after `step` steps; the answer comes to `showPast`. */
+  past(step: number): void;
 }
 
 /**
@@ -235,6 +237,13 @@ const SLASH = '<path d="M4 4l16 16" stroke="currentColor" stroke-width="2" strok
 const CUBE = '<path d="M12 3.5l7.5 4.2v8.6L12 20.5l-7.5-4.2V7.7zM12 12l7.5-4.3M12 12v8.5M12 12L4.5 7.7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>';
 const CHAT_ICON =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16v10.5H10l-4.5 3.5V16H4z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></svg>';
+/** The arrows that step back and forth through the game. */
+const chevrons = (d: string): string =>
+  `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const FIRST_ICON = chevrons('M12 6l-6 6 6 6M18 6l-6 6 6 6');
+const BACK_ICON = chevrons('M15 6l-6 6 6 6');
+const NEXT_ICON = chevrons('M9 6l6 6-6 6');
+const LIVE_ICON = chevrons('M6 6l6 6-6 6M12 6l6 6-6 6');
 
 function paintSwitch(btn: HTMLButtonElement, on: boolean, name: string, icon: string, what = name.toLowerCase()): void {
   btn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icon}${on ? '' : SLASH}</svg><span>${name}</span>`;
@@ -280,6 +289,23 @@ export class GameScreen {
 
   private readonly memory: PieceMemory = new Map();
   private lastSeq = -1;
+
+  /**
+   * Looking back through the game: the step shown (0: as the game began), with the newest view from the server kept
+   * aside meanwhile. Nothing can be played in an earlier view; stepping on past the last step comes back to the game.
+   */
+  private review: { step: number; live: v2.PlayerView } | null = null;
+  /** Earlier views the server sent, by step; and the step asked for and not yet shown. */
+  private readonly pastViews = new Map<number, v2.PlayerView>();
+  private wantStep: number | null = null;
+  private readonly navEl = el('div', 'g2-nav hidden');
+  private readonly navFirst = el('button', 'g2-nav-btn first');
+  private readonly navBack = el('button', 'g2-nav-btn');
+  private readonly navCount = el('span', 'g2-nav-count');
+  private readonly navNext = el('button', 'g2-nav-btn');
+  private readonly navLive = el('button', 'g2-nav-btn live');
+  /** On the board's top edge while looking back. */
+  private readonly liveEl = el('button', 'g2-live hidden', 'Back to the game');
 
   /** The arena: a sandbox where any card can be put anywhere from the library, and any piece moved or taken off. */
   private arena = false;
@@ -385,7 +411,7 @@ export class GameScreen {
     const main = el('div', 'g2-main');
     const boardWrap = el('div', 'g2-boardwrap');
     const boardBox = this.boardBox;
-    boardBox.append(this.boardEl, this.cueEl);
+    boardBox.append(this.boardEl, this.cueEl, this.liveEl);
     this.fx = new BoardFx(this.boardEl, boardBox, (square) => this.cells[square]);
     boardBox.append(this.raiseEl);
     this.pilesEl.append(this.oppPileEl, this.mePileEl);
@@ -417,9 +443,30 @@ export class GameScreen {
     this.chatBtn.onclick = () => this.openChat(!this.chatOpen);
     this.chatPeek.type = 'button';
     this.chatPeek.onclick = () => this.openChat(true);
-    this.statusBlock.append(this.statusEl, this.endBtn, this.chatBtn, this.menuBtn, this.chatPeek);
+    const navButtons: [HTMLButtonElement, string, string, () => void][] = [
+      [this.navFirst, FIRST_ICON, 'To the start of the game', () => this.goTo(0)],
+      [this.navBack, BACK_ICON, 'Step back (←)', () => this.goTo(this.stepShown - 1)],
+      [this.navNext, NEXT_ICON, 'Step forward (→)', () => this.goTo(this.stepShown + 1)],
+      [this.navLive, LIVE_ICON, 'Back to the game as it is now', () => this.toLive()],
+    ];
+    for (const [btn, icon, title, go] of navButtons) {
+      btn.type = 'button';
+      btn.innerHTML = icon;
+      btn.title = title;
+      btn.setAttribute('aria-label', title);
+      btn.onclick = go;
+    }
+    this.navEl.append(this.navFirst, this.navBack, this.navCount, this.navNext, this.navLive);
+    this.liveEl.type = 'button';
+    this.liveEl.onclick = () => this.toLive();
+    this.statusBlock.append(this.statusEl, this.navEl, this.endBtn, this.chatBtn, this.menuBtn, this.chatPeek);
     const logBlock = this.logBlock;
     logBlock.append(el('div', 'label', 'Log'), this.logEl);
+    // A line of the log shows the game as it stood after what it tells of.
+    this.logEl.addEventListener('click', (e) => {
+      const step = (e.target as HTMLElement).closest<HTMLElement>('.entry[data-step]')?.dataset.step;
+      if (step !== undefined) this.goTo(Number(step));
+    });
     const soundBlock = el('div', 'side-block g2-sound');
     const switches = el('div', 'g2-sound-switches');
     this.effectsBtn.type = 'button';
@@ -496,6 +543,14 @@ export class GameScreen {
       this.inspected = null;
       this.hoverCard = null;
       this.render();
+    });
+    window.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      if (this.stepCount === null || this.root.classList.contains('hidden') || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      if (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable]')) return;
+      if (!this.raiseEl.classList.contains('hidden')) return;
+      e.preventDefault();
+      this.goTo(this.stepShown + (e.key === 'ArrowLeft' ? -1 : 1));
     });
     window.addEventListener('keydown', (e) => {
       if (!this.arena || this.root.classList.contains('hidden') || e.key.toLowerCase() !== 'z' || !(e.ctrlKey || e.metaKey) || e.shiftKey) return;
@@ -763,6 +818,12 @@ export class GameScreen {
     this.manaShown = {};
     sound.setBattle(false);
     this.view = null;
+    this.review = null;
+    this.pastViews.clear();
+    this.wantStep = null;
+    this.root.classList.remove('g2-reviewing');
+    this.navEl.classList.add('hidden');
+    this.liveEl.classList.add('hidden');
     this.room = null;
     this.selectedSquare = null;
     this.aimLava = null;
@@ -808,6 +869,15 @@ export class GameScreen {
 
   /** The newest game state. */
   sync(view: v2.PlayerView): void {
+    if (this.review) {
+      // Looking back: the game goes on aside, in the log and the step count, until the player comes back to it.
+      this.review.live = view;
+      for (const p of view.pieces) this.memory.set(p.id, { name: p.name, owner: p.owner });
+      sound.setBattle(view.status.kind === 'playing');
+      this.appendLog(view);
+      this.renderNav();
+      return;
+    }
     const prev = this.view;
     const changed = prev !== null && view.seq !== this.lastSeq;
     this.view = view;
@@ -845,6 +915,121 @@ export class GameScreen {
   /** Refresh clocks (called every second by the host). The arena has none. */
   tick(): void {
     if (!this.arena) this.renderPlayers();
+  }
+
+  // -------------------------------------------------------------- looking back
+
+  /** How many steps the game can be looked back through; null where it cannot (the arena, games begun before). */
+  private get stepCount(): number | null {
+    const live = this.review?.live ?? this.view;
+    return this.arena || live?.steps === undefined ? null : live.steps;
+  }
+
+  /** The step shown or asked for; the step count while the game is shown as it is. */
+  private get stepShown(): number {
+    return this.wantStep ?? this.review?.step ?? this.stepCount ?? 0;
+  }
+
+  /** Show the game as it stood after `step` steps (0: as it began); after the last one, as it is. */
+  private goTo(step: number): void {
+    const count = this.stepCount;
+    if (count === null || !this.view) return;
+    const to = Math.max(0, Math.min(step, count));
+    if (to === count) return this.toLive();
+    if (to === this.stepShown) return;
+    const known = this.pastViews.get(to);
+    if (known) return this.showStep(to, known);
+    this.wantStep = to;
+    this.hooks.past(to);
+    this.renderNav();
+  }
+
+  /** The server's answer to `hooks.past`, shown if that step is still the one wanted. */
+  showPast(step: number, view: v2.PlayerView): void {
+    this.pastViews.set(step, view);
+    if (step === this.wantStep) this.showStep(step, view);
+  }
+
+  private showStep(step: number, view: v2.PlayerView): void {
+    const prev = this.view;
+    if (!prev) return;
+    const from = this.review?.step ?? this.stepCount;
+    this.wantStep = null;
+    if (this.review) this.review.step = step;
+    else this.review = { step, live: prev };
+    this.root.classList.add('g2-reviewing');
+    this.view = view;
+    this.leavePosition(prev, view, from === step - 1);
+    this.render();
+    // The next step asked for is most often the one before.
+    if (step > 0 && !this.pastViews.has(step - 1)) this.hooks.past(step - 1);
+  }
+
+  /** Back to the game as it is now. */
+  private toLive(): void {
+    this.wantStep = null;
+    const review = this.review;
+    if (!review || !this.view) return this.renderNav();
+    const prev = this.view;
+    this.review = null;
+    this.root.classList.remove('g2-reviewing');
+    this.view = review.live;
+    this.leavePosition(prev, review.live, review.live.steps === review.step + 1);
+    this.render();
+  }
+
+  /**
+   * Another position takes the place of `prev`: what was picked or held in it goes. A single step on plays as it
+   * happened, with its sounds and effects; any other change is shown at once.
+   */
+  private leavePosition(prev: v2.PlayerView, view: v2.PlayerView, stepOn: boolean): void {
+    this.clearSelection();
+    this.cancelDrag();
+    this.cancelPieceDrag();
+    this.closeRaise();
+    this.clearDropped();
+    this.clearReturning();
+    this.clearVanishing();
+    if (this.inspected?.kind === 'card') this.inspected = null;
+    this.hoverCard = null;
+    if (stepOn) {
+      this.queueSounds(view);
+      if (this.fx.enabled) this.queueFx(prev, view);
+    } else {
+      this.seenCards = null;
+    }
+  }
+
+  private renderNav(): void {
+    const count = this.stepCount;
+    this.navEl.classList.toggle('hidden', count === null);
+    this.liveEl.classList.toggle('hidden', !this.review);
+    const waiting = !!this.review && this.myTurn;
+    this.liveEl.classList.toggle('mine', waiting);
+    this.liveEl.textContent = waiting ? 'Your turn · back to the game' : 'Back to the game';
+    for (const line of this.logEl.querySelectorAll('.entry.shown')) line.classList.remove('shown');
+    if (count === null) return;
+    const at = this.stepShown;
+    this.navFirst.disabled = this.navBack.disabled = at === 0;
+    this.navNext.disabled = this.navLive.disabled = at >= count;
+    this.navCount.textContent = `${at} / ${count}`;
+    this.navCount.title = at >= count ? 'Steps so far' : `Step ${at} of ${count}`;
+    if (!this.review) return;
+    // The step shown, lit up in the log and scrolled into sight there.
+    const lines = this.logEl.querySelectorAll<HTMLElement>(`.entry[data-step="${this.review.step}"]`);
+    for (const line of lines) line.classList.add('shown');
+    const first = lines[0];
+    if (!first) return;
+    const box = this.logEl.getBoundingClientRect();
+    const where = first.getBoundingClientRect();
+    if (where.top < box.top || where.bottom > box.bottom) this.logEl.scrollTop += where.top - box.top - box.height / 3;
+  }
+
+  /** What the step shown did, in the log's words. */
+  private stepText(view: v2.PlayerView, step: number): string {
+    if (step === 0) return 'The game as it began.';
+    const line = describeEvents(view.events, view, this.hooks.names(), this.memory)[0]?.text;
+    return line ? line.replace(/^— | —$/g, '') : `Step ${step}`;
   }
 
   // --------------------------------------------------------------------- board
@@ -1734,7 +1919,7 @@ export class GameScreen {
 
   /** Any card can be picked up on your own turn, even when no drop is legal (it then snaps back). */
   private canLift(view: v2.PlayerView, cardId: string): boolean {
-    return view.cards[cardId] !== undefined && view.status.kind === 'playing' && (this.solo || view.active === view.you);
+    return !this.review && view.cards[cardId] !== undefined && view.status.kind === 'playing' && (this.solo || view.active === view.you);
   }
 
   /**
@@ -2613,6 +2798,7 @@ export class GameScreen {
     this.renderPlayers();
     this.renderStatus(view);
     this.renderCue(view);
+    this.renderNav();
     this.paintLibraryTarget();
   }
 
@@ -2807,6 +2993,13 @@ export class GameScreen {
     const s = this.statusEl;
     s.className = 'status g2-status';
     s.removeAttribute('title');
+    if (this.review) {
+      s.classList.add('review');
+      s.textContent = this.stepText(view, this.review.step);
+      s.title = 'Looking back through the game: ← and → step through it.';
+      this.endBtn.classList.add('hidden');
+      return;
+    }
     const playing = view.status.kind === 'playing';
     const mine = this.solo || view.active === view.you;
     const who = this.solo ? this.name(view.active) : 'You';
@@ -2869,22 +3062,30 @@ export class GameScreen {
     this.lastSeq = view.seq;
     const names = this.hooks.names();
     if (view.history) this.logEl.replaceChildren();
-    for (const events of view.history ?? [view.events]) {
+    const batches = view.history ?? [view.events];
+    // Each batch is one step, the last of them the step the view stands at, where the game can be looked back to.
+    const firstStep = view.steps !== undefined ? view.steps - batches.length + 1 : null;
+    batches.forEach((events, i) => {
       for (const line of describeEvents(events, view, names, this.memory)) {
         const div = el('div', `entry ${line.color ?? ''} ${line.important ? 'important' : ''}`, line.text);
+        if (firstStep !== null && firstStep + i > 0) {
+          div.dataset.step = String(firstStep + i);
+          div.title = 'Show the game as it stood after this';
+        }
         this.logEl.appendChild(div);
       }
-    }
+    });
     this.logEl.scrollTop = this.logEl.scrollHeight;
   }
 
-  /** Whose turn it is, for the host's "your move" alerts. */
+  /** Whose turn it is, for the host's "your move" alerts; also while an earlier position is shown. */
   get myTurn(): boolean {
-    return !!this.view && this.view.status.kind === 'playing' && !this.solo && this.view.active === this.view.you;
+    const view = this.review?.live ?? this.view;
+    return !!view && view.status.kind === 'playing' && !this.solo && view.active === view.you;
   }
 
   get currentView(): v2.PlayerView | null {
-    return this.view;
+    return this.review?.live ?? this.view;
   }
 
   get statusText(): string {

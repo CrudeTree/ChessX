@@ -516,6 +516,10 @@ function handleMessage(t: SocketTransport, msg: ClientMessage): void {
       if (!t.game) return t.error('You are not in a game.');
       t.game.actV2(t, msg.action);
       return;
+    case 'pastV2':
+      if (!t.game) return t.error('You are not in a game.');
+      t.game.sendPast(t, msg.step);
+      return;
     case 'arenaV2':
       if (!t.game) return t.error('You are not in a game.');
       t.game.arenaOp(t, msg.op);

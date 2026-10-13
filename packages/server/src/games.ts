@@ -75,7 +75,7 @@ export function parseChatGif(raw: unknown): ChatGif | null {
 /** A fresh rules-2 game. Every game uses the starter deck for now: v2 deck building waits for the real cards. */
 function newRecord(): v2.GameRecord {
   const seed = randomBytes(4).readInt32LE();
-  return { state: v2.newGame({ seed, decks: { white: v2.starterDeck(), black: v2.starterDeck() } }), seq: 1, events: [], history: [] };
+  return v2.newRecord(v2.newGame({ seed, decks: { white: v2.starterDeck(), black: v2.starterDeck() } }));
 }
 
 function randomCode(len = 5): string {
@@ -120,6 +120,8 @@ export class LiveGame {
   arena = false;
   /** The arena's earlier positions, oldest first, for Undo. */
   private arenaPast: v2.GameState[] = [];
+  /** The game after each of its steps, from the start, as far as players have looked back (`sendPast`). */
+  private replayed: { start: object; states: v2.GameState[] } | null = null;
   /** The computer's seat, in a game against the bot. Such a game is memory only, like practice. */
   bot: BotSeat | null = null;
   /** Plans the bot's turns. */
@@ -263,7 +265,7 @@ export class LiveGame {
     else this.row.clock_black_ms = 0;
     const status: GameStatus = { kind: 'timeout', winner: opposite(mover) };
     if (this.record) {
-      this.record = v2.nextRecord(this.record, { ...this.record.state, status }, [{ type: 'gameOver', status }]);
+      this.record = v2.nextRecord(this.record, { ...this.record.state, status }, [{ type: 'gameOver', status }], { type: 'end', status });
     } else if (this.state) {
       this.state.status = status;
       this.state.events = [{ type: 'gameOver', status }];
@@ -370,7 +372,7 @@ export class LiveGame {
       if (current.state.status.kind !== 'playing') return;
       this.settleClock(now);
       const status: GameStatus = { kind: 'resigned', winner: opposite(this.solo ? current.state.active : color) };
-      this.record = v2.nextRecord(current, { ...current.state, status }, [{ type: 'gameOver', status }]);
+      this.record = v2.nextRecord(current, { ...current.state, status }, [{ type: 'gameOver', status }], { type: 'end', status });
       this.save(now);
       this.broadcastState();
       this.finished();
@@ -400,7 +402,7 @@ export class LiveGame {
       this.cardsThisTurn = 0;
     }
     if (this.arena) this.rememberArena(current.state);
-    this.record = v2.nextRecord(current, next, result.events);
+    this.record = v2.nextRecord(current, next, result.events, result.action);
     this.save(now);
     this.broadcastState();
     this.finished();
@@ -651,6 +653,18 @@ export class LiveGame {
     // Practice follows the side to move; otherwise your seat.
     const color = this.solo ? this.state.turn : this.seatOf(t.userId)!;
     t.send({ type: 'state', view: viewFor(this.state, color), clocks: this.clocks() });
+  }
+
+  /** A player looking back: the game as it stood after `rawStep` steps, as they saw it then. */
+  sendPast(t: Transport, rawStep: unknown): void {
+    const record = this.record;
+    if (!record?.start || this.arena) return;
+    const seat = this.seatOf(t.userId);
+    if (!seat) throw new GameError('You are not a player in this game.');
+    if (this.replayed?.start !== record.start) this.replayed = { start: record.start, states: [] };
+    const step = Number(rawStep);
+    const view = v2.viewAt(record, step, seat, this.solo, this.replayed.states);
+    if (view) t.send({ type: 'pastV2', step, view });
   }
 }
 

@@ -676,6 +676,7 @@ const screen2 = new GameScreen(game2Screen, {
   },
   chatShown: () => chat.scrollToEnd(),
   arena: (op) => net.send({ type: 'arenaV2', op }),
+  past: (step) => net.send({ type: 'pastV2', step }),
 });
 chat.onClose = () => (rules === 2 ? screen2.openChat(false) : setSheet(null));
 
@@ -1188,6 +1189,9 @@ net.onMessage = async (msg: ServerMessage) => {
       wasMyTurn = myTurn;
       return;
     }
+    case 'pastV2':
+      if (rules === 2) screen2.showPast(msg.step, msg.view);
+      return;
     case 'state':
       try {
         await showGame(); // waits for the renderer if it is still starting up

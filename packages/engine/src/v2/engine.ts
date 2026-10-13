@@ -874,6 +874,8 @@ function sameAction(a: Action, b: Action): boolean {
 export interface ApplyResult {
   state: GameState;
   events: GameEvent[];
+  /** From `applyLegalAction`: the engine's own copy of the action it applied, safe to keep. */
+  action?: Action;
 }
 
 /** Applies an action to a copy of the state. Throws if the action is not currently legal. */
@@ -881,7 +883,7 @@ export function applyLegalAction(state: GameState, action: Action): ApplyResult 
   // Apply the engine's own copy of the matching action, never the caller's object.
   const matched = legalActions(state).find((candidate) => sameAction(candidate, action));
   if (!matched) throw new Error(`Illegal action: ${JSON.stringify(action)}`);
-  return applyTrustedAction(state, matched);
+  return { ...applyTrustedAction(state, matched), action: matched };
 }
 
 /**
