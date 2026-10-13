@@ -83,8 +83,8 @@ const FROST_TINT = new THREE.Color(0.62, 0.84, 1.15);
 const FROST_RING = '#9fe0ff';
 /** Models that do not face front as generated: how far to turn them, in degrees. */
 const YAW: Record<string, number> = {};
-/** Figures that look bigger than their height says (a baby dragon, all head): how much smaller they stand. */
-const SIZE: Record<string, number> = { wyrmling: 0.7 };
+/** Figures that should stand smaller (a baby dragon, all head) or larger than their height and width allow. */
+const SIZE: Record<string, number> = { wyrmling: 0.7, ancient_mystic_dragon: 1.5 };
 /** Picking a cut-out: its opaque parts, on a grid this many cells a side. */
 const MASK = 32;
 /** How solid a figure is while it stands in front of a square the player can choose; the picked one, a little more. */
@@ -512,16 +512,17 @@ class Piece {
     this.base.scale.set(BASE_R * cell, BASE_H * cell, BASE_R * cell);
     this.ring.scale.setScalar(BASE_R * cell);
     this.ring.position.y = BASE_H * cell;
-    let tall = this.f.height * (SIZE[this.f.name.replace(/_(white|dark)$/, '')] ?? 1) * cell;
+    const size = SIZE[this.f.name.replace(/_(white|dark)$/, '')] ?? 1;
+    let tall = this.f.height * cell;
     if (this.model) {
-      tall = Math.min(tall * MODEL_TALL, (MODEL_MAX_WIDTH * cell) / this.model.width);
+      tall = Math.min(tall * MODEL_TALL, (MODEL_MAX_WIDTH * cell) / this.model.width) * size;
       this.holder.scale.setScalar(tall);
       this.body.rotation.x = -LEAN;
       this.tall = tall;
     } else if (this.standee) {
       // A cut-out stands straight up, so the eye above sees it shortened by sin(tilt); it is that much taller.
       const aspect = this.standee.aspect;
-      tall = Math.min(tall, (MAX_WIDTH * cell) / aspect);
+      tall = Math.min(tall, (MAX_WIDTH * cell) / aspect) * size;
       this.holder.scale.set(tall * aspect, tall / Math.sin(this.kit.tilt), 1);
       this.body.rotation.x = 0;
       this.tall = tall / Math.sin(this.kit.tilt);
