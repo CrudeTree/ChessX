@@ -102,8 +102,10 @@ const easeOutBack = (t: number): number => 1 + 2.70158 * (t - 1) ** 3 + 1.70158 
 /** A loaded model, scaled to stand 1 tall on the origin. */
 interface Model {
   node: THREE.Object3D;
-  /** Its bounds in that unit space, a little narrower than the model, for picking. */
+  /** Its bounds in that unit space, a little narrower than the model: a cheap test of what stands before a square. */
   bounds: THREE.Box3;
+  /** A box round all of it in that space: no part of it is nearer the eye than that box. */
+  whole: THREE.Box3;
   /** Width over height. */
   width: number;
 }
@@ -160,6 +162,7 @@ function unitModel(scene: THREE.Object3D): Model {
   return {
     node,
     bounds: new THREE.Box3(new THREE.Vector3(-w * 0.8, 0, -d * 0.8), new THREE.Vector3(w * 0.8, 1, d * 0.8)),
+    whole: new THREE.Box3(new THREE.Vector3(-w, 0, -d), new THREE.Vector3(w, 1, d)).expandByScalar(0.01),
     width: size.x / size.y,
   };
 }
@@ -342,6 +345,8 @@ class Kit {
 }
 
 const ray = new THREE.Ray();
+const caster = new THREE.Raycaster();
+const hits: THREE.Intersection[] = [];
 const inverse = new THREE.Matrix4();
 const point = new THREE.Vector3();
 const facing = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
@@ -696,14 +701,25 @@ class Piece {
     if (this.badge) this.badge.material.opacity = opacity;
   }
 
-  /** How far along `r` it is hit, or null if it is not. */
-  hit(r: THREE.Ray): number | null {
+  /**
+   * How far along `r` it is hit, or null if it is not. A model is hit by a box a little narrower than it (`core`), by
+   * a box round all of it (`whole`), or by the model itself (`shape`): dearer, but a pointer between a dragon's wings
+   * is not on the dragon. A cut-out is hit where it is not see-through.
+   */
+  hit(r: THREE.Ray, by: 'core' | 'whole' | 'shape' = 'core'): number | null {
     if (!this.shape || !this.root.visible || this.exit || this.heldAt) return null;
+    if (by === 'shape' && this.model) {
+      this.shape.updateWorldMatrix(true, true);
+      caster.ray.copy(r);
+      hits.length = 0;
+      caster.intersectObject(this.shape, true, hits);
+      return hits[0]?.distance ?? null;
+    }
     this.holder.updateWorldMatrix(true, false);
     inverse.copy(this.holder.matrixWorld).invert();
     ray.copy(r).applyMatrix4(inverse);
     if (this.model) {
-      if (!ray.intersectBox(this.model.bounds, point)) return null;
+      if (!ray.intersectBox(by === 'whole' ? this.model.whole : this.model.bounds, point)) return null;
     } else if (this.standee) {
       if (!ray.intersectPlane(facing, point)) return null;
       const u = point.x + 0.5;
@@ -930,10 +946,19 @@ export class Board3D {
   /** The square of the figure under (x, y) on the page, if a figure is there. */
   pick(x: number, y: number): Square | null {
     if (!this.aim(x, y)) return null;
+    const r = this.raycaster.ray;
+    const near: { piece: Piece; at: number }[] = [];
+    for (const piece of this.pieces.values()) {
+      const at = piece.hit(r, 'whole');
+      if (at !== null) near.push({ piece, at });
+    }
+    near.sort((a, b) => a.at - b.at);
     let best: Piece | null = null;
     let bestAt = Infinity;
-    for (const piece of this.pieces.values()) {
-      const at = piece.hit(this.raycaster.ray);
+    // Nearest first, until no part of the rest can be nearer than what is hit.
+    for (const { piece, at: reach } of near) {
+      if (reach >= bestAt) break;
+      const at = piece.hit(r, 'shape');
       if (at !== null && at < bestAt) {
         best = piece;
         bestAt = at;
