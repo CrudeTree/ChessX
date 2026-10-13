@@ -4771,10 +4771,14 @@ body.g2-grabbing * {
   pointer-events: none;
   color: #3b2a16;
   background: radial-gradient(circle at 34% 28%, #ffffff 0%, #f4eddd 36%, #dccfb2 70%, #bba985 100%);
-  /* The ring is in the piece's type colour (--line); the King, which has no type, keeps its side's. */
+  /*
+   * The rim is in the piece's side colour, ivory for White and black for Black, so the sides tell apart at a glance
+   * (Djabooty, 2026-10-13); the ring inside it in its type colour (--line). The King, which has no type, keeps its side's.
+   */
   box-shadow:
-    0 0 0 0.1em var(--line, #c99d50),
-    0 0 0 0.15em #3b2a12,
+    inset 0 0 0 0.075em var(--line, #c99d50),
+    0 0 0 0.12em #fffaf0,
+    0 0 0 0.16em #5a4524,
     0 0.14em 0.26em rgba(0, 0, 0, 0.55),
     inset 0 -0.08em 0.16em rgba(90, 60, 20, 0.35),
     inset 0 0.06em 0.08em rgba(255, 255, 255, 0.9);
@@ -4789,8 +4793,9 @@ body.g2-grabbing * {
   color: #efe9ff;
   background: radial-gradient(circle at 34% 28%, #6c618f 0%, #383150 38%, #1d1929 72%, #0d0b13 100%);
   box-shadow:
-    0 0 0 0.1em var(--line, #a796de),
-    0 0 0 0.15em #120e1b,
+    inset 0 0 0 0.075em var(--line, #a796de),
+    0 0 0 0.12em #0c0a11,
+    0 0 0 0.16em #000,
     0 0.14em 0.26em rgba(0, 0, 0, 0.6),
     inset 0 -0.08em 0.16em rgba(0, 0, 0, 0.5),
     inset 0 0.06em 0.08em rgba(255, 255, 255, 0.35);
@@ -4802,8 +4807,9 @@ body.g2-grabbing * {
 
 .g2-piece.king {
   box-shadow:
-    0 0 0 0.1em #e2b75e,
-    0 0 0 0.15em #3b2a12,
+    inset 0 0 0 0.075em #e2b75e,
+    0 0 0 0.12em #fffaf0,
+    0 0 0 0.16em #5a4524,
     0 0.14em 0.26em rgba(0, 0, 0, 0.55),
     0 0 0.55em rgba(255, 205, 110, 0.7),
     inset 0 -0.08em 0.16em rgba(90, 60, 20, 0.35),
@@ -4812,8 +4818,9 @@ body.g2-grabbing * {
 
 .g2-piece.black.king {
   box-shadow:
-    0 0 0 0.1em #c4b2ff,
-    0 0 0 0.15em #120e1b,
+    inset 0 0 0 0.075em #c4b2ff,
+    0 0 0 0.12em #0c0a11,
+    0 0 0 0.16em #000,
     0 0.14em 0.26em rgba(0, 0, 0, 0.6),
     0 0 0.55em rgba(180, 140, 255, 0.75),
     inset 0 -0.08em 0.16em rgba(0, 0, 0, 0.5),
