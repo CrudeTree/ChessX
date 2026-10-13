@@ -385,6 +385,8 @@ class Piece {
   private solid = 1;
   private opacity = 1;
   private disposed = false;
+  /** Settles once it wears its model, or what it has instead. */
+  readonly ready: Promise<void>;
 
   constructor(
     private readonly kit: Kit,
@@ -402,7 +404,11 @@ class Piece {
     if (f.riseAt && f.riseAt > performance.now() - RISE_MS && !reducedMotion.matches) this.riseAt = f.riseAt;
     this.root.position.copy(kit.centre(f.square));
     this.update(f);
-    void this.load();
+    this.ready = this.load();
+  }
+
+  get name(): string {
+    return this.f.name;
   }
 
   private async load(): Promise<void> {
@@ -456,10 +462,14 @@ class Piece {
     this.changed();
   }
 
-  /** The piece changed: it moved, or was shielded, frozen, picked up... */
-  update(f: Figure): void {
+  /** The piece changed: it moved, or was shielded, frozen, picked up... `snap`: it is there now, without sliding. */
+  update(f: Figure, snap = false): void {
     this.f = f;
-    if (f.square !== this.square) {
+    if (snap) {
+      this.heldAt = null;
+      this.move = null;
+      this.square = f.square;
+    } else if (f.square !== this.square) {
       this.square = f.square;
       if (!this.heldAt) this.slideTo(f.square);
     }
@@ -741,6 +751,11 @@ class Piece {
   }
 }
 
+/**
+ * The figures over the board. It starts hidden: `prepare` loads and draws the figures unseen, then `show` puts them
+ * over the board in one frame. `hide` takes them off again but keeps what was loaded, so showing them again is
+ * instant.
+ */
 export class Board3D {
   /** Null without WebGL, or without the list of figures. */
   static async create(box: HTMLElement, board: HTMLElement, cell: (square: Square) => HTMLElement | undefined): Promise<Board3D | null> {
@@ -773,6 +788,7 @@ export class Board3D {
   private unveiled = true;
   private frame = 0;
   private size = 0;
+  private shown = false;
 
   private constructor(
     private readonly box: HTMLElement,
@@ -809,11 +825,42 @@ export class Board3D {
     this.shade.receiveShadow = true;
     this.scene.add(this.floor, this.shade);
 
-    board.classList.add('three');
-    board.after(this.canvas);
     this.resize = new ResizeObserver(() => this.layout());
     this.resize.observe(board);
     this.layout();
+  }
+
+  /** Load these figures and draw them once, unseen: their models, textures and shaders are all ready to show. */
+  async prepare(figures: Figure[]): Promise<void> {
+    this.sync(figures, true);
+    await Promise.all([...this.pieces.values()].map((piece) => piece.ready));
+    await this.renderer.compileAsync(this.scene, this.camera);
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  /** Lean the board back and stand these figures on it, where they are now. */
+  show(figures: Figure[]): void {
+    if (this.shown) return;
+    this.shown = true;
+    this.board.classList.add('three');
+    this.board.after(this.canvas);
+    this.layout();
+    this.sync(figures, true);
+  }
+
+  /** The flat board again. What was loaded stays, for `show`. */
+  hide(): void {
+    if (!this.shown) return;
+    this.shown = false;
+    cancelAnimationFrame(this.frame);
+    this.frame = 0;
+    this.held = null;
+    this.canvas.remove();
+    this.board.classList.remove('three');
+    const board = this.board.style;
+    board.transform = '';
+    board.transformOrigin = '';
+    board.removeProperty('--tilt');
   }
 
   /** Whether there is a figure by this name; a piece without one keeps its flat token. */
@@ -832,10 +879,12 @@ export class Board3D {
     this.kit.tilt = tilt;
     this.kit.cell = first.offsetWidth;
     this.kit.near = first.offsetTop > S / 2 ? 'white' : 'black';
-    const board = this.board.style;
-    board.transformOrigin = '50% 100%';
-    board.transform = `perspective(${eye}px) rotateX(${tilt / DEG}deg)`;
-    board.setProperty('--tilt', `${tilt / DEG}deg`);
+    if (this.shown) {
+      const board = this.board.style;
+      board.transformOrigin = '50% 100%';
+      board.transform = `perspective(${eye}px) rotateX(${tilt / DEG}deg)`;
+      board.setProperty('--tilt', `${tilt / DEG}deg`);
+    }
 
     const padX = PAD_X * S;
     const padTop = PAD_TOP * S;
@@ -891,22 +940,40 @@ export class Board3D {
     this.changed();
   }
 
-  /** The pieces on the board now. New ones appear (rising, if they just arrived); gone ones fade. */
-  sync(figures: Figure[]): void {
+  /**
+   * The pieces on the board now. New ones appear (rising, if they just arrived); gone ones fade. `snap`: they are
+   * just as given, at once, with nothing sliding, fading or still leaving (as after the board was hidden).
+   */
+  sync(figures: Figure[], snap = false): void {
     const seen = new Set<string>();
     for (const f of figures) {
       seen.add(f.id);
-      const piece = this.pieces.get(f.id);
+      let piece = this.pieces.get(f.id);
+      // Another figure now (or after a hidden while, another game's piece by the same id): it stands anew.
+      if (piece && (piece.name !== f.name || (snap && piece.exit))) {
+        this.remove(f.id, piece);
+        piece = undefined;
+      }
       if (piece?.exit) continue;
-      if (piece) piece.update(f);
+      if (piece) piece.update(f, snap);
       else {
         const made = new Piece(this.kit, f, this.changed);
         this.pieces.set(f.id, made);
         this.scene.add(made.root);
       }
     }
-    for (const [id, piece] of this.pieces) if (!seen.has(id)) piece.leave('fade', 0);
+    for (const [id, piece] of this.pieces) {
+      if (seen.has(id)) continue;
+      if (snap) this.remove(id, piece);
+      else piece.leave('fade', 0);
+    }
     this.changed();
+  }
+
+  private remove(id: string, piece: Piece): void {
+    piece.dispose();
+    this.pieces.delete(id);
+    if (this.held === piece) this.held = null;
   }
 
   /** The squares the player can choose between now: a figure that stands in front of one fades, so it can be seen. */
@@ -1040,7 +1107,7 @@ export class Board3D {
   }
 
   private wake(): void {
-    if (!this.frame) this.frame = requestAnimationFrame(this.draw);
+    if (!this.frame && this.shown) this.frame = requestAnimationFrame(this.draw);
   }
 
   private readonly draw = (now: number): void => {
@@ -1052,11 +1119,7 @@ export class Board3D {
     let busy = false;
     for (const [id, piece] of this.pieces) {
       if (piece.step(now)) busy = true;
-      if (piece.done) {
-        piece.dispose();
-        this.pieces.delete(id);
-        if (this.held === piece) this.held = null;
-      }
+      if (piece.done) this.remove(id, piece);
     }
     this.renderer.render(this.scene, this.camera);
     if (busy) this.wake();

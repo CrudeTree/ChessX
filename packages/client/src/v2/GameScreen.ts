@@ -348,6 +348,8 @@ export class GameScreen {
   private readonly board3dBtn = el('button', 'g2-sound-btn');
   /** The pieces as figures standing on a leaning board, while that is on and WebGL works; flat tokens otherwise. */
   private board3d: Board3D | null = null;
+  /** The 3D board while it is turned off: hidden, with its figures still loaded, so turning it on again is instant. */
+  private spare3d: Board3D | null = null;
   private starting3d = false;
   /** The squares lit up for the player to choose between, as last drawn: what the figures in front of fade for. */
   private choices: v2.Square[] = [];
@@ -668,35 +670,58 @@ export class GameScreen {
     paintSwitch(this.board3dBtn, this.wants3d, '3D', CUBE, 'the 3D board');
   }
 
-  /** Stand the pieces up as figures; without WebGL (or the figures) the board stays flat. */
+  /**
+   * Stand the pieces up as figures; without WebGL (or the figures) the board stays flat. The flat pieces stay until
+   * every figure is loaded and drawn, and then the board changes over in one frame.
+   */
   private async start3d(): Promise<void> {
     if (this.board3d || this.starting3d) return;
     this.starting3d = true;
-    let board: Board3D | null = null;
+    let board = this.spare3d;
+    this.spare3d = null;
     try {
-      const { Board3D } = await import('./board3d.js');
-      board = await Board3D.create(this.boardBox, this.boardEl, (square) => this.cells[square]);
+      if (!board) {
+        const { Board3D } = await import('./board3d.js');
+        const made = await Board3D.create(this.boardBox, this.boardEl, (square) => this.cells[square]);
+        if (made) made.onLost = () => this.lose3d(made);
+        board = made;
+      }
+      if (board && this.view) await board.prepare(this.figures(this.view, board));
     } catch {
+      board?.dispose();
       board = null;
     }
     this.starting3d = false;
     if (!board) return;
     if (!this.wants3d) {
-      board.dispose();
+      this.spare3d = board;
       return;
     }
-    board.onLost = () => this.stop3d();
     this.board3d = board;
+    board.show(this.view ? this.figures(this.view, board) : []);
     this.fx.shakeAlso(board.canvas);
     this.render();
   }
 
   private stop3d(): void {
-    if (!this.board3d) return;
-    this.board3d.dispose();
+    const board = this.board3d;
+    if (!board) return;
+    board.hide();
     this.board3d = null;
+    this.spare3d = board;
     this.fx.shakeAlso(null);
     this.render();
+  }
+
+  /** The 3D board lost its WebGL context: flat tokens, until 3D is turned on again and builds a new one. */
+  private lose3d(board: Board3D): void {
+    if (this.board3d === board) {
+      this.board3d = null;
+      this.fx.shakeAlso(null);
+      this.render();
+    }
+    if (this.spare3d === board) this.spare3d = null;
+    board.dispose();
   }
 
   // ------------------------------------------------------------------ lifecycle
@@ -983,8 +1008,7 @@ export class GameScreen {
   }
 
   /** The pieces as the 3D board stands them up: each one's figure, where it stands, and what is on it. */
-  private figures(view: v2.PlayerView): Figure[] {
-    const board = this.board3d;
+  private figures(view: v2.PlayerView, board = this.board3d): Figure[] {
     if (!board) return [];
     const out: Figure[] = [];
     for (const piece of view.pieces) {
