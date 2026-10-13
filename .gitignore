@@ -5,6 +5,8 @@ packages/server/data/
 # Production secrets
 deploy/.env
 .vite/
+tools/figures/work/
+__pycache__/
 *.log
 .env
 .DS_Store

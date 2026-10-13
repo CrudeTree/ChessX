@@ -4350,6 +4350,38 @@ button,
   pointer-events: none;
 }
 
+/*
+ * The 3D board (board3d.ts): the board leans back by --tilt, and a canvas over it draws the pieces as figures
+ * standing on their squares. Their flat tokens stay in place, unseen, for the drags and effects that copy them.
+ */
+.g2-board.three {
+  transform-style: preserve-3d;
+}
+
+.g2-figures {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.g2-piece.figured {
+  visibility: hidden;
+}
+
+/* What rises off the board (a pillar of light, a bolt, a diving card, mana won) stands up from it. */
+.g2-board.three .g2-fx,
+.g2-board.three .g2-fx-spot {
+  transform-style: preserve-3d;
+}
+
+.g2-board.three .g2-fx-pillar,
+.g2-board.three .g2-fx-bolt,
+.g2-board.three .g2-fx-card,
+.g2-board.three .g2-fx-gain {
+  transform-origin: 50% 100%;
+  transform: rotateX(calc(-1 * var(--tilt)));
+}
+
 /* Soft light from above: brighter in the middle, darker at the corners. */
 .g2-board::after {
   content: '';

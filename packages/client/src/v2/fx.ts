@@ -1,6 +1,6 @@
 // Board effects: summoning circles, pillars of light, bursts, sparks, breaking tokens, the spell reveal and
-// banners. GameScreen says what happened (from the server's events) and where; this only draws. A 3D board
-// can take over by offering the same calls.
+// banners. GameScreen says what happened (from the server's events) and where; this only draws. On the 3D board
+// (board3d.ts) they play on its leaning floor, under the figures, and the pillars and bolts stand up off it.
 
 import type { v2 } from '@chessx/engine';
 
@@ -68,6 +68,8 @@ export class BoardFx {
   private readonly timers = new Set<number>();
   /** Cards on their way off the board to a discard pile, over the whole page. */
   private readonly flyers = new Set<HTMLElement>();
+  /** Shakes with the board: the 3D board's figures. */
+  private shaken: HTMLElement | null = null;
 
   constructor(
     private readonly board: HTMLElement,
@@ -85,6 +87,10 @@ export class BoardFx {
   /** Put the floor back after the board's squares are rebuilt. */
   attach(): void {
     this.board.append(this.floor);
+  }
+
+  shakeAlso(el: HTMLElement | null): void {
+    this.shaken = el;
   }
 
   clear(): void {
@@ -127,16 +133,18 @@ export class BoardFx {
   /** The board jolts as something lands on it, `force` from 0 (a nudge) to 1 (a slam). */
   private quake(force: number, delay: number): void {
     const d = 1 + force * 4;
-    this.board.animate(
-      [
-        { translate: '0 0' },
-        { translate: `0 ${d}px` },
-        { translate: `${-d * 0.6}px ${-d * 0.4}px` },
-        { translate: `${d * 0.35}px ${d * 0.25}px` },
-        { translate: '0 0' },
-      ],
-      { duration: 320, delay, easing: 'ease-out' },
-    );
+    for (const el of [this.board, this.shaken]) {
+      el?.animate(
+        [
+          { translate: '0 0' },
+          { translate: `0 ${d}px` },
+          { translate: `${-d * 0.6}px ${-d * 0.4}px` },
+          { translate: `${d * 0.35}px ${d * 0.25}px` },
+          { translate: '0 0' },
+        ],
+        { duration: 320, delay, easing: 'ease-out' },
+      );
+    }
   }
 
   /**

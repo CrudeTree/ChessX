@@ -3,8 +3,9 @@
 
 import { v2 } from '@chessx/engine';
 import type { ChatMessage, RoomInfo } from '@chessx/protocol';
+import type { Board3D, Figure } from './board3d.js';
 import { cardBack, fillFrame, hourglass, tiltWithPointer, tribeClass, type FrameCard } from './cardFrame.js';
-import { BoardFx, CARD_DIVE_MS, LAVA_FLIGHT_MS, SPELL_HOLD_MS, SPELL_LANDS_MS, type BannerTone } from './fx.js';
+import { BoardFx, CARD_DIVE_MS, HATCH_T0_MS, LAVA_FLIGHT_MS, SPELL_HOLD_MS, SPELL_LANDS_MS, type BannerTone } from './fx.js';
 import { CardLibrary, type LibraryTool } from './library.js';
 import { describeEvents, type PieceMemory } from './log.js';
 import { movementPanel } from './movement.js';
@@ -72,6 +73,21 @@ const LEVEL_MARK = ['', 'I', 'II', 'III'];
 const LINE_GLYPH: Record<string, string> = { Warrior: '♜', Mage: '♝', Paladin: '♞', Dragon: '♛' };
 /** How hard an evolution lands (0 to 1): the final forms slam. */
 const evolveForce = (card: v2.ViewCard | undefined): number => ((card?.level ?? 2) >= 3 ? 1 : 0.6);
+/** How tall a piece's figure stands on the 3D board, in squares, by its level; a King stands tallest. */
+const FIGURE_HEIGHT = [1, 1, 1.15, 1.3];
+const KING_HEIGHT = 1.4;
+/** The ring round a King's base (a piece's is its type's colour). */
+const KING_RING = { white: '#e2b75e', black: '#c4b2ff' } as const;
+/** Set to 'off' when the player turns the 3D board off. */
+const BOARD_3D_KEY = 'chessx.board3d';
+
+/** A piece's figure on the 3D board: named like its board picture, which is its owner's face; Kings have their own. */
+function figureName(piece: v2.ViewPiece, view: v2.PlayerView): string {
+  if (piece.king) return piece.owner === 'white' ? 'king_white' : 'king_dark';
+  const card = piece.cardId ? view.cards[piece.cardId] : undefined;
+  const art = card ? v2.faceArt(card, piece.owner).boardArt : undefined;
+  return art?.split('/').pop()?.replace(/\.\w+$/, '') ?? '';
+}
 /** Picture window of a spell card that has no picture yet. */
 const SPELL_GLYPH = '✦\uFE0E';
 
@@ -216,14 +232,15 @@ const SPEAKER = '<path d="M4 9.5v5h3.5l4.5 4v-13l-4.5 4z" fill="currentColor"/>'
 const WAVES = '<path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>';
 const NOTE = '<path d="M9.5 17V6.5l9-2V15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="7.3" cy="17" r="2.3" fill="currentColor"/><circle cx="16.3" cy="15" r="2.3" fill="currentColor"/>';
 const SLASH = '<path d="M4 4l16 16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>';
+const CUBE = '<path d="M12 3.5l7.5 4.2v8.6L12 20.5l-7.5-4.2V7.7zM12 12l7.5-4.3M12 12v8.5M12 12L4.5 7.7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>';
 const CHAT_ICON =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16v10.5H10l-4.5 3.5V16H4z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></svg>';
 
-function paintSwitch(btn: HTMLButtonElement, on: boolean, name: string, icon: string): void {
+function paintSwitch(btn: HTMLButtonElement, on: boolean, name: string, icon: string, what = name.toLowerCase()): void {
   btn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icon}${on ? '' : SLASH}</svg><span>${name}</span>`;
   btn.classList.toggle('on', on);
   btn.setAttribute('aria-pressed', String(on));
-  btn.title = `Turn ${name.toLowerCase()} ${on ? 'off' : 'on'}`;
+  btn.title = `Turn ${what} ${on ? 'off' : 'on'}`;
 }
 
 export class GameScreen {
@@ -321,6 +338,14 @@ export class GameScreen {
   private readonly statusBlock = el('div', 'side-block g2-statusblock');
   private readonly effectsBtn = el('button', 'g2-sound-btn');
   private readonly musicBtn = el('button', 'g2-sound-btn');
+  private readonly board3dBtn = el('button', 'g2-sound-btn');
+  /** The pieces as figures standing on a leaning board, while that is on and WebGL works; flat tokens otherwise. */
+  private board3d: Board3D | null = null;
+  private starting3d = false;
+  /** The squares lit up for the player to choose between, as last drawn: what the figures in front of fade for. */
+  private choices: v2.Square[] = [];
+  /** Type colours (a tribe class's --line), for the rings round the figures' bases. */
+  private readonly rings = new Map<string, string>();
   /** The music's licence asks for this credit wherever it plays. */
   private readonly creditEl = el('div', 'g2-credit');
   private readonly menuBtn = el('button', 'g2-menu', '☰');
@@ -389,10 +414,12 @@ export class GameScreen {
     const switches = el('div', 'g2-sound-switches');
     this.effectsBtn.type = 'button';
     this.musicBtn.type = 'button';
+    this.board3dBtn.type = 'button';
     this.effectsBtn.onclick = () => sound.setEffects(!sound.effectsOn);
     this.musicBtn.onclick = () => sound.setMusic(!sound.musicOn);
-    switches.append(this.effectsBtn, this.musicBtn);
-    soundBlock.append(el('div', 'label', 'Sound'), switches, this.creditEl);
+    this.board3dBtn.onclick = () => this.setBoard3d(!this.wants3d);
+    switches.append(this.effectsBtn, this.musicBtn, this.board3dBtn);
+    soundBlock.append(el('div', 'label', 'Settings'), switches, this.creditEl);
     sound.onChange(() => this.renderSound());
     this.renderSound();
     const buttons = el('div', 'side-block actions');
@@ -425,6 +452,7 @@ export class GameScreen {
 
     this.endBtn.onclick = () => this.hooks.act({ type: 'endTurn' });
     this.buildBoard();
+    // The box, not just the board: a figure on the 3D board stands up over the board's far edge.
     boardBox.addEventListener('pointerdown', (e) => {
       this.boardPress = { x: e.clientX, y: e.clientY, at: performance.now() };
       this.startHold(e);
@@ -433,20 +461,21 @@ export class GameScreen {
     boardBox.addEventListener('pointermove', (e) => {
       const press = this.boardPress;
       if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > TAP_SLOP) clearTimeout(this.holdTimer);
+      if (e.pointerType !== 'mouse' || !this.docked || this.drag || this.pieceDrag?.ghost || this.library.dragging) return;
+      this.setBoardHover(this.squareAt(e.clientX, e.clientY));
     });
     boardBox.addEventListener('pointerup', () => clearTimeout(this.holdTimer));
     boardBox.addEventListener('pointercancel', () => clearTimeout(this.holdTimer));
-    this.boardEl.addEventListener('click', (e) => {
+    boardBox.addEventListener('pointerleave', () => this.setBoardHover(null));
+    boardBox.addEventListener('click', (e) => {
+      if (e.target !== boardBox && !this.boardEl.contains(e.target as Node)) return;
       const tap = this.boardTap(e);
-      const cell = (e.target as HTMLElement).closest<HTMLElement>('[data-sq]');
-      if (tap && cell) this.onSquare(Number(cell.dataset.sq), tap === 'quick');
+      const targets = this.targets();
+      const square = this.squareAt(e.clientX, e.clientY, targets.size ? (sq) => targets.has(sq) : undefined);
+      if (tap && square !== null) this.onSquare(square, tap === 'quick');
     });
-    this.boardEl.addEventListener('pointermove', (e) => {
-      if (e.pointerType !== 'mouse' || !this.docked || this.drag || this.pieceDrag?.ghost || this.library.dragging) return;
-      const cell = (e.target as HTMLElement).closest<HTMLElement>('[data-sq]');
-      this.setBoardHover(cell ? Number(cell.dataset.sq) : null);
-    });
-    this.boardEl.addEventListener('pointerleave', () => this.setBoardHover(null));
+    this.renderBoard3dBtn();
+    if (this.wants3d) void this.start3d();
     this.inspectEl.addEventListener('click', (e) => {
       // Beside the board the viewer stays put; only its close button clears it.
       if (this.docked && !(e.target as HTMLElement).closest('.g2-inspect-close')) return;
@@ -484,9 +513,8 @@ export class GameScreen {
   private startHold(e: PointerEvent): void {
     clearTimeout(this.holdTimer);
     if (this.docked || !e.isPrimary || e.button !== 0) return;
-    const cell = (e.target as HTMLElement).closest<HTMLElement>('.g2-cell');
-    if (!cell) return;
-    const square = Number(cell.dataset.sq);
+    const square = this.squareAt(e.clientX, e.clientY);
+    if (square === null) return;
     this.holdTimer = window.setTimeout(() => {
       const thing = this.view ? this.thingAt(this.view, square) : null;
       if (!thing || !this.boardPress) return;
@@ -613,6 +641,53 @@ export class GameScreen {
     );
   }
 
+  private get wants3d(): boolean {
+    return localStorage.getItem(BOARD_3D_KEY) !== 'off';
+  }
+
+  private setBoard3d(on: boolean): void {
+    if (on) localStorage.removeItem(BOARD_3D_KEY);
+    else localStorage.setItem(BOARD_3D_KEY, 'off');
+    if (on) void this.start3d();
+    else this.stop3d();
+    this.renderBoard3dBtn();
+  }
+
+  private renderBoard3dBtn(): void {
+    paintSwitch(this.board3dBtn, this.wants3d, '3D', CUBE, 'the 3D board');
+  }
+
+  /** Stand the pieces up as figures; without WebGL (or the figures) the board stays flat. */
+  private async start3d(): Promise<void> {
+    if (this.board3d || this.starting3d) return;
+    this.starting3d = true;
+    let board: Board3D | null = null;
+    try {
+      const { Board3D } = await import('./board3d.js');
+      board = await Board3D.create(this.boardBox, this.boardEl, (square) => this.cells[square]);
+    } catch {
+      board = null;
+    }
+    this.starting3d = false;
+    if (!board) return;
+    if (!this.wants3d) {
+      board.dispose();
+      return;
+    }
+    board.onLost = () => this.stop3d();
+    this.board3d = board;
+    this.fx.shakeAlso(board.canvas);
+    this.render();
+  }
+
+  private stop3d(): void {
+    if (!this.board3d) return;
+    this.board3d.dispose();
+    this.board3d = null;
+    this.fx.shakeAlso(null);
+    this.render();
+  }
+
   // ------------------------------------------------------------------ lifecycle
 
   /**
@@ -667,6 +742,7 @@ export class GameScreen {
     this.handEl.classList.remove('spent');
     this.memory.clear();
     this.fx.clear();
+    this.board3d?.clear();
     this.tokenFx.clear();
     this.landed.clear();
     this.seenCards = null;
@@ -756,6 +832,7 @@ export class GameScreen {
       }
     }
     this.fx.attach();
+    this.board3d?.layout();
   }
 
   private legal(): Action[] {
@@ -867,7 +944,9 @@ export class GameScreen {
     const boardArt = card ? v2.faceArt(card, piece.owner).boardArt : undefined;
     const state = `${piece.active ? '' : ' sick'}${piece.shielded ? ' shielded' : ''}${piece.frozen ? ' frozen' : ''}`;
     const tribe = card?.tribe ? ` ${tribeClass(card.tribe)}` : '';
-    const tok = el('div', `g2-piece ${piece.owner}${piece.king ? ' king' : ''}${tribe}${state}${boardArt ? ' art' : ''}`);
+    // On the 3D board a figure stands there instead (as it does in the effects' copies of the token).
+    const figured = this.board3d?.shows(figureName(piece, view)) ? ' figured' : '';
+    const tok = el('div', `g2-piece ${piece.owner}${piece.king ? ' king' : ''}${tribe}${state}${boardArt ? ' art' : ''}${figured}`);
     if (boardArt) tok.style.backgroundImage = `url("${boardArt}")`;
     else tok.append(el('span', 'g2-piece-glyph', glyphFor(piece.kind, piece.name)));
     // The badge: what the piece moves like and its level, in its type's colour.
@@ -890,6 +969,53 @@ export class GameScreen {
     const frozen = piece.frozen ? ` · Frozen: cannot move or capture ${this.frozenWhen(piece, view)}` : '';
     tok.title = `${piece.name}${line}${learned}${shield}${frozen}${resting}`;
     return tok;
+  }
+
+  /** The pieces as the 3D board stands them up: each one's figure, where it stands, and what is on it. */
+  private figures(view: v2.PlayerView): Figure[] {
+    const board = this.board3d;
+    if (!board) return [];
+    const out: Figure[] = [];
+    for (const piece of view.pieces) {
+      const name = figureName(piece, view);
+      // Taken off the board in the arena: its figure is already on its way out (see `takeOff`).
+      if (!board.shows(name) || piece.square === this.vanishing?.square) continue;
+      const card = piece.cardId ? view.cards[piece.cardId] : undefined;
+      // Dropped on a square: it waits there for the server, as its flat copy does.
+      const square = piece.square === this.dropped?.from ? this.dropped.to : piece.square;
+      const family = card ? (card.line && LINE_GLYPH[card.line]) || glyphFor(piece.kind, piece.name) : '';
+      const fx = this.tokenFx.get(piece.id);
+      out.push({
+        id: piece.id,
+        name,
+        square,
+        owner: piece.owner,
+        height: piece.king ? KING_HEIGHT : (FIGURE_HEIGHT[card?.level ?? 1] ?? 1),
+        ring: piece.king ? KING_RING[piece.owner] : this.ringColor(tribeClass(card?.tribe)),
+        badge: card ? `${family}${LEVEL_MARK[card.level ?? 0] ?? ''}` : '',
+        picked: square === this.selectedSquare,
+        sick: !piece.active,
+        shielded: !!piece.shielded,
+        frozen: !!piece.frozen,
+        ember: piece.abilities?.includes('lavaBreath') ? (this.canSpit(piece.square) ? 'ready' : 'idle') : 'none',
+        ...(fx?.kind === 'fx-rise' ? { riseAt: fx.at } : {}),
+      });
+    }
+    return out;
+  }
+
+  /** A type's colour: its tribe class's --line in style.css. */
+  private ringColor(tribe: string): string {
+    let color = this.rings.get(tribe);
+    if (!color) {
+      const probe = el('div', `g2-piece ${tribe}`);
+      probe.style.display = 'none';
+      this.boardEl.append(probe);
+      color = getComputedStyle(probe).getPropertyValue('--line').trim() || '#c99d50';
+      probe.remove();
+      this.rings.set(tribe, color);
+    }
+    return color;
   }
 
   /** "this turn" while a frozen piece's owner plays, "on its owner's next turn" before that. */
@@ -1051,6 +1177,7 @@ export class GameScreen {
         case 'captured': {
           const victim = pieceBefore.get(e.pieceId);
           if (victim) this.fx.vanish(e.square, this.pieceToken(victim, prev), 'capture', 150);
+          this.board3d?.leave(e.pieceId, 'capture', 150);
           if (e.bounty) this.fx.gain(e.square, `+${e.bounty} mana`, 450);
           break;
         }
@@ -1072,6 +1199,7 @@ export class GameScreen {
         case 'sealed': {
           const consumed = pieceBefore.get(e.consumedPieceId);
           if (consumed) this.fx.vanish(e.square, this.pieceToken(consumed, prev), 'consume', 80);
+          this.board3d?.leave(e.consumedPieceId, 'consume', 80);
           this.fx.seal(e.square, e.color, this.takeLanding(e.square, now) ? null : cardBack());
           this.tokenFx.set(e.sealId, { kind: 'fx-seal-in', at: now });
           break;
@@ -1083,6 +1211,7 @@ export class GameScreen {
           const card = this.takeLanding(e.square, now) ? null : this.cardFace(piece.cardId, piece.owner, view);
           const force = evolveForce(piece.cardId ? view.cards[piece.cardId] : undefined);
           this.fx.evolve(e.square, e.color, old ? this.pieceToken(old, prev) : null, card, force);
+          this.board3d?.leave(e.fromPieceId, 'consume', (card ? CARD_DIVE_MS : 0) + HATCH_T0_MS);
           this.tokenFx.set(piece.id, { kind: 'fx-rise', at: now + (card ? CARD_DIVE_MS : 0) + HATCH_RISE_DELAY });
           break;
         }
@@ -1121,6 +1250,7 @@ export class GameScreen {
         case 'destroyed': {
           const victim = pieceBefore.get(e.pieceId);
           if (victim) this.fx.smite(e.square, this.pieceToken(victim, prev), spellAt);
+          this.board3d?.leave(e.pieceId, 'capture', spellAt + 90);
           break;
         }
         case 'manaGained':
@@ -1659,9 +1789,10 @@ export class GameScreen {
     // The card hangs above the pointer so the square it would land on stays visible.
     drag.ghost.style.left = `${e.clientX - drag.ghost.offsetWidth / 2}px`;
     drag.ghost.style.top = `${e.clientY - drag.ghost.offsetHeight - 6}px`;
-    const square = this.squareAt(e.clientX, e.clientY);
     const anywhere = this.untargetedSpell(drag.uid) !== null;
-    const hover = square !== null && (anywhere || this.dropTargets(drag.uid).has(square)) ? square : null;
+    const drops = this.dropTargets(drag.uid);
+    const square = this.squareAt(e.clientX, e.clientY, (sq) => drops.has(sq));
+    const hover = square !== null && (anywhere || drops.has(square)) ? square : null;
     const pitch = this.overPitch(e.clientX, e.clientY);
     if (pitch !== drag.pitch) {
       drag.pitch = pitch;
@@ -1772,7 +1903,8 @@ export class GameScreen {
       this.drag = null;
       return;
     }
-    const square = e.type === 'pointerup' ? this.squareAt(e.clientX, e.clientY) : null;
+    const drops = this.dropTargets(drag.uid);
+    const square = e.type === 'pointerup' ? this.squareAt(e.clientX, e.clientY, (sq) => drops.has(sq)) : null;
     const pitch = e.type === 'pointerup' && square === null && this.overPitch(e.clientX, e.clientY) ? this.pitchAction(drag.uid) : null;
     const gem = pitch ? document.querySelector('.g2-player.pitch-drop .g2-gem')?.getBoundingClientRect() : undefined;
     const action = this.dropAction(drag.uid, square);
@@ -1896,9 +2028,27 @@ export class GameScreen {
     return this.handEl.querySelector<HTMLElement>(`[data-uid="${CSS.escape(uid)}"]`);
   }
 
-  private squareAt(x: number, y: number): v2.Square | null {
-    const cell = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-sq]');
-    return cell && this.boardEl.contains(cell) ? Number(cell.dataset.sq) : null;
+  /**
+   * The square at (x, y) on the page. On the 3D board a figure stands in front of the squares behind it, so that is
+   * its square; for a figure being dragged, which is drawn on the floor under the pointer, it is the square there. If
+   * `wanted` (where what is held can go) takes the other of the two and not that one, it is the other.
+   */
+  private squareAt(x: number, y: number, wanted?: (square: v2.Square) => boolean, onFloor = false): v2.Square | null {
+    const hit = document.elementFromPoint(x, y);
+    if (!hit || (hit !== this.boardBox && !this.boardEl.contains(hit))) return null;
+    const cell = hit.closest<HTMLElement>('[data-sq]');
+    const floor = cell ? Number(cell.dataset.sq) : null;
+    const figure = this.board3d?.pick(x, y) ?? null;
+    const [first, other] = onFloor ? [floor, figure] : [figure, floor];
+    if (first === null) return other;
+    return wanted && other !== null && !wanted(first) && wanted(other) ? other : first;
+  }
+
+  /** On the 3D board, figures in front of a square the player can choose, or is holding something over, fade. */
+  private reveal(): void {
+    if (!this.board3d) return;
+    const over = [this.pieceDrag?.hover, this.libTarget?.kind === 'square' ? this.libTarget.square : null];
+    this.board3d.reveal([...this.choices, ...over.filter((s): s is v2.Square => s !== null && s !== undefined)]);
   }
 
   // ---------------------------------------------------------------- piece drag
@@ -1909,9 +2059,8 @@ export class GameScreen {
    */
   private pressPiece(e: PointerEvent): void {
     if (e.button !== 0 || !e.isPrimary || this.drag || this.pieceDrag || this.dropped || !this.view) return;
-    const cell = (e.target as HTMLElement).closest<HTMLElement>('.g2-cell');
-    if (!cell || !this.boardEl.contains(cell)) return;
-    const from = Number(cell.dataset.sq);
+    const from = this.squareAt(e.clientX, e.clientY);
+    if (from === null) return;
     const loose = this.arena && this.view.pieces.some((p) => p.square === from);
     if (!this.movers(this.view).has(from) && !loose) return;
     // Stops the browser starting a text selection; the click still fires.
@@ -1935,8 +2084,10 @@ export class GameScreen {
     const lift = drag.pointerType === 'touch' ? ghost.offsetHeight * 0.9 : 0;
     ghost.style.left = `${e.clientX - ghost.offsetWidth / 2}px`;
     ghost.style.top = `${e.clientY - ghost.offsetHeight / 2 - lift}px`;
-    const square = this.squareAt(e.clientX, e.clientY);
-    const legal = square !== null && this.targets().has(square);
+    this.board3d?.follow(e.clientX, e.clientY, drag.pointerType === 'touch');
+    const targets = this.targets();
+    const square = this.squareAt(e.clientX, e.clientY, (sq) => targets.has(sq) || this.canRelocate(drag.from, sq), true);
+    const legal = square !== null && targets.has(square);
     const hover = legal || (square !== null && this.canRelocate(drag.from, square)) ? square : null;
     ghost.classList.toggle('off', this.canTakeOff(drag.from, e.clientX, e.clientY));
     if (hover === drag.hover) return;
@@ -1944,6 +2095,7 @@ export class GameScreen {
     if (hover !== null) this.cells[hover]?.classList.add(legal ? 'drag-over' : 'arena-over');
     drag.hover = hover;
     ghost.classList.toggle('over', hover !== null);
+    this.reveal();
   };
 
   /** Arena: whether a piece can be put down on `to` out of turn and out of the rules (anywhere but on a King). */
@@ -1982,6 +2134,8 @@ export class GameScreen {
     ghost.style.fontSize = getComputedStyle(token).fontSize;
     document.body.appendChild(ghost);
     drag.ghost = ghost;
+    const piece = this.view?.pieces.find((p) => p.square === drag.from);
+    if (piece) this.board3d?.hold(piece.id);
     if (drag.pointerType === 'mouse') document.body.classList.add('g2-grabbing');
     // A piece being dragged moves; it does not spit lava.
     this.aimLava = null;
@@ -2006,9 +2160,10 @@ export class GameScreen {
     if (!ghost) return;
     if (drag.hover !== null) this.cells[drag.hover]?.classList.remove('drag-over', 'arena-over');
     const up = e.type === 'pointerup';
-    const square = up ? this.squareAt(e.clientX, e.clientY) : null;
-    const move = square === null ? undefined : this.targets().get(square);
+    const targets = this.targets();
     const from = drag.from;
+    const square = up ? this.squareAt(e.clientX, e.clientY, (sq) => targets.has(sq) || this.canRelocate(from, sq), true) : null;
+    const move = square === null ? undefined : targets.get(square);
     if (move && square !== null) this.dropPiece(from, square, () => this.hooks.act(move), ghost);
     else if (square !== null && this.canRelocate(from, square)) this.dropPiece(from, square, () => this.hooks.arena({ type: 'relocate', from, to: square }), ghost);
     else if (up && square === null && this.canTakeOff(from, e.clientX, e.clientY)) this.takeOff(from, ghost);
@@ -2018,6 +2173,7 @@ export class GameScreen {
   /** Let go on a lit square: the move is sent, and the piece waits on its new square until the server answers. */
   private dropPiece(from: v2.Square, to: v2.Square, send: () => void, ghost: HTMLElement): void {
     this.clearDropped();
+    this.board3d?.release();
     ghost.classList.add('landing');
     this.placeOn(ghost, to);
     const timer = window.setTimeout(() => {
@@ -2033,7 +2189,11 @@ export class GameScreen {
   /** Arena: a piece let go off the board bursts there, and is gone from its square until the server agrees. */
   private takeOff(from: v2.Square, ghost: HTMLElement): void {
     const piece = this.view?.pieces.find((p) => p.square === from);
-    if (piece) this.arenaGone.add(piece.id);
+    if (piece) {
+      this.arenaGone.add(piece.id);
+      this.board3d?.leave(piece.id, 'consume', 0);
+    }
+    this.board3d?.release();
     ghost.classList.add('poof');
     window.setTimeout(() => ghost.remove(), 320);
     sound.sfx?.capture(0);
@@ -2057,6 +2217,7 @@ export class GameScreen {
   /** Let go anywhere else: the piece flies back to its square and stays picked up, so a tap can still move it. */
   private returnPiece(from: v2.Square, ghost: HTMLElement): void {
     this.clearReturning();
+    this.board3d?.release();
     ghost.classList.add('returning');
     this.placeOn(ghost, from);
     const timer = window.setTimeout(() => {
@@ -2097,6 +2258,7 @@ export class GameScreen {
     this.pieceDrag = null;
     document.body.classList.remove('g2-grabbing');
     drag.ghost?.remove();
+    this.board3d?.release();
     if (drag.hover !== null) this.cells[drag.hover]?.classList.remove('drag-over', 'arena-over');
   }
 
@@ -2171,7 +2333,7 @@ export class GameScreen {
   private libraryTarget(cardId: string, x: number, y: number): LibraryTarget | null {
     const card = this.view?.cards[cardId];
     if (!card) return null;
-    const square = this.squareAt(x, y);
+    const square = this.squareAt(x, y, (sq) => card.type === 'piece' && !this.kingAt(sq));
     if (square !== null) return card.type === 'piece' && !this.kingAt(square) ? { kind: 'square', square } : null;
     const hit = document.elementFromPoint(x, y);
     if (!hit || !this.root.contains(hit)) return null;
@@ -2202,6 +2364,7 @@ export class GameScreen {
     this.oppEl.classList.toggle('lib-drop', hand !== null && hand !== this.seat);
     this.handEl.classList.toggle('lib-drop', hand !== null && hand === this.view?.you);
     for (const p of this.root.querySelectorAll<HTMLElement>('.g2-pile')) p.classList.toggle('lib-drop', pile !== null && p.dataset.pile === pile);
+    this.reveal();
   }
 
   private dropFromLibrary(cardId: string, color: Color, at: { x: number; y: number } | null, ghost: HTMLElement): boolean {
@@ -2311,6 +2474,7 @@ export class GameScreen {
     for (const old of prev.pieces) {
       if (told.has(old.id) || after.has(old.id) || this.arenaGone.has(old.id)) continue;
       if (fx) this.fx.vanish(old.square, this.pieceToken(old, prev), 'capture', 0);
+      this.board3d?.leave(old.id, 'capture', 0);
       burst = true;
     }
     const sealsBefore = new Set(prev.seals.map((s) => s.id));
@@ -2405,6 +2569,9 @@ export class GameScreen {
         cell.appendChild(tok);
       }
     }
+    this.board3d?.sync(this.figures(view));
+    this.choices = [...targets.keys(), ...drops.keys()];
+    this.reveal();
 
     this.renderHand(view);
     this.renderInspect(view);
