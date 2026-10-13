@@ -55,7 +55,7 @@
     <!-- Home: your games -->
     <div id="home" class="screen hidden">
       <div id="push-banner" class="push-banner hidden">
-        <span>🔔 Get notified when it's your move or a friend challenges you — even with ChessX closed.</span>
+        <span>Get notified when it's your move.</span>
         <button id="push-enable" class="primary">Turn on</button>
         <button id="push-dismiss" class="x">Not now</button>
       </div>
@@ -88,28 +88,24 @@
         </header>
         <div class="hx-stage">
           <div class="hx-pitch">
-            <p class="hx-eyebrow">The chess card game</p>
             <h1 class="hx-title">Chess<span>X</span></h1>
-            <p class="hx-tagline">Summon. Evolve. Checkmate.</p>
-            <p class="hx-lede">Your army waits in your hand. Spend mana to summon pieces and evolve them into mightier forms, then strike with your move.</p>
             <button id="your-move" class="hx-yourmove hidden"></button>
             <div class="hx-modes">
-              <button id="new-game" class="hx-mode hx-play">
+              <button id="new-game" class="hx-mode hx-play" title="Invite a friend with a code">
                 <span class="hx-mode-icon" aria-hidden="true">&#x2694;&#xFE0E;</span>
-                <span class="hx-mode-text"><b>New game</b><small>Invite a friend with a code</small></span>
+                <span class="hx-mode-text"><b>New game</b></span>
               </button>
-              <button id="practice" class="hx-mode">
+              <button id="practice" class="hx-mode" title="Play both sides">
                 <span class="hx-mode-icon" aria-hidden="true">♞</span>
-                <span class="hx-mode-text"><b>Practice</b><small>Play both sides</small></span>
+                <span class="hx-mode-text"><b>Practice</b></span>
               </button>
-              <button id="arena-start" class="hx-mode">
+              <button id="arena-start" class="hx-mode" title="Test any card">
                 <span class="hx-mode-icon" aria-hidden="true">&#x2726;&#xFE0E;</span>
-                <span class="hx-mode-text"><b>Arena</b><small>Test any card</small></span>
+                <span class="hx-mode-text"><b>Arena</b></span>
               </button>
             </div>
             <form id="join-form" class="hx-join" autocomplete="off">
-              <span class="hx-join-label">Have an invite code?</span>
-              <input id="join-code" maxlength="5" placeholder="CODE" aria-label="Invite code" />
+              <input id="join-code" maxlength="5" placeholder="Invite code" aria-label="Invite code" />
               <button id="join" type="submit">Join</button>
             </form>
             <p id="home-error" class="error"></p>
@@ -117,11 +113,6 @@
           <div id="hx-fan" class="hx-fan" aria-hidden="true"></div>
         </div>
       </section>
-      <ol class="hx-steps" aria-label="How a turn works">
-        <li><span class="hx-step-icon mana" aria-hidden="true">&#x25C6;&#xFE0E;</span><b>Gain mana, draw a card</b><span>+1 mana a turn, rising every 5 turns. What you don't spend carries over.</span></li>
-        <li><span class="hx-step-icon cards" aria-hidden="true">&#x2726;&#xFE0E;</span><b>Play your cards</b><span>Summon, evolve, sacrifice and cast as many as your mana pays for, or pitch one for mana.</span></li>
-        <li><span class="hx-step-icon move" aria-hidden="true">♞</span><b>Make your move</b><span>Moving a piece ends your turn. Checkmate the King to win.</span></li>
-      </ol>
       <div class="home-body">
         <div class="home-games">
           <section id="sec-challenges" class="hidden">
@@ -138,7 +129,7 @@
             </div>
             <div id="games-active" class="games"></div>
             <div id="games-finished" class="finished-list hidden"></div>
-            <p id="home-empty" class="hint hidden">No games yet. Challenge a friend, start one with an invite code, try Practice, or open the Arena to test cards.</p>
+            <p id="home-empty" class="hint hidden">No games yet.</p>
           </section>
         </div>
         <aside class="friends-panel">
@@ -220,7 +211,6 @@
           <div id="discard-view" class="discard-view"></div>
           <button id="discard-next" class="nav" title="Newer">›</button>
         </div>
-        <p class="hint">Swipe or use ← → to browse. Newest on top.</p>
         <button id="discard-close" class="primary">Close</button>
       </div>
     </div>
@@ -251,7 +241,7 @@
       </div>
       <aside id="inspect">
         <div id="zoom" class="zoom empty">
-          <div class="zoom-empty">Click a piece, or hover a card, to see it here.</div>
+          <div class="zoom-empty"></div>
         </div>
         <button id="stance" disabled>Switch to Defense mode</button>
         <div id="stance-hint" class="hint"></div>
@@ -261,7 +251,6 @@
         <div class="side-block">
           <div class="label">Invite code</div>
           <div id="room-code" class="code">-----</div>
-          <div id="room-hint" class="hint">Send this to a friend. They enter it under "Join".</div>
         </div>
         <div class="side-block players">
           <div id="opp" class="player">
@@ -292,9 +281,9 @@
       <!-- Phone-only bottom tabs; each opens one of the panels above as a sheet -->
       <div id="mtabs" class="mtabs">
         <button data-sheet="inspect"><span>Card</span><small id="m-card-name"></small></button>
-        <button data-sheet="side"><span>Game</span><small>log · menu</small></button>
+        <button data-sheet="side"><span>Game</span></button>
         <button data-sheet="chat"><span>Chat</span><small id="m-chat-badge"></small></button>
-        <button id="arena-tab" class="hidden" data-sheet="arena"><span>Cards</span><small>sandbox</small></button>
+        <button id="arena-tab" class="hidden" data-sheet="arena"><span>Cards</span></button>
       </div>
       <div id="sheet-backdrop" class="sheet-backdrop hidden"></div>
     </div>
@@ -310,7 +299,6 @@
           <button id="arena-black" type="button">Black</button>
         </div>
       </div>
-      <p class="hint arena-hint">Drag a name onto the board or into a hand. Drop a summon on a piece to start its timer. Toss pieces in the trash.</p>
       <input id="arena-search" placeholder="Search…" />
       <div id="arena-list" class="arena-list"></div>
     </div>

@@ -253,7 +253,6 @@ export class GameScreen {
   private readonly logEl = el('div', 'g2-log');
   private readonly endBtn = el('button', 'primary g2-end', 'End turn');
   private readonly codeEl = el('div', 'code', '-----');
-  private readonly hintEl = el('div', 'hint');
   /** Under a thumb the hovered square is hidden, so a touch drag repeats its seal warning here. */
   private readonly dropNoteEl = el('div', 'g2-dropnote hidden');
   private readonly dropTagEl = el('div', 'g2-droptag');
@@ -263,7 +262,7 @@ export class GameScreen {
   private readonly inspectEl = el('div', 'g2-inspect hidden');
   /** Wide screens: the column left of the board that holds the card viewer. */
   private readonly detailEl = el('aside', 'g2-detail');
-  /** "Cards, then move" on the board's top edge during your turn. */
+  /** On the board's top edge: Spit lava, while a piece that can spit is picked. */
   private readonly cueEl = el('div', 'g2-cue hidden');
   private readonly sideEl = el('aside', 'g2-side');
   private readonly codeBlock = el('div', 'side-block');
@@ -319,7 +318,7 @@ export class GameScreen {
     const sheetClose = el('button', 'g2-sheet-close', 'Close');
     sheetClose.type = 'button';
     sheetClose.onclick = () => this.toggleSheet(false);
-    this.codeBlock.append(el('div', 'label', 'Invite code'), this.codeEl, this.hintEl);
+    this.codeBlock.append(el('div', 'label', 'Invite code'), this.codeEl);
     this.menuBtn.type = 'button';
     this.menuBtn.title = 'Log, sound, invite code and resign';
     this.menuBtn.onclick = () => this.toggleSheet();
@@ -552,8 +551,6 @@ export class GameScreen {
     this.solo = opts.solo;
     this.seat = opts.solo ? 'white' : opts.you;
     this.codeEl.textContent = opts.solo ? 'PRACTICE' : opts.code;
-    this.hintEl.textContent = opts.solo ? 'You play both sides.' : 'Send this to a friend. They enter it under "Join".';
-    this.hintEl.classList.toggle('hidden', opts.solo);
     this.buildBoard();
     this.renderPlayers();
   }
@@ -604,7 +601,7 @@ export class GameScreen {
     this.renderPlayers();
     const waiting = !this.solo && !(room.players.white && room.players.black);
     this.resignBtn.textContent = waiting ? 'Cancel invite' : 'Resign';
-    if (waiting && !this.view) this.statusEl.textContent = 'Waiting for an opponent to join. Share the invite code!';
+    if (waiting && !this.view) this.statusEl.textContent = 'Waiting for an opponent…';
   }
 
   /** The newest game state. */
@@ -1139,7 +1136,7 @@ export class GameScreen {
     return found ? found.square : null;
   }
 
-  /** Nothing to show: a card back and a hint beside the board, nothing over it. */
+  /** Nothing to show: a card back beside the board, nothing over it. */
   private renderEmptyInspect(): void {
     const box = this.inspectEl;
     if (!this.docked) {
@@ -1152,12 +1149,7 @@ export class GameScreen {
     this.inspectKey = 'empty';
     box.className = 'g2-inspect empty';
     box.removeAttribute('title');
-    const info = el('div', 'g2-inspect-info');
-    info.append(
-      el('div', 'g2-inspect-title', 'Card viewer'),
-      el('p', 'g2-inspect-hint', 'Point at a card in your hand, a piece or sacrifice on the board, or a discard pile, to see its card. Click one to keep it here.'),
-    );
-    box.replaceChildren(cardBack('g2-inspect-card'), info);
+    box.replaceChildren(cardBack('g2-inspect-card'));
   }
 
   private exists(view: v2.PlayerView, it: Inspected): boolean {
@@ -1195,14 +1187,15 @@ export class GameScreen {
     if (handCard) {
       card = view.cards[handCard.cardId];
       frame = this.frameFor(card, handCard.cardId, owner);
-      notes.push(this.solo ? `In ${sideName(view.you)}'s hand.` : 'In your hand.', this.howToPlay(handCard.uid, card));
+      // A spell's detail already says where to drop it.
+      if (card?.type !== 'spell' || !card.detail) notes.push(this.howToPlay(handCard.uid, card));
       if (card?.type === 'piece' && card.detail) notes.push(card.detail);
       const next = this.evolvesInto(handCard.cardId, view);
       if (next) notes.push(next);
       const pitch = this.pitchAction(handCard.uid);
       if (pitch) {
         buttons.push(
-          this.inspectButton(`Pitch it: +${v2.PITCH_MANA} mana`, 'Discard this card for mana. Once a turn; it does not end your turn.', 'mana', () =>
+          this.inspectButton(`Pitch it: +${v2.PITCH_MANA} mana`, 'Discard this card for mana. Once a turn.', 'mana', () =>
             this.hooks.act(pitch),
           ),
         );
@@ -1212,7 +1205,6 @@ export class GameScreen {
       owner = piece.owner;
       if (piece.king) {
         frame = { kind: 'king', id: 'king', name: piece.name, text: v2.describeMovement(v2.KING), glyph: glyphFor(piece.kind, piece.name), owner, rules: v2.KING.rules };
-        notes.push('No card: the King cannot be summoned, sacrificed or evolved.');
       } else {
         frame = this.frameFor(card, piece.kind, owner, piece.name, piece.abilities);
       }
@@ -1302,7 +1294,7 @@ export class GameScreen {
       );
     } else if (card?.type === 'spell') {
       info.append(el('div', 'g2-inspect-label', 'What it does'), el('p', 'g2-inspect-spell', card.detail ?? card.text));
-      if (handCard) info.append(el('p', 'g2-inspect-note', 'Cast it any time before you move; it does not end your turn. Not while your King is in check.'));
+      if (handCard) info.append(el('p', 'g2-inspect-note', 'Not while your King is in check.'));
     }
     for (const n of notes) info.append(el('p', 'g2-inspect-note', n));
     if (strip) info.append(el('div', 'g2-inspect-label', 'The whole pile, newest first'), strip);
@@ -1331,25 +1323,24 @@ export class GameScreen {
 
   private howToPlay(uid: string, card: v2.ViewCard | undefined): string {
     if (card?.type === 'spell') {
-      const goOn = 'Casting does not end your turn.';
       if (card.grants) {
         const who = card.tribe ? `one of your ${card.tribe}s` : 'one of your pieces';
-        return `Drag it onto ${who} to teach it ${v2.ABILITIES[card.grants].name}. ${goOn}`;
+        return `Drag it onto ${who} to teach it ${v2.ABILITIES[card.grants].name}.`;
       }
       switch (card.spell) {
         case 'raise':
-          return `Drag it onto a free square of your first two rows, then pick a piece card that costs ${card.maxCost} or less from your discard pile, where the pieces you capture go too: it rises there as your piece. ${goOn}`;
+          return `Drag it onto a free square of your first two rows, then pick a piece card that costs ${card.maxCost} or less from your discard pile, where the pieces you capture go too: it rises there as your piece.`;
         case 'shield':
-          return `Drag it onto one of your pieces (not the King): nothing can capture it until your next turn. ${goOn}`;
+          return 'Drag it onto one of your pieces (not the King): nothing can capture it until your next turn.';
         case 'freeze':
-          return `Drag it onto an enemy piece (not the King): it cannot move or capture on its owner's next turn. ${goOn}`;
+          return "Drag it onto an enemy piece (not the King): it cannot move or capture on its owner's next turn.";
         case 'destroyPiece':
-          return `Drag it onto an enemy piece (not the King) that costs ${card.maxCost} or less to destroy it. ${goOn}`;
+          return `Drag it onto an enemy piece (not the King) that costs ${card.maxCost} or less to destroy it.`;
         default:
           break;
       }
       const targeted = this.legal().some((a) => a.type === 'spell' && a.cardUid === uid && a.target !== undefined);
-      return `Drag it ${targeted ? 'onto a glowing target' : 'onto the board'} to cast it. ${goOn}`;
+      return `Drag it ${targeted ? 'onto a glowing target' : 'onto the board'} to cast it.`;
     }
     if (card?.evolvesFrom) {
       const cards = this.view?.cards ?? {};
@@ -1357,9 +1348,9 @@ export class GameScreen {
       // A level-2 card can also go onto an Initiate (any path), for its own cost plus the level it skips.
       const anyPath = from && !from.evolvesFrom ? Object.values(cards).find((c) => c.anyPath) : undefined;
       const also = anyPath ? ` (or onto ${/^[aeiou]/i.test(anyPath.name) ? 'an' : 'a'} ${anyPath.name}, paying ${from!.name}'s ${from!.cost} mana as well)` : '';
-      return `Drag it onto your ${from?.name ?? 'earlier form'}${also} to evolve it, if that piece was already on the board when your turn began. The new piece can move from your next turn. Evolving does not end your turn.`;
+      return `Drag it onto your ${from?.name ?? 'earlier form'}${also} to evolve it, if that piece was already on the board when your turn began. The new piece can move from your next turn.`;
     }
-    return 'Drag it to a free square on your first two rows to summon it, or onto one of your pieces (not the King) to sacrifice that piece for it. Neither ends your turn: play more cards, then move a piece.';
+    return 'Drag it to a free square on your first two rows to summon it, or onto one of your pieces (not the King) to sacrifice that piece for it.';
   }
 
   /** "Evolves into Mystic Dragon." for a card with a next level in this game's cards. */
@@ -1726,7 +1717,7 @@ export class GameScreen {
     const panel = el('div', 'g2-raise-panel');
     const head = el('div', 'g2-raise-head');
     const whose = this.solo ? `${sideName(me)}'s discard pile` : 'your discard pile';
-    head.append(el('b', '', `Resurrect onto ${v2.squareName(square)}`), el('span', '', `Pick a piece from ${whose}. It rises there as yours.`));
+    head.append(el('b', '', `Resurrect onto ${v2.squareName(square)}`), el('span', '', `Pick a piece from ${whose}.`));
     const row = el('div', 'g2-raise-row');
     for (const option of options) {
       const pick = el('button', 'g2-raise-card');
@@ -1959,19 +1950,9 @@ export class GameScreen {
     // Off turn, the hand rests until your next one.
     const spent = view.phase === 'play' && view.status.kind === 'playing' && !this.solo && view.active !== view.you;
     this.handEl.classList.toggle('spent', spent);
-    const label = el('div', 'g2-handlabel');
-    label.textContent = this.solo ? `${this.name(view.you)}'s hand` : spent ? 'Your hand · opponent\'s turn' : 'Your hand';
-    if (view.hand?.some((c) => this.canLift(view, c.cardId))) {
-      const read = this.docked ? 'tap a card to read it' : 'tap a card or hold a piece to read it';
-      label.append(
-        el(
-          'span',
-          'g2-handtip',
-          ` · drag a piece to your first two rows to summon it, or onto your piece to sacrifice that piece for it · drag an evolution onto the piece it evolves from · drag a spell onto the board to cast it · once a turn, drop a card on your name bar to pitch it for +${v2.PITCH_MANA} mana · ${read}`,
-        ),
-      );
-    }
-    this.handEl.append(label, this.dropNoteEl);
+    // Practice shows the hand of the side to move, so it says whose it is.
+    if (this.solo) this.handEl.append(el('div', 'g2-handlabel', `${this.name(view.you)}'s hand`));
+    this.handEl.append(this.dropNoteEl);
 
     const hand = view.hand ?? [];
     const now = performance.now();
@@ -2221,6 +2202,7 @@ export class GameScreen {
   private renderStatus(view: v2.PlayerView): void {
     const s = this.statusEl;
     s.className = 'status g2-status';
+    s.removeAttribute('title');
     const playing = view.status.kind === 'playing';
     const mine = this.solo || view.active === view.you;
     const who = this.solo ? this.name(view.active) : 'You';
@@ -2249,48 +2231,32 @@ export class GameScreen {
         : `Opponent is deploying their starting pieces (${n} of ${view.setupTotal}).`;
       return;
     }
-    const turn = view.turns[view.active];
-    if (!mine) {
-      s.textContent = `Opponent's turn (${turn}).`;
-      return;
+    s.textContent =
+      !mine ? "Opponent's turn"
+      : view.actionTaken ? 'End the turn'
+      : canEnd ? 'No moves left'
+      : view.inCheck ? (this.solo ? `${who} is in check!` : 'You are in check!')
+      : this.solo ? `${who}'s turn` : 'Your turn';
+    if (mine && !view.actionTaken && !canEnd) {
+      s.title = view.inCheck
+        ? 'Move out of check, or summon a piece that blocks it. No spells until your King is safe.'
+        : 'Play any cards you can afford, then move a piece. The move ends your turn.';
     }
-    if (view.actionTaken) {
-      s.textContent = `${who}: action done. End the turn.`;
-      return;
-    }
-    const mana = `${view.mana[view.active]} mana`;
-    if (canEnd) {
-      s.textContent = `${who}: no move left, ${mana}. Play more cards if you like, then End turn.`;
-      return;
-    }
-    s.textContent = view.inCheck
-      ? `${who}: turn ${turn}, ${mana}. You are in CHECK: move out of it, or summon a piece that blocks it. No spells until your King is safe.`
-      : `${who}: turn ${turn}, ${mana}. Play any cards you can afford, then move a piece.`;
-    s.append(el('span', 'g2-status-more', ' The move ends your turn.'));
   }
 
   private renderCue(view: v2.PlayerView): void {
     const cue = this.cueEl;
     const mine = this.solo || view.active === view.you;
-    const show = mine && view.status.kind === 'playing' && view.phase === 'play' && !view.actionTaken;
-    cue.classList.toggle('hidden', !show);
-    if (!show) return;
-    const canPlay = view.legalActions.some((a) => a.type === 'summon' || a.type === 'seal' || a.type === 'evolve' || a.type === 'spell');
-    const canEnd = view.legalActions.some((a) => a.type === 'endTurn');
-    const cards = el('span', `g2-cue-step${canPlay ? '' : ' off'}`, 'Cards');
-    const finish = el('span', 'g2-cue-step now', canEnd ? 'End turn' : 'move');
-    cards.title = canPlay ? 'Optional: play any cards you can afford' : 'No card you can play now';
-    finish.title = canEnd ? 'No move left: End turn closes your turn.' : 'Move a piece. It ends your turn.';
-    cue.replaceChildren(cards, el('span', 'g2-cue-then', ', then '), finish);
-    // The picked piece has Lava Breath: aim it from here.
     const from = this.selectedSquare;
-    if (from === null || !this.canSpit(from)) return;
+    const show = mine && view.status.kind === 'playing' && view.phase === 'play' && !view.actionTaken && from !== null && this.canSpit(from);
+    cue.classList.toggle('hidden', !show);
+    if (!show || from === null) return;
     const aiming = this.aimLava === from;
     const lava = el('button', `g2-cue-lava${aiming ? ' on' : ''}`, aiming ? 'Pick a square for the lava · cancel' : `Spit lava · ${v2.LAVA_COST} mana`);
     lava.type = 'button';
     lava.title = aiming ? 'Put the lava away' : 'Spit lava onto an empty square this piece could move to';
     lava.onclick = () => this.toggleLavaAim(from);
-    cue.append(el('span', 'g2-cue-then', ' · '), lava);
+    cue.replaceChildren(lava);
   }
 
   /** Opening a game brings its whole log (`view.history`); after that, each update adds what its action did. */

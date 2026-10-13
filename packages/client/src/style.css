@@ -471,7 +471,7 @@ button.danger {
 }
 
 .friend-list:empty::after {
-  content: 'No friends yet. Find someone above, or share your friend code.';
+  content: 'No friends yet.';
   display: block;
   color: var(--muted);
   font-size: 13px;
@@ -1655,7 +1655,7 @@ button.danger {
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  padding: 16px 0 104px;
+  padding: 16px 0 48px;
 }
 
 .hx-bg {
@@ -1897,25 +1897,6 @@ button.danger {
   max-width: 580px;
 }
 
-.hx-eyebrow {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 0 0 8px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.34em;
-  text-transform: uppercase;
-  color: var(--gold);
-}
-
-.hx-eyebrow::before {
-  content: '';
-  width: 36px;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--gold));
-}
-
 .hx-title {
   margin: 0;
   font-family: var(--card-font);
@@ -1950,24 +1931,6 @@ button.danger {
   50% {
     background-position: 0% 0;
   }
-}
-
-.hx-tagline {
-  margin: 14px 0 0;
-  font-family: var(--card-font);
-  font-size: clamp(20px, 2.2vw, 28px);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: #f3dfae;
-  text-shadow: 0 0 18px rgba(232, 178, 92, 0.35);
-}
-
-.hx-lede {
-  margin: 10px 0 0;
-  max-width: 32em;
-  font-size: 16px;
-  line-height: 1.55;
-  color: #cac5dd;
 }
 
 .hx-yourmove {
@@ -2025,7 +1988,7 @@ button.danger {
   align-items: center;
   gap: 12px;
   min-width: 0;
-  min-height: 74px;
+  min-height: 64px;
   padding: 12px 14px;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.13);
@@ -2071,13 +2034,6 @@ button.danger {
   font-weight: 800;
 }
 
-.hx-mode-text small {
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.3;
-  color: var(--muted);
-}
-
 .hx-play {
   position: relative;
   overflow: hidden;
@@ -2096,10 +2052,6 @@ button.danger {
   color: #2b1a04;
   background: rgba(60, 36, 4, 0.16);
   box-shadow: inset 0 0 0 1px rgba(60, 36, 4, 0.25);
-}
-
-.hx-play .hx-mode-text small {
-  color: rgba(40, 24, 4, 0.78);
 }
 
 /* A sweep of light across the main button every few seconds. */
@@ -2143,16 +2095,10 @@ button.danger {
   gap: 10px;
   max-width: 470px;
   margin-top: 14px;
-  padding: 7px 7px 7px 18px;
+  padding: 7px;
   border-radius: 999px;
   border: 1px dashed rgba(232, 194, 122, 0.45);
   background: rgba(10, 8, 18, 0.74);
-}
-
-.hx-join-label {
-  font-size: 13px;
-  color: var(--muted);
-  white-space: nowrap;
 }
 
 #join-code {
@@ -2169,6 +2115,12 @@ button.danger {
   letter-spacing: 0.4em;
   text-align: center;
   text-transform: uppercase;
+}
+
+#join-code::placeholder {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: none;
 }
 
 #join {
@@ -2247,89 +2199,6 @@ button.danger {
 /* The next card covers this one's right side, so the name starts beside the cost. */
 .hx-card .g2-frame-name {
   justify-content: flex-start;
-}
-
-/* ------------------------------------------------------------ Home: a turn */
-.hx-steps {
-  position: relative;
-  z-index: 2;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  width: var(--page);
-  margin: -64px auto 0;
-  padding: 0;
-  list-style: none;
-  counter-reset: step;
-}
-
-.hx-steps li {
-  position: relative;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  column-gap: 14px;
-  row-gap: 3px;
-  align-items: center;
-  padding: 16px 44px 16px 16px;
-  border-radius: 16px;
-  background: var(--glass);
-  border: 1px solid var(--glass-edge);
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  counter-increment: step;
-}
-
-.hx-steps li::after {
-  content: counter(step);
-  position: absolute;
-  top: 6px;
-  right: 14px;
-  font-family: var(--card-font);
-  font-size: 38px;
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.07);
-}
-
-.hx-step-icon {
-  grid-row: 1 / 3;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 46px;
-  height: 46px;
-  border-radius: 50%;
-  font-family: 'Segoe UI Symbol', 'DejaVu Sans', sans-serif;
-  font-size: 21px;
-  line-height: 1;
-}
-
-.hx-step-icon.mana {
-  color: #d9efff;
-  background: radial-gradient(circle at 35% 30%, rgba(143, 208, 255, 0.5), rgba(22, 63, 143, 0.6));
-  box-shadow: 0 0 0 1px rgba(143, 208, 255, 0.5), 0 0 18px rgba(90, 180, 255, 0.35);
-}
-
-.hx-step-icon.cards {
-  color: #efe9ff;
-  background: radial-gradient(circle at 35% 30%, rgba(190, 170, 255, 0.5), rgba(77, 44, 142, 0.6));
-  box-shadow: 0 0 0 1px rgba(190, 170, 255, 0.5), 0 0 18px rgba(124, 92, 255, 0.35);
-}
-
-.hx-step-icon.move {
-  color: #2b1a04;
-  background: radial-gradient(circle at 35% 30%, #fff1c9, #e8c27a 45%, #a8742c);
-  box-shadow: 0 0 0 1px rgba(255, 228, 165, 0.6), 0 0 18px rgba(232, 178, 92, 0.4);
-}
-
-.hx-steps b {
-  font-family: var(--card-font);
-  font-size: 17px;
-  color: #f6ead0;
-}
-
-.hx-steps li > span:last-child {
-  font-size: 13px;
-  line-height: 1.4;
-  color: var(--muted);
 }
 
 /* ------------------------------------------------------------ Home: games */
@@ -3345,13 +3214,7 @@ button.danger {
   color: var(--accent);
 }
 
-.arena-hint {
-  margin: 0;
-  font-size: 12px;
-}
-
 #arena > .arena-head,
-#arena > .arena-hint,
 #arena-search {
   flex-shrink: 0;
 }
@@ -3483,19 +3346,6 @@ button.danger {
 /* A short conversation sits at the bottom, by the box you type in. */
 .chat-empty + .chat-msg {
   margin-top: auto;
-}
-
-.chat-empty {
-  margin: auto;
-  padding: 12px;
-  font-size: 13px;
-  text-align: center;
-  color: var(--muted);
-}
-
-.chat-empty-icon {
-  margin-bottom: 4px;
-  font-size: 26px;
 }
 
 .chat-msg {
@@ -4045,17 +3895,13 @@ button,
     font-size: clamp(56px, 18vw, 92px);
   }
 
-  .hx-lede {
-    font-size: 15px;
-  }
-
   .hx-modes {
     gap: 10px;
     margin-top: 20px;
   }
 
   .hx-mode {
-    min-height: 64px;
+    min-height: 56px;
     padding: 10px 12px;
   }
 
@@ -4074,12 +3920,6 @@ button,
     margin-top: 6px;
     font-size: min(12px, calc((100vw - 20px) / 36));
     translate: 0.6em 0;
-  }
-
-  .hx-steps {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 10px;
-    margin-top: -46px;
   }
 
   .me {
@@ -4111,16 +3951,6 @@ button,
     left: 14px;
     width: 82px;
     height: 82px;
-  }
-
-  @media (max-width: 420px) {
-    .hx-join-label {
-      display: none;
-    }
-
-    .hx-eyebrow {
-      letter-spacing: 0.24em;
-    }
   }
 
   /* -------------------------------------------------------- Binder (phone) */
@@ -6031,11 +5861,6 @@ body.g2-grabbing * {
   text-align: center;
 }
 
-.g2-handtip {
-  text-transform: none;
-  letter-spacing: 0;
-}
-
 /*
  * The hand is a fan: every card the same size, overlapping just enough to fit the row (--n cards, from
  * GameScreen.ts with each card's place in the fan as --fan, -1 to 1, and --arc, its square).
@@ -6546,11 +6371,9 @@ body.g2-grabbing * {
   filter: brightness(1.2);
 }
 
-.g2-inspect-hint {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.5;
-  color: #a9a4c4;
+.g2-inspect.empty {
+  grid-template-columns: 46%;
+  justify-content: center;
 }
 
 .g2-inspect.empty .g2-back {
@@ -6761,21 +6584,6 @@ body.g2-grabbing * {
   white-space: nowrap;
   color: var(--muted);
   pointer-events: none;
-}
-
-.g2-cue-step {
-  font-weight: 700;
-  color: #c9a8ff;
-}
-
-.g2-cue-step.off {
-  color: var(--muted);
-  font-weight: 400;
-  text-decoration: line-through;
-}
-
-.g2-cue-step.now {
-  color: var(--accent);
 }
 
 /* The picked piece has Lava Breath: the cue offers it (the cue itself lets clicks through to the board). */
@@ -8257,10 +8065,6 @@ body.g2-grabbing * {
 
   .g2-card.g2-drag-ghost .g2-frame-name {
     min-height: 0;
-  }
-
-  .g2-status-more {
-    display: none;
   }
 
   .g2-status {

@@ -42,7 +42,7 @@ export class InspectPanel {
   render(target: InspectTarget | null): void {
     if (!target) {
       this.zoomEl.className = 'zoom empty';
-      this.zoomEl.innerHTML = '<div class="zoom-empty">Click a piece, or hover a card, to see it here.</div>';
+      this.zoomEl.innerHTML = '<div class="zoom-empty"></div>';
       this.resetStanceButton();
       return;
     }

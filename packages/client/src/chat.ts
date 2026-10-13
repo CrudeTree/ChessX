@@ -209,12 +209,8 @@ export class Chat {
 
   private renderSeat(): void {
     const { solo, opponent } = this.seat;
-    this.withEl.textContent = solo ? 'notes to self' : opponent ? `with ${opponent}` : '';
+    this.withEl.textContent = !solo && opponent ? `with ${opponent}` : '';
     this.input.placeholder = solo ? 'Write a note…' : opponent ? `Message ${opponent}…` : 'Say something…';
-    this.emptyEl.replaceChildren(
-      el('div', 'chat-empty-icon', solo ? '📝' : '👋'),
-      el('div', '', solo ? 'Practice chat is just for you.' : opponent ? `No messages yet. Say hi to ${opponent}!` : 'No messages yet.'),
-    );
   }
 
   private render(m: ChatMessage): HTMLElement {

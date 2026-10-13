@@ -529,9 +529,7 @@ function renderHome(): void {
     const opp = document.createElement('div');
     opp.className = 'opp';
     const oppName = document.createElement('span');
-    oppName.textContent = g.solo
-      ? 'Practice (both sides)'
-      : g.opponentName ?? (g.invitedName ? `Challenged ${g.invitedName}` : 'Open invite');
+    oppName.textContent = g.solo ? 'Practice' : g.opponentName ?? (g.invitedName ? `Challenged ${g.invitedName}` : 'Open invite');
     const badge = document.createElement('span');
     if (g.waitingForOpponent) {
       badge.className = 'badge wait';
@@ -552,10 +550,10 @@ function renderHome(): void {
     meta.className = 'meta';
     if (g.waitingForOpponent) {
       meta.innerHTML = g.invitedName
-        ? `<span>Waiting for ${g.invitedName} to accept</span><span>You play ${colorName(g.yourColor)}</span>`
+        ? `<span>You play ${colorName(g.yourColor)}</span>`
         : `<span class="code-line">Invite code <b>${g.code}</b></span><span>You play ${colorName(g.yourColor)}</span>`;
     } else if (g.solo) {
-      meta.innerHTML = `<span>Turn ${g.turn === 'white' ? 'White' : 'Black'}</span><span>${new Date(g.updatedAt).toLocaleDateString()}</span>`;
+      meta.innerHTML = `<span>${new Date(g.updatedAt).toLocaleDateString()}</span>`;
     } else {
       const yoursMs = remaining(g.clocks, g.yourColor);
       const theirsMs = remaining(g.clocks, g.yourColor === 'white' ? 'black' : 'white');
@@ -597,7 +595,7 @@ function renderHome(): void {
       result = `Lost · ${how}`;
       cls = 'lost';
     }
-    const oppName = g.solo ? 'Practice (both sides)' : g.opponentName ?? 'Unknown';
+    const oppName = g.solo ? 'Practice' : g.opponentName ?? 'Unknown';
     row.innerHTML = `<span class="fr-opp">vs ${oppName}</span><span class="fr-result ${cls}">${result}</span><span class="fr-when">${new Date(g.updatedAt).toLocaleDateString()}</span>`;
     finishedEl.appendChild(row);
   }
@@ -863,9 +861,6 @@ function panelColors(): { me: Color; opp: Color } {
 function renderRoom(): void {
   if (!room || !you) return;
   roomCode.textContent = arena ? 'ARENA' : solo ? 'PRACTICE' : room.code;
-  const hint = $('room-hint');
-  hint.textContent = arena ? 'Sandbox — no turns. Drag cards and pieces freely.' : solo ? '' : 'Send this to a friend. They enter it under "Join".';
-  hint.classList.toggle('hidden', solo && !arena);
   const { me, opp } = panelColors();
   for (const [id, color] of [
     ['me', me],
@@ -881,7 +876,7 @@ function renderRoom(): void {
   }
   const waiting = !room.players[opp];
   if (waiting) {
-    statusEl.textContent = 'Waiting for an opponent to join. Share the invite code!';
+    statusEl.textContent = 'Waiting for an opponent…';
     statusEl.className = 'status';
   }
   // Before anyone joins there is nothing to resign — offer to cancel the invite instead.
