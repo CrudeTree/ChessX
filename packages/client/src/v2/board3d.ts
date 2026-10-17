@@ -45,9 +45,14 @@ interface FigureIndex {
 }
 
 const DEG = Math.PI / 180;
-/** How far the board leans back; less on a small board, whose far squares would get too small to tap. */
-const TILT = 36 * DEG;
-const TILT_SMALL = 30 * DEG;
+/**
+ * How far the board leans back; less on a small board, whose far squares would get too small to tap. The eye looks
+ * down from well above it (Djabooty, 2026-10-17: it was 36° and 30°).
+ */
+const TILT = 26 * DEG;
+const TILT_SMALL = 22 * DEG;
+/** Every figure stands this share of the height its level gives it (Djabooty, 2026-10-17: about half size). */
+const FIGURE_SCALE = 0.55;
 const SMALL_BOARD = 520;
 /** The eye's distance from the board (the CSS perspective), in board widths. */
 const DEPTH = 1.9;
@@ -527,7 +532,7 @@ class Piece {
     this.base.scale.set(BASE_R * cell, BASE_H * cell, BASE_R * cell);
     this.ring.scale.setScalar(BASE_R * cell);
     this.ring.position.y = BASE_H * cell;
-    const size = SIZE[this.f.name.replace(/_(white|dark)$/, '')] ?? 1;
+    const size = (SIZE[this.f.name.replace(/_(white|dark)$/, '')] ?? 1) * FIGURE_SCALE;
     let tall = this.f.height * cell;
     if (this.model) {
       tall = Math.min(tall * MODEL_TALL, (MODEL_MAX_WIDTH * cell) / this.model.width) * size;
@@ -604,10 +609,11 @@ class Piece {
     this.slideTo(this.square);
   }
 
-  leave(how: FigureExit | 'fade', delay: number): void {
+  leave(how: FigureExit | 'fade', delay: number, at?: Square): void {
     if (this.exit) return;
     this.heldAt = null;
     this.exit = { how, at: performance.now() + delay };
+    if (at !== undefined) this.slideTo(at);
     this.changed();
   }
 
@@ -985,9 +991,12 @@ export class Board3D {
     this.wake();
   }
 
-  /** A piece is leaving the board, after `delay`: knocked over (captured, smitten) or drawn in (sealed, evolved). */
-  leave(id: string, how: FigureExit, delay: number): void {
-    this.pieces.get(id)?.leave(how, delay);
+  /**
+   * A piece is leaving the board, after `delay`: knocked over (captured, smitten) or drawn in (sealed, evolved). `at`:
+   * it goes to that square first (an Initiate promoting as it arrives).
+   */
+  leave(id: string, how: FigureExit, delay: number, at?: Square): void {
+    this.pieces.get(id)?.leave(how, delay, at);
   }
 
   /** A drag picked this piece up: its figure follows `follow` until `release`. */

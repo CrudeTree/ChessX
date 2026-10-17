@@ -43,8 +43,8 @@ export interface GameScreenHooks {
  */
 const GLYPHS: Record<string, string> = {
   king: '♚',
-  initiate: '✚',
-  squire: '♟',
+  initiate: '♟',
+  squire: '✚',
   recruit: '♜',
   warrior: '♜',
   warlord: '♜',
@@ -70,7 +70,7 @@ export const glyphFor = (kind: string, name: string): string => GLYPHS[kind] ?? 
 const LEVEL_MARK = ['', 'I', 'II', 'III'];
 /**
  * The chess piece each line moves like, on the badge of every piece in it (Djabooty, 2026-10-12). A piece in no line
- * shows its own glyph: the Squire's pawn, the Initiate's cross, the Duskfang's moon.
+ * shows its own glyph: the Initiate's pawn, the Squire's cross, the Duskfang's moon.
  */
 const LINE_GLYPH: Record<string, string> = { Warrior: '♜', Mage: '♝', Paladin: '♞', Dragon: '♛' };
 /** How hard an evolution lands (0 to 1): the final forms slam. */
@@ -1062,16 +1062,36 @@ export class GameScreen {
 
   /**
    * Squares the picked piece can move to (or spit lava onto, while it takes aim), with the action for each. Cards
-   * are played by dragging them instead.
+   * are played by dragging them instead. A move that can promote is its plain form here; `act` offers the rest.
    */
   private targets(): Map<v2.Square, Action> {
     const out = new Map<v2.Square, Action>();
     if (this.selectedSquare === null) return out;
     const kind = this.aimLava === this.selectedSquare ? 'lava' : 'move';
     for (const a of this.legal()) {
+      if (a.type === 'move' && a.promote) continue;
       if ((a.type === 'move' || a.type === 'lava') && a.type === kind && a.from === this.selectedSquare) out.set(a.to, a);
     }
     return out;
+  }
+
+  /** The pieces a move onto the far row can promote into: one per card in your hand, by name. */
+  private promotions(move: Action): { action: Action; card: v2.ViewCard | undefined; cardId: string }[] {
+    const view = this.view;
+    if (!view || move.type !== 'move') return [];
+    const out: { action: Action; card: v2.ViewCard | undefined; cardId: string }[] = [];
+    for (const a of this.legal()) {
+      if (a.type !== 'move' || !a.promote || a.from !== move.from || a.to !== move.to) continue;
+      const cardId = view.hand?.find((c) => c.uid === a.promote)?.cardId;
+      if (cardId && !out.some((o) => o.cardId === cardId)) out.push({ action: a, card: view.cards[cardId], cardId });
+    }
+    return out;
+  }
+
+  /** Plays a picked target: a move onto the far row first asks what the piece becomes. */
+  private act(target: Action): void {
+    if (this.promotions(target).length) this.openPromote(target);
+    else this.hooks.act(target);
   }
 
   /** Whether the piece on `square` can spit lava now (Lava Breath). */
@@ -1109,7 +1129,7 @@ export class GameScreen {
     const playing = view.status.kind === 'playing';
     const target = playing ? this.targets().get(square) : undefined;
     if (target) {
-      this.hooks.act(target);
+      this.act(target);
       this.clearSelection();
       this.inspected = null;
       this.render();
@@ -1434,7 +1454,7 @@ export class GameScreen {
           const card = this.takeLanding(e.square, now) ? null : this.cardFace(piece.cardId, piece.owner, view);
           const force = evolveForce(piece.cardId ? view.cards[piece.cardId] : undefined);
           this.fx.evolve(e.square, e.color, old ? this.pieceToken(old, prev) : null, card, force);
-          this.board3d?.leave(e.fromPieceId, 'consume', (card ? CARD_DIVE_MS : 0) + HATCH_T0_MS);
+          this.board3d?.leave(e.fromPieceId, 'consume', (card ? CARD_DIVE_MS : 0) + HATCH_T0_MS, e.square);
           this.tokenFx.set(piece.id, { kind: 'fx-rise', at: now + (card ? CARD_DIVE_MS : 0) + HATCH_RISE_DELAY });
           break;
         }
@@ -2071,6 +2091,10 @@ export class GameScreen {
     if (action.type === 'seal') return `sacrifices ${target?.name ?? 'this piece'}, gone for good`;
     const card = this.heldCard(action.cardUid);
     const into = card ? ` into ${card.name}` : '';
+    const promotes = target?.cardId ? this.view?.cards[target.cardId]?.promotes : false;
+    if (target && promotes && v2.rankOf(target.square) === v2.backRank(v2.opposite(target.owner))) {
+      return `promotes ${target.name}${into}, free`;
+    }
     // Onto an Initiate (any path): the level it skips is paid for as well.
     const skipped = card?.evolvesFrom && target?.cardId !== card.evolvesFrom ? this.view?.cards[card.evolvesFrom] : undefined;
     const cost = card && skipped ? ` for ${card.cost + skipped.cost} mana, skipping ${skipped.name}` : '';
@@ -2203,6 +2227,57 @@ export class GameScreen {
     cancel.type = 'button';
     cancel.onclick = () => this.closeRaise();
     panel.append(cancel);
+    this.raiseEl.replaceChildren(panel);
+    this.raiseEl.classList.remove('hidden');
+    this.raiseEl.onclick = (e) => {
+      if (e.target === this.raiseEl) this.closeRaise();
+    };
+    window.addEventListener('keydown', this.onRaiseKey);
+  }
+
+  /**
+   * A move takes an Initiate onto the far row: show the piece cards in hand it can become, for free, or let it stay
+   * as it is (it can still promote on a later turn).
+   */
+  private openPromote(move: Action): void {
+    const view = this.view;
+    const options = this.promotions(move);
+    if (!view || move.type !== 'move' || !options.length) return;
+    const me = view.active;
+    const name = view.pieces.find((p) => p.square === move.from)?.name ?? 'piece';
+    const panel = el('div', 'g2-raise-panel');
+    const head = el('div', 'g2-raise-head');
+    const whose = this.solo ? `${sideName(me)}'s hand` : 'your hand';
+    head.append(
+      el('b', '', `Promote on ${v2.squareName(move.to)}`),
+      el('span', '', `Your ${name} reached the far row. Pick a piece from ${whose} for it to become, free.`),
+    );
+    const row = el('div', 'g2-raise-row');
+    for (const option of options) {
+      const pick = el('button', 'g2-raise-card');
+      pick.type = 'button';
+      fillFrame(pick, this.frameFor(option.card, option.cardId, me));
+      pick.title = `Promote into ${option.card?.name ?? option.cardId} on ${v2.squareName(move.to)}`;
+      pick.onclick = () => {
+        this.closeRaise();
+        this.hooks.act(option.action);
+      };
+      row.append(pick);
+    }
+    panel.append(head, row);
+    const actions = el('div', 'g2-raise-actions');
+    const stay = el('button', 'g2-raise-cancel', `Stay ${/^[aeiou]/i.test(name) ? 'an' : 'a'} ${name}`);
+    stay.type = 'button';
+    stay.title = 'Move without promoting; drop a piece card on it on a later turn to promote it then.';
+    stay.onclick = () => {
+      this.closeRaise();
+      this.hooks.act(move);
+    };
+    const cancel = el('button', 'g2-raise-cancel', 'Cancel');
+    cancel.type = 'button';
+    cancel.onclick = () => this.closeRaise();
+    actions.append(stay, cancel);
+    panel.append(actions);
     this.raiseEl.replaceChildren(panel);
     this.raiseEl.classList.remove('hidden');
     this.raiseEl.onclick = (e) => {
@@ -2387,7 +2462,12 @@ export class GameScreen {
     const from = drag.from;
     const square = up ? this.squareAt(e.clientX, e.clientY, (sq) => targets.has(sq) || this.canRelocate(from, sq), true) : null;
     const move = square === null ? undefined : targets.get(square);
-    if (move && square !== null) this.dropPiece(from, square, () => this.hooks.act(move), ghost);
+    if (move && this.promotions(move).length) {
+      this.returnPiece(from, ghost);
+      this.clearSelection();
+      this.render();
+      this.openPromote(move);
+    } else if (move && square !== null) this.dropPiece(from, square, () => this.hooks.act(move), ghost);
     else if (square !== null && this.canRelocate(from, square)) this.dropPiece(from, square, () => this.hooks.arena({ type: 'relocate', from, to: square }), ghost);
     else if (up && square === null && this.canTakeOff(from, e.clientX, e.clientY)) this.takeOff(from, ghost);
     else this.returnPiece(from, ghost);
@@ -2832,7 +2912,8 @@ export class GameScreen {
         const mana = el('span', 'g2-mana');
         const income = view.income[color];
         const amount = this.manaShown[color] ?? view.mana[color];
-        mana.title = `${amount} mana. ${turn ? 'This' : 'The next'} turn brings ${income}; every 5th turn brings 1 more, up to 4.`;
+        const rise = income < view.maxIncome ? `; every 5th turn brings 1 more, up to ${view.maxIncome}` : ', as every turn will from now on';
+        mana.title = `${amount} mana. ${turn ? 'This' : 'The next'} turn brings ${income}${rise}.`;
         mana.append(el('i', 'g2-gem'), el('b', '', String(amount)), el('span', 'g2-mana-word', ' mana'), el('span', 'g2-income', `+${income}`));
         if (this.arena) {
           mana.prepend(this.manaStep(color, -1));

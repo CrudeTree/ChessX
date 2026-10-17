@@ -26,7 +26,7 @@ export interface FrameCard {
   /** The card's type (Warrior, Dragon...); a spell's is the type of piece it is made for. */
   tribe?: string;
   text: string;
-  /** Printed under the text, as "Keyword: what it does" (the Initiate's any path). */
+  /** Printed under the text, as "Keyword: what it does" (the Initiate's any path), one ability a line. */
   ability?: string;
   /** Abilities a piece on the board was taught by spells, by name (Lava Breath). */
   learned?: string[];
@@ -153,7 +153,7 @@ function frameText(card: FrameCard): HTMLElement {
     rules.append(richText(card.text));
     copy.append(rules);
   }
-  if (card.ability) copy.append(abilityLine(card.ability, 'printed'));
+  for (const ability of card.ability?.split('\n') ?? []) copy.append(abilityLine(ability, 'printed'));
   for (const name of card.learned ?? []) copy.append(abilityLine(name, 'learned'));
   box.append(copy);
   return box;

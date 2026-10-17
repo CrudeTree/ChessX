@@ -21,6 +21,8 @@ export interface MovingPiece {
 interface Mark {
   move: boolean;
   capture: boolean;
+  /** Reached on the piece's first move only (`MoveRule.firstRange`, the Initiate's double step). */
+  first: boolean;
   /** Squares from the piece (king steps), for the order the marks appear in. */
   dist: number;
 }
@@ -51,18 +53,20 @@ function reach(piece: MovingPiece, flipped: boolean): Reach {
       const sx = df * flip;
       const sy = dr * towardEnemy * flip;
       let steps = 0;
-      for (let k = 1; k <= (r.leap ? 1 : r.range); k++) {
+      for (let k = 1; k <= (r.leap ? 1 : Math.max(r.range, r.firstRange ?? 0)); k++) {
         const x = AT + sx * k;
         const y = AT + sy * k;
         if (x < 0 || x >= SIZE || y < 0 || y >= SIZE) break;
         const key = y * SIZE + x;
-        const m = marks.get(key) ?? { move: false, capture: false, dist: Infinity };
+        const first = !r.leap && k > r.range;
+        const m = marks.get(key) ?? { move: false, capture: false, first, dist: Infinity };
         if (mode !== 'capture') m.move = true;
         if (mode !== 'move') m.capture = true;
+        m.first &&= first;
         m.dist = Math.min(m.dist, Math.max(Math.abs(x - AT), Math.abs(y - AT)));
         marks.set(key, m);
         if (r.leap) hops.push({ x, y });
-        steps = k;
+        if (!first) steps = k;
       }
       if (!r.leap && steps > 1) rays.push({ x: AT + sx * steps, y: AT + sy * steps, mode });
     }
@@ -106,7 +110,7 @@ function boardSvg(piece: MovingPiece, { marks, rays, hops }: Reach): SVGElement 
     const g = svgEl('g', {}, 'mark');
     g.style.animationDelay = `${120 + m.dist * STAGGER_MS}ms`;
     if (m.capture) g.append(svgEl('circle', { cx, cy, r: 0.36 }, 'cap'));
-    if (m.move) g.append(svgEl('circle', { cx, cy, r: m.capture ? 0.13 : 0.17 }, 'mv'));
+    if (m.move) g.append(svgEl('circle', { cx, cy, r: m.capture ? 0.13 : 0.17 }, m.first ? 'mv first' : 'mv'));
     svg.append(g);
   }
 
@@ -131,9 +135,10 @@ function boardSvg(piece: MovingPiece, { marks, rays, hops }: Reach): SVGElement 
   return svg;
 }
 
-const LEGEND: Record<'both' | 'mv' | 'cap' | 'ray' | 'leap', string> = {
+const LEGEND: Record<'both' | 'mv' | 'first' | 'cap' | 'ray' | 'leap', string> = {
   both: 'Moves or captures there',
   mv: 'Moves there, cannot capture',
+  first: 'Moves there on its first move only',
   cap: 'Captures there only',
   ray: 'Slides until a piece blocks it',
   leap: 'Leaps over pieces in between',
@@ -147,12 +152,12 @@ export function movementPanel(piece: MovingPiece, flipped: boolean): HTMLElement
   panel.append(boardSvg(piece, found));
 
   const used = new Set<keyof typeof LEGEND>();
-  for (const m of found.marks.values()) used.add(m.move && m.capture ? 'both' : m.move ? 'mv' : 'cap');
+  for (const m of found.marks.values()) used.add(m.move && m.capture ? 'both' : m.move ? (m.first ? 'first' : 'mv') : 'cap');
   if (found.rays.length) used.add('ray');
   if (found.hops.length) used.add('leap');
   const legend = document.createElement('ul');
   legend.className = 'g2-move-legend';
-  for (const key of ['both', 'mv', 'cap', 'ray', 'leap'] as const) {
+  for (const key of ['both', 'mv', 'first', 'cap', 'ray', 'leap'] as const) {
     if (!used.has(key)) continue;
     const li = document.createElement('li');
     const icon = document.createElement('span');

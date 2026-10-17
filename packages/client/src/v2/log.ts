@@ -72,7 +72,8 @@ export function describeEvents(
       case 'turnStarted': {
         const gain = e.income === undefined ? `${e.mana} mana` : `+${e.income} mana, ${e.mana} in all`;
         lines.push({ text: `— ${names[e.color]}, turn ${e.turn} (${gain}) —`, color: e.color });
-        if (e.income !== undefined && e.turn > 1 && e.income > v2.incomeFor(e.turn - 1)) {
+        // Against the same cap: a game begun before income stopped at +2 still rises to +4.
+        if (e.income !== undefined && e.turn > 1 && e.income > v2.incomeFor(e.turn - 1, e.income)) {
           lines.push({ text: `${names[e.color]}'s income rises to +${e.income} mana a turn.`, color: e.color, important: true });
         }
         break;
@@ -110,6 +111,14 @@ export function describeEvents(
       case 'evolved': {
         const cardId = e.cardId ?? view.pieces.find((p) => p.id === e.pieceId)?.cardId;
         const final = (cardId ? view.cards[cardId]?.level : undefined) === 3;
+        if (e.promoted) {
+          lines.push({
+            text: `${names[e.color]} promotes ${pieceName(e.fromPieceId)} into ${pieceName(e.pieceId)} on ${v2.squareName(e.square)}!`,
+            color: e.color,
+            important: true,
+          });
+          break;
+        }
         lines.push({
           text: `${names[e.color]} evolves ${pieceName(e.fromPieceId)} into ${pieceName(e.pieceId)} on ${v2.squareName(e.square)}${final ? '!' : ''}`,
           color: e.color,

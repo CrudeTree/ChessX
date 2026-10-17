@@ -16,20 +16,21 @@ export const KING: PieceDef = {
   rules: [rule({ dirs: ALL8, range: 1 })],
 };
 
+/**
+ * The Initiate is the pawn and the Squire steps straight (Djabooty, 2026-10-17; they had it the other way round): it
+ * moves forward, 2 squares on its first move, captures diagonally forward, and promotes on the far row.
+ */
 const INITIATE: PieceDef = {
   kind: 'initiate',
   name: 'Initiate',
-  rules: [rule({ dirs: ORTHO, range: 1 })],
-};
-
-const SQUIRE: PieceDef = {
-  kind: 'squire',
-  name: 'Squire',
   rules: [
-    rule({ dirs: [[0, 1]], range: 1, relative: true, mode: 'move' }),
+    rule({ dirs: [[0, 1]], range: 1, firstRange: 2, relative: true, mode: 'move' }),
     rule({ dirs: [[1, 1], [-1, 1]], range: 1, relative: true, mode: 'capture' }),
   ],
+  promotes: true,
 };
+
+const SQUIRE: PieceDef = { kind: 'squire', name: 'Squire', rules: [rule({ dirs: ORTHO, range: 1 })] };
 
 // Warrior line: the rook.
 const RECRUIT: PieceDef = { kind: 'recruit', name: 'Recruit', rules: [rule({ dirs: ORTHO, range: 1 })] };
@@ -116,9 +117,11 @@ export const STARTER_CATALOG: Record<string, Card> = {
     piece: INITIATE,
     tribe: 'Zealot',
     anyPath: true,
-    abilityText: 'Any path: evolves into any level 2.',
+    abilityText: 'Any path: evolves into any level 2.\nPromotes: on the far row.',
     detail:
-      'Any path: an Initiate counts as the first level of every line, so any level-2 card can be played onto it. It costs that card\'s mana plus the mana of the first level it skips.',
+      'Moves like a chess pawn: 1 square forward, or 2 on its first move if both squares are empty, and captures 1 square diagonally forward. ' +
+      'Any path: an Initiate counts as the first level of every line, so any level-2 card can be played onto it. It costs that card\'s mana plus the mana of the first level it skips. ' +
+      'Promotes: when it reaches the far row, pick any piece card in your hand and it becomes that piece, for free. Keep it as it is if you like, and drop a piece card on it on a later turn to promote it then.',
     ...pieceFaces('initiate'),
   },
   squire: { type: 'piece', id: 'squire', name: 'Squire', cost: 1, sealTimer: 1, piece: SQUIRE, tribe: 'Warrior', ...pieceFaces('squire') },

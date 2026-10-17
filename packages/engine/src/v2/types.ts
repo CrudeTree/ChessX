@@ -34,6 +34,7 @@ export const forward = (c: Color): number => (c === 'white' ? 1 : -1);
  * `leap`: land exactly on the offset, ignoring pieces in between.
  * Otherwise the piece slides up to `range` squares and stops at the first piece.
  * `mode`: 'both' moves and captures, 'move' never captures, 'capture' only captures.
+ * `firstRange`: how far it slides on the piece's first move instead, like a chess pawn's double step.
  */
 export interface MoveRule {
   dirs: ReadonlyArray<readonly [number, number]>;
@@ -41,6 +42,7 @@ export interface MoveRule {
   leap?: boolean;
   relative?: boolean;
   mode?: 'both' | 'move' | 'capture';
+  firstRange?: number;
 }
 
 export interface PieceDef {
@@ -48,6 +50,11 @@ export interface PieceDef {
   name: string;
   rules: ReadonlyArray<MoveRule>;
   king?: boolean;
+  /**
+   * Like a chess pawn (the Initiate, Djabooty 2026-10-17): on the other side's back row it becomes any piece card from
+   * its owner's hand, for free, as it arrives or on a later turn.
+   */
+  promotes?: boolean;
 }
 
 /** A piece card. `cost` is the mana to summon, seal or evolve into it. `sealTimer` is printed on the card. */
@@ -161,6 +168,8 @@ export interface Piece {
   shieldOnTurn?: number;
   /** Owner turn a Freeze holds it through: it cannot move or capture during that turn. */
   frozenOnTurn?: number;
+  /** It has moved. Kept only for pieces whose first move reaches further (`MoveRule.firstRange`). */
+  moved?: boolean;
 }
 
 /**
@@ -212,6 +221,8 @@ export interface GameState {
   cardPlayed: boolean;
   /** A card was pitched for mana this turn: once a turn (Djabooty, 2026-10-11). */
   pitched?: boolean;
+  /** The most mana a turn brings (see `incomeFor`); games begun before 2026-10-17 lack it and rise to 4. */
+  maxIncome?: number;
   status: GameStatus;
   nextId: number;
   rng: number;
@@ -219,7 +230,8 @@ export interface GameState {
 
 export type Action =
   | { type: 'deploy'; cardUid: string; to: Square }
-  | { type: 'move'; from: Square; to: Square }
+  /** `promote`: a piece that promotes, arriving on the far row, becomes this card from the hand (by uid). */
+  | { type: 'move'; from: Square; to: Square; promote?: string }
   | { type: 'summon'; cardUid: string; to: Square }
   | { type: 'seal'; cardUid: string; target: Square }
   /** Play an evolution card onto the piece it evolves from, which changes into it on its square. */
@@ -250,8 +262,11 @@ export type GameEvent =
   | { type: 'sealed'; color: Color; sealId: string; square: Square; consumedPieceId: string; timer: number; consumedName?: string; cardId?: string }
   | { type: 'sealTick'; sealId: string; timer: number }
   | { type: 'hatched'; color: Color; pieceId: string; square: Square; name?: string }
-  /** `fromPieceId` is the piece that evolved; `pieceId` is what it became; `cost` what it paid. */
-  | { type: 'evolved'; color: Color; pieceId: string; fromPieceId: string; square: Square; name?: string; fromName?: string; cardId?: string; cost?: number }
+  /**
+   * `fromPieceId` is the piece that evolved; `pieceId` is what it became; `cost` what it paid. `promoted`: it was a
+   * piece promoting on the far row.
+   */
+  | { type: 'evolved'; color: Color; pieceId: string; fromPieceId: string; square: Square; name?: string; fromName?: string; cardId?: string; cost?: number; promoted?: boolean }
   | { type: 'spellPlayed'; color: Color; cardId: string; target?: Square }
   /** A spell taught `pieceId` (named `name`) an ability. */
   | { type: 'learned'; color: Color; pieceId: string; name: string; square: Square; ability: Ability }

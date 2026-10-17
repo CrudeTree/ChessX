@@ -6226,6 +6226,13 @@ body.g2-grabbing * {
   font-size: 13px;
 }
 
+.g2-raise-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
 .g2-inspect-action {
   padding: 6px 12px;
   border-radius: 8px;
@@ -6349,6 +6356,13 @@ body.g2-grabbing * {
   stroke-width: 0.04;
 }
 
+/* A square it reaches on its first move only: the same dot, hollow. */
+.g2-move-board .mv.first {
+  fill: rgba(63, 210, 122, 0.12);
+  stroke: #3fd27a;
+  stroke-width: 0.06;
+}
+
 .g2-move-board .cap {
   fill: rgba(255, 90, 82, 0.14);
   stroke: #ff5a52;
@@ -6428,6 +6442,14 @@ body.g2-grabbing * {
 
 .g2-move-key.both::after {
   inset: 3px;
+}
+
+.g2-move-key.first::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border: 1.5px solid #3fd27a;
+  border-radius: 50%;
 }
 
 .g2-move-key.cap,

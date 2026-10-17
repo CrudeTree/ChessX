@@ -83,8 +83,8 @@ describe('bot', () => {
   it.each(['medium', 'hard', 'expert'] as const)('%s mates in one', (level) => {
     const state = bare();
     state.pieces.find((p) => p.def.king && p.owner === 'black')!.square = S('h8');
-    place(state, 'black', 'squire', 'g7');
-    place(state, 'black', 'squire', 'h7');
+    place(state, 'black', 'initiate', 'g7');
+    place(state, 'black', 'initiate', 'h7');
     place(state, 'white', 'warlord', 'a1');
     const after = planTurn(state, level, 1, frozen).reduce((s, action) => applyLegalAction(s, action).state, state);
     expect(after.status).toEqual({ kind: 'checkmate', winner: 'white' });

@@ -2,6 +2,7 @@ import {
   applyLegalAction,
   applyTrustedAction,
   cloneState,
+  incomeCap,
   incomeFor,
   isActive,
   isFrozen,
@@ -92,6 +93,8 @@ export interface ViewCard {
   abilityText?: string;
   /** Pieces: any level-2 card can be played onto it (the Initiate). */
   anyPath?: boolean;
+  /** Pieces: on the far row it becomes any piece card from the hand, for free (the Initiate). */
+  promotes?: boolean;
   /** Spells: the ability it teaches a piece. */
   grants?: Ability;
   /** Spells: what it does, and for Resurrect and Smite the highest card cost it reaches. */
@@ -164,6 +167,8 @@ export interface PlayerView {
   pitched: boolean;
   /** Mana each side's next turn brings (the side to move: the turn it is playing). */
   income: Record<Color, number>;
+  /** The most mana a turn of this game brings. */
+  maxIncome: number;
   inCheck: boolean;
   /** Legal actions for the side to move when it is you (or both sides, in a practice game). */
   legalActions: Action[];
@@ -204,7 +209,9 @@ const SETS: Record<string, string> = {
  */
 function describeRule(rule: MoveRule): string {
   const where = SETS[sortKey(rule.dirs)] ?? `along ${rule.dirs.length} fixed direction${rule.dirs.length === 1 ? '' : 's'}`;
-  const distance = rule.leap ? '' : rule.range >= 7 ? ', any distance' : rule.range === 1 ? ', 1 square' : `, up to ${rule.range} squares`;
+  const first = rule.firstRange && rule.firstRange > rule.range ? ` (${rule.firstRange} on its first move)` : '';
+  const distance =
+    (rule.leap ? '' : rule.range >= 7 ? ', any distance' : rule.range === 1 ? ', 1 square' : `, up to ${rule.range} squares`) + first;
   if (rule.mode === 'move') return `Moves ${where}${distance}`;
   if (rule.mode === 'capture') return `Captures ${where}${distance}`;
   const verb = rule.leap ? 'Leaps' : rule.range === 1 ? 'Steps' : 'Slides';
@@ -251,6 +258,7 @@ function viewCard(card: Card): ViewCard {
     if (card.level) out.level = card.level;
     if (card.abilityText) out.abilityText = card.abilityText;
     if (card.anyPath) out.anyPath = true;
+    if (card.piece.promotes) out.promotes = true;
   } else {
     out.spell = card.effect.kind;
     if (card.effect.kind === 'grant') out.grants = card.effect.ability;
@@ -309,7 +317,8 @@ export function viewFor(record: GameRecord, you: Color, opts: ViewOptions = {}):
     actionTaken: state.actionTaken,
     cardPlayed: state.cardPlayed === true,
     pitched: state.pitched === true,
-    income: { white: incomeFor(nextTurn('white')), black: incomeFor(nextTurn('black')) },
+    income: { white: incomeFor(nextTurn('white'), incomeCap(state)), black: incomeFor(nextTurn('black'), incomeCap(state)) },
+    maxIncome: incomeCap(state),
     inCheck: playing && state.phase === 'play' && isInCheck(state, state.active),
     legalActions: playing && !opts.past && state.active === viewer ? legalActions(state) : [],
     cards: viewCards(state.catalog),
@@ -380,6 +389,8 @@ export function rebuildSteps(record: GameRecord, decks: Record<Color, string[]>)
   try {
     const rolls = Math.max(0, decks.white.length - 1) + Math.max(0, decks.black.length - 1);
     const begun = newGame({ seed: (end.rng - Math.imul(RNG_STEP, rolls)) | 0, decks, catalog: end.catalog });
+    // The income cap the game began with (none, before 2026-10-17); the first turn's income is the same either way.
+    begun.maxIncome = end.maxIncome;
     // A card still held or in the deck at the end was never played.
     const kept = new Set([...end.hand.white, ...end.hand.black, ...end.deck.white, ...end.deck.black].map((c) => c.uid));
     // Two copies of a card in hand do the same, and only a discard pile tells them apart afterwards: the copy that

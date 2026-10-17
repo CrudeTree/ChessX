@@ -35,11 +35,23 @@ export const LAVA_TURNS = 2;
 export const PITCH_MANA = 1;
 
 /**
- * The mana a player's turn brings (Djabooty, 2026-10-11): +1 on their turns 1 to 5, +2 on 6 to 10, +3 on 11 to 15
- * and +4 after that, so the opening stays as it was and the big cards come within reach later.
+ * The most mana a turn brings. It rose to +4 until 2026-10-17, when Djabooty found late games flooded with mana; games
+ * begun before that keep the old ramp (see `incomeCap`).
  */
-export function incomeFor(turn: number): number {
-  return Math.min(4, 1 + Math.floor((Math.max(turn, 1) - 1) / 5));
+export const MAX_INCOME = 2;
+const OLD_MAX_INCOME = 4;
+
+/**
+ * The mana a player's turn brings (Djabooty, 2026-10-11): +1 on their turns 1 to 5, then 1 more every 5 turns up to
+ * `most`, so the opening stays as it was and the big cards come within reach later.
+ */
+export function incomeFor(turn: number, most = MAX_INCOME): number {
+  return Math.min(most, 1 + Math.floor((Math.max(turn, 1) - 1) / 5));
+}
+
+/** The most mana a turn of this game brings. */
+export function incomeCap(state: GameState): number {
+  return state.maxIncome ?? OLD_MAX_INCOME;
 }
 
 /** Mana for capturing a piece: half its card's cost, rounded up (Djabooty, 2026-10-11). */
@@ -142,6 +154,7 @@ export function newGame(options: NewGameOptions): GameState {
     setupDeployed: { white: 0, black: 0 },
     actionTaken: false,
     cardPlayed: false,
+    maxIncome: MAX_INCOME,
     status: { kind: 'playing' },
     nextId: 0,
     rng: options.seed | 0,
@@ -192,13 +205,21 @@ function tribeOf(state: GameState, piece: Piece): string | undefined {
   return card?.type === 'piece' ? card.tribe : undefined;
 }
 
+/** A piece that promotes (the Initiate) standing on the other side's back row. */
+export function canPromote(piece: Piece): boolean {
+  return !!piece.def.promotes && rankOf(piece.square) === backRank(opposite(piece.owner));
+}
+
 /**
  * What playing evolution `card` onto `piece` costs, or null if it cannot go there. It goes onto the card it evolves
  * from for its printed cost. A level-2 card also goes onto a piece whose card takes any path (the Initiate), for its
- * cost plus the cost of the first level it skips (Djabooty, 2026-10-11).
+ * cost plus the cost of the first level it skips (Djabooty, 2026-10-11). Any piece card goes onto a piece promoting on
+ * the far row, for free (Djabooty, 2026-10-17).
  */
 export function evolveCost(state: GameState, card: PieceCard, piece: Piece): number | null {
-  if (!card.evolvesFrom || piece.def.king || !piece.cardId) return null;
+  if (piece.def.king || !piece.cardId) return null;
+  if (canPromote(piece) && !card.piece.promotes) return 0;
+  if (!card.evolvesFrom) return null;
   if (piece.cardId === card.evolvesFrom) return card.cost;
   const base = state.catalog[piece.cardId];
   const skipped = state.catalog[card.evolvesFrom];
@@ -237,7 +258,7 @@ export function reaches(state: GameState, piece: Piece): Reach[] {
     const mode = rule.mode ?? 'both';
     for (const [df, dr0] of rule.dirs) {
       const dr = rule.relative ? dr0 * fwd : dr0;
-      const steps = rule.leap ? 1 : rule.range;
+      const steps = rule.leap ? 1 : rule.firstRange && !piece.moved ? Math.max(rule.range, rule.firstRange) : rule.range;
       for (let step = 1; step <= steps; step++) {
         const f = file + df * step;
         const r = rank + dr * step;
@@ -351,8 +372,13 @@ function applyAction(state: GameState, action: Action, events: GameEvent[]): voi
       if (!piece) throw new Error('No piece to move');
       capture(state, piece, action.to, events);
       piece.square = action.to;
+      if (piece.def.rules.some((r) => r.firstRange)) piece.moved = true;
       state.actionTaken = true;
       events.push({ type: 'moved', pieceId: piece.id, from: action.from, to: action.to, name: piece.def.name, owner: piece.owner });
+      if (action.promote) {
+        const card = pieceCard(state, removeFromHand(state, color, action.promote).cardId);
+        transform(state, piece, card, 0, events);
+      }
       return;
     }
     case 'summon': {
@@ -404,34 +430,8 @@ function applyAction(state: GameState, action: Action, events: GameEvent[]): voi
       const cost = evolveCost(state, card, old);
       if (cost === null) throw new Error('Cannot evolve that piece');
       state.mana[color] -= cost;
-      state.pieces = state.pieces.filter((p) => p.id !== old.id);
-      discardPiece(state, old);
-      // A new piece, so it waits like a summoned one: no move or capture until the owner's next turn (Djabooty, 2026-10-11).
-      // What spells taught it stays with it, and so does a Shield.
-      const piece: Piece = {
-        id: newId(state, 'p'),
-        owner: color,
-        def: card.piece,
-        cardId: card.id,
-        square: action.target,
-        activeFromTurn: state.turns[color] + 1,
-        summonedOnTurn: state.turns[color],
-        ...(old.abilities ? { abilities: old.abilities } : {}),
-        ...(old.shieldOnTurn !== undefined ? { shieldOnTurn: old.shieldOnTurn } : {}),
-      };
-      state.pieces.push(piece);
+      transform(state, old, card, cost, events);
       state.cardPlayed = true;
-      events.push({
-        type: 'evolved',
-        color,
-        pieceId: piece.id,
-        fromPieceId: old.id,
-        square: piece.square,
-        name: piece.def.name,
-        fromName: old.def.name,
-        cardId: card.id,
-        cost,
-      });
       return;
     }
     case 'spell': {
@@ -469,6 +469,42 @@ function applyAction(state: GameState, action: Action, events: GameEvent[]): voi
       return;
     }
   }
+}
+
+/**
+ * `old` evolves (or promotes) into `card`, its card going on the discard pile. The result is a new piece, so it waits
+ * like a summoned one: no move or capture until the owner's next turn (Djabooty, 2026-10-11). What spells taught it
+ * stays with it, and so does a Shield.
+ */
+function transform(state: GameState, old: Piece, card: PieceCard, cost: number, events: GameEvent[]): void {
+  const color = old.owner;
+  const promoted = canPromote(old) && cost === 0;
+  state.pieces = state.pieces.filter((p) => p.id !== old.id);
+  discardPiece(state, old);
+  const piece: Piece = {
+    id: newId(state, 'p'),
+    owner: color,
+    def: card.piece,
+    cardId: card.id,
+    square: old.square,
+    activeFromTurn: state.turns[color] + 1,
+    summonedOnTurn: state.turns[color],
+    ...(old.abilities ? { abilities: old.abilities } : {}),
+    ...(old.shieldOnTurn !== undefined ? { shieldOnTurn: old.shieldOnTurn } : {}),
+  };
+  state.pieces.push(piece);
+  events.push({
+    type: 'evolved',
+    color,
+    pieceId: piece.id,
+    fromPieceId: old.id,
+    square: piece.square,
+    name: piece.def.name,
+    fromName: old.def.name,
+    cardId: card.id,
+    cost,
+    ...(promoted ? { promoted: true } : {}),
+  });
 }
 
 type SpellAction = Extract<Action, { type: 'spell' }>;
@@ -597,9 +633,15 @@ function deployActions(state: GameState): Action[] {
   return out;
 }
 
+/**
+ * A piece that promotes, arriving on the far row, may also become any piece card in the hand, as one action, or stay
+ * as it is and promote on a later turn (see `evolveCost`).
+ */
 function moveActions(state: GameState): Action[] {
   const color = state.active;
   const out: Action[] = [];
+  const farRank = backRank(opposite(color));
+  const promotions = handPieces(state, color).filter(({ card }) => !card.piece.promotes);
   for (const piece of state.pieces) {
     if (piece.owner !== color || piece.summonedOnTurn === state.turns[color] || isFrozen(state, piece)) continue;
     const sick = !isActive(state, piece);
@@ -612,7 +654,12 @@ function moveActions(state: GameState): Action[] {
       const canCapture = enemy && reach.mode !== 'move' && !sick;
       if (!canMove && !canCapture) continue;
       const action: Action = { type: 'move', from: piece.square, to: reach.to };
-      if (safe(state, action)) out.push(action);
+      if (!safe(state, action)) continue;
+      out.push(action);
+      // The promoted piece stands where the plain move would, so it is just as safe.
+      if (piece.def.promotes && rankOf(reach.to) === farRank) {
+        for (const { instance } of promotions) out.push({ ...action, promote: instance.uid });
+      }
     }
   }
   return out;
@@ -648,14 +695,16 @@ function sealActions(state: GameState): Action[] {
 
 /**
  * An evolution card goes onto one of your pieces of the card it evolves from, or, for a level-2 card, onto an
- * Initiate (see `evolveCost`). The piece must have been on the board since before this turn (no summoning sickness
- * left), so each step of a line gives the opponent a turn to answer (Djabooty, 2026-10-11).
+ * Initiate (see `evolveCost`); any piece card goes onto an Initiate waiting on the far row to promote. The piece must
+ * have been on the board since before this turn (no summoning sickness left), so each step of a line gives the
+ * opponent a turn to answer (Djabooty, 2026-10-11).
  */
 function evolveActions(state: GameState): Action[] {
   const color = state.active;
   const out: Action[] = [];
+  const promoting = state.pieces.some((p) => p.owner === color && canPromote(p));
   for (const { instance, card } of handPieces(state, color)) {
-    if (!card.evolvesFrom) continue;
+    if (!card.evolvesFrom && !promoting) continue;
     for (const piece of state.pieces) {
       if (piece.owner !== color || !isActive(state, piece)) continue;
       const cost = evolveCost(state, card, piece);
@@ -800,7 +849,7 @@ const ENDS_TURN: ReadonlySet<Action['type']> = new Set(['move']);
 function startTurn(state: GameState, color: Color, events: GameEvent[]): void {
   state.active = color;
   state.turns[color] += 1;
-  const income = incomeFor(state.turns[color]);
+  const income = incomeFor(state.turns[color], incomeCap(state));
   state.mana[color] += income;
   state.actionTaken = false;
   state.cardPlayed = false;
@@ -868,7 +917,7 @@ function settleSetup(state: GameState, events: GameEvent[], justDeployed = true)
 function sameAction(a: Action, b: Action): boolean {
   const x = a as Record<string, unknown>;
   const y = b as Record<string, unknown>;
-  return ['type', 'cardUid', 'from', 'to', 'target', 'pick'].every((key) => x[key] === y[key]);
+  return ['type', 'cardUid', 'from', 'to', 'target', 'pick', 'promote'].every((key) => x[key] === y[key]);
 }
 
 export interface ApplyResult {

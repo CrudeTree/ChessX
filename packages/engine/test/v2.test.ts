@@ -5,6 +5,7 @@ import {
   STARTER_CATALOG,
   applyLegalAction,
   bountyFor,
+  evolveCost,
   faceArt,
   incomeFor,
   isInCheck,
@@ -158,8 +159,8 @@ describe('setup', () => {
     const state = bare();
     const init = piece(state, 'white', 'initiate', 'd2');
     state.hand.white = [];
-    piece(state, 'black', 'initiate', 'd3');
-    const capture = legalActions(state).find((a) => a.type === 'move' && a.from === init.square && a.to === S('d3'));
+    piece(state, 'black', 'initiate', 'e3');
+    const capture = legalActions(state).find((a) => a.type === 'move' && a.from === init.square && a.to === S('e3'));
     expect(capture).toBeDefined();
   });
 });
@@ -520,7 +521,7 @@ describe('sealing', () => {
   it('capturing the seal square destroys the seal and sends its card to the discard pile; nothing hatches', () => {
     let state = bare(5);
     piece(state, 'white', 'initiate', 'c3');
-    piece(state, 'black', 'initiate', 'c4');
+    piece(state, 'black', 'initiate', 'b4');
     const squire = give(state, 'white', 'squire');
     state = act(state, find(state, (a) => a.type === 'seal' && a.cardUid === squire));
     state = act(state, find(state, (a) => a.type === 'move' && a.from === S('d1')));
@@ -911,9 +912,13 @@ describe('Mana Surge, Resurrect, Shield, Freeze and Smite (Djabooty, 2026-10-12)
 });
 
 describe('mana (Djabooty, 2026-10-11)', () => {
-  /** Plays King shuffles until White has started `turn` turns, returning the turnStarted events White got. */
-  function playTo(turn: number): { state: GameState; incomes: number[] } {
+  /**
+   * Plays King shuffles until White has started `turn` turns, returning the turnStarted events White got; `old`: a game
+   * begun before income was capped at +2.
+   */
+  function playTo(turn: number, old = false): { state: GameState; incomes: number[] } {
     let state = bare(0);
+    if (old) delete state.maxIncome;
     state.turns = { white: 0, black: 0 };
     state.active = 'black';
     state.pieces.find((p) => p.owner === 'black' && p.def.king)!.square = S('a8');
@@ -927,15 +932,26 @@ describe('mana (Djabooty, 2026-10-11)', () => {
   }
   const kingAt = (state: GameState) => state.pieces.find((p) => p.owner === state.active && p.def.king)!.square;
 
-  it('income steps up: +1 on turns 1 to 5, +2 on 6 to 10, +3 on 11 to 15, then +4', () => {
-    expect(Array.from({ length: 20 }, (_, i) => incomeFor(i + 1))).toEqual([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4]);
+  it('income is +1 on turns 1 to 5, then +2 for good (Djabooty, 2026-10-17: late games had too much mana)', () => {
+    expect(Array.from({ length: 20 }, (_, i) => incomeFor(i + 1))).toEqual([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]);
+    expect(game().maxIncome).toBe(2);
     const { state, incomes } = playTo(16);
-    expect(incomes).toEqual([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4]);
-    expect(state.mana.white).toBe(34);
+    expect(incomes).toEqual([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]);
+    expect(state.mana.white).toBe(27);
+    expect(viewFor({ state, seq: 0, events: [] }, 'white').maxIncome).toBe(2);
     // The view shows what the side to move got this turn and what the other side's next turn brings.
     const { state: fifth } = playTo(5);
     const blackToMove = act(fifth, find(fifth, (a) => a.type === 'move' && a.from === kingAt(fifth)));
     expect(viewFor({ state: blackToMove, seq: 0, events: [] }, 'white').income).toEqual({ white: 2, black: 1 });
+  });
+
+  it('a game begun before the cap keeps the old ramp: +3 on turns 11 to 15, then +4', () => {
+    expect(Array.from({ length: 20 }, (_, i) => incomeFor(i + 1, 4))).toEqual([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4]);
+    const { state, incomes } = playTo(16, true);
+    expect(incomes).toEqual([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4]);
+    expect(state.mana.white).toBe(34);
+    expect(state.maxIncome).toBeUndefined();
+    expect(viewFor({ state, seq: 0, events: [] }, 'white')).toMatchObject({ maxIncome: 4, income: { white: 4, black: 4 } });
   });
 
   it('pitches a card from the hand for +1 mana, once a turn; it counts as a card for End turn', () => {
@@ -1153,9 +1169,14 @@ describe('the game log (Djabooty, 2026-10-11)', () => {
 });
 
 describe('looking back (Djabooty, 2026-10-13)', () => {
-  /** A random game played through a record, as the server plays it, ended by a resignation if still going. */
-  function played(seed: number, length: number): GameRecord {
-    let record = newRecord(game(seed));
+  /**
+   * A random game played through a record, as the server plays it, ended by a resignation if still going; `old`: begun
+   * before income was capped at +2.
+   */
+  function played(seed: number, length: number, old = false): GameRecord {
+    const begun = game(seed);
+    if (old) delete begun.maxIncome;
+    let record = newRecord(begun);
     let pick = seed * 104729;
     for (let n = 0; n < length && record.state.status.kind === 'playing'; n++) {
       const actions = legalActions(record.state);
@@ -1220,6 +1241,17 @@ describe('looking back (Djabooty, 2026-10-13)', () => {
       expect(rebuildSteps({ ...old, history: bare }, decks)?.steps).toHaveLength(steps!.length);
     }
     expect(took).toBeLessThan(2000);
+  });
+
+  it('works the steps out for a game begun before income was capped, which keeps rising to +4', () => {
+    const decks = { white: starterDeck(), black: starterDeck() };
+    const record = played(4, 200, true);
+    expect(record.state.turns.white).toBeGreaterThan(10);
+    const { start, steps, ...old } = record;
+    const rebuilt = rebuildSteps(old, decks);
+    expect(rebuilt?.steps).toHaveLength(steps!.length);
+    expect(rebuilt!.start!.maxIncome).toBeUndefined();
+    expect(stateAt(rebuilt!, steps!.length)).toEqual(record.state);
   });
 
   it('leaves a game without steps when its history began late or its deck has changed', () => {
@@ -1413,16 +1445,17 @@ describe('endgame', () => {
     }
   });
 
-  it('a Squire on the far rank stays a Squire and can be sealed to a Wyrmling, the start of the queen line, the crown (msg-033)', () => {
+  it('an Initiate on the far rank with no piece card in hand stays an Initiate, and can still be sealed (msg-033)', () => {
     let state = bare(5);
     state.pieces.find((p) => p.owner === 'black' && p.def.king)!.square = S('a8');
-    piece(state, 'white', 'squire', 'e7');
+    piece(state, 'white', 'initiate', 'e7');
+    give(state, 'white', 'smite');
+    expect(legalActions(state).filter((a) => a.type === 'move' && a.from === S('e7'))).toEqual([{ type: 'move', from: S('e7'), to: S('e8') }]);
     state = act(state, find(state, (a) => a.type === 'move' && a.from === S('e7') && a.to === S('e8')));
-    expect(pieceAt(state, S('e8'))).toMatchObject({ owner: 'white', cardId: 'squire' });
-    expect(pieceAt(state, S('e8'))!.def.kind).toBe('squire');
+    expect(pieceAt(state, S('e8'))).toMatchObject({ owner: 'white', cardId: 'initiate' });
     state = act(state, find(state, (a) => a.type === 'move'));
-    expect(pieceAt(state, S('e8'))!.def.kind).toBe('squire');
     expect(legalActions(state).some((a) => a.type === 'move' && a.from === S('e8'))).toBe(false);
+    expect(legalActions(state).some((a) => a.type === 'evolve')).toBe(false);
     const wyrmling = give(state, 'white', 'wyrmling');
     const mana = state.mana.white;
     state = act(state, find(state, (a) => a.type === 'seal' && a.cardUid === wyrmling && a.target === S('e8')));
@@ -1430,6 +1463,146 @@ describe('endgame', () => {
     expect(sealAt(state, S('e8'))).toMatchObject({ owner: 'white', timer: 1 });
     expect(sealAt(state, S('e8'))!.card.id).toBe('wyrmling');
     expect(state.mana.white).toBe(mana - 2);
+  });
+});
+
+describe('the Initiate is the pawn (Djabooty, 2026-10-17)', () => {
+  const movesFrom = (state: GameState, from: string) =>
+    legalActions(state)
+      .filter((a): a is Extract<Action, { type: 'move' }> => a.type === 'move' && a.from === S(from) && !a.promote)
+      .map((a) => a.to)
+      .sort((a, b) => a - b);
+  const squares = (...names: string[]) => names.map(S).sort((a, b) => a - b);
+
+  it('moves 1 forward, or 2 on its first move, and captures 1 diagonally forward', () => {
+    let state = bare(5);
+    state.pieces.find((p) => p.owner === 'black' && p.def.king)!.square = S('a8');
+    piece(state, 'white', 'initiate', 'd2');
+    piece(state, 'black', 'initiate', 'e3');
+    piece(state, 'black', 'initiate', 'g7');
+    expect(movesFrom(state, 'd2')).toEqual(squares('d3', 'd4', 'e3'));
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('d2') && a.to === S('d4')));
+    expect(pieceAt(state, S('d4'))?.moved).toBe(true);
+    // Black's go down the board.
+    expect(movesFrom(state, 'g7')).toEqual(squares('g6', 'g5'));
+    state = act(state, find(state, (a) => a.type === 'move' && a.from === S('g7') && a.to === S('g6')));
+    expect(movesFrom(state, 'd4')).toEqual(squares('d5'));
+  });
+
+  it('its double step is blocked by a piece on the square between, and it never moves back or sideways', () => {
+    const state = bare(5);
+    piece(state, 'white', 'initiate', 'c3');
+    piece(state, 'black', 'warrior', 'c4');
+    expect(movesFrom(state, 'c3')).toEqual([]);
+    const other = bare(5);
+    piece(other, 'white', 'initiate', 'f3');
+    piece(other, 'black', 'warrior', 'f5');
+    expect(movesFrom(other, 'f3')).toEqual(squares('f4'));
+  });
+
+  it('attacks only diagonally forward: a King may stand right in front of an enemy Initiate', () => {
+    const state = bare(5);
+    piece(state, 'black', 'initiate', 'c3');
+    const king = state.pieces.find((p) => p.owner === 'white' && p.def.king)!;
+    king.square = S('c2');
+    expect(isInCheck(state, 'white')).toBe(false);
+    king.square = S('d2');
+    expect(isInCheck(state, 'white')).toBe(true);
+  });
+
+  it('the Squire steps 1 square straight, moving and capturing alike', () => {
+    const state = bare(5);
+    piece(state, 'white', 'squire', 'f4');
+    piece(state, 'black', 'warrior', 'f5');
+    expect(movesFrom(state, 'f4')).toEqual(squares('f3', 'e4', 'g4', 'f5'));
+  });
+
+  it('reaching the far row it may become any piece card in hand, for free, as part of the move', () => {
+    let state = bare(0);
+    state.pieces.find((p) => p.owner === 'black' && p.def.king)!.square = S('a8');
+    piece(state, 'white', 'initiate', 'e7');
+    const warlord = give(state, 'white', 'warlord');
+    const dragon = give(state, 'white', 'mystic_dragon');
+    const squire = give(state, 'white', 'squire');
+    give(state, 'white', 'initiate');
+    give(state, 'white', 'smite');
+    const arriving = legalActions(state).filter((a) => a.type === 'move' && a.from === S('e7'));
+    expect(arriving).toEqual([
+      { type: 'move', from: S('e7'), to: S('e8') },
+      { type: 'move', from: S('e7'), to: S('e8'), promote: warlord },
+      { type: 'move', from: S('e7'), to: S('e8'), promote: dragon },
+      { type: 'move', from: S('e7'), to: S('e8'), promote: squire },
+    ]);
+    const { state: next, events } = applyLegalAction(state, { type: 'move', from: S('e7'), to: S('e8'), promote: warlord });
+    expect(pieceAt(next, S('e8'))).toMatchObject({ owner: 'white', cardId: 'warlord' });
+    expect(next.hand.white.map((c) => c.uid)).not.toContain(warlord);
+    expect(next.mana.white).toBe(0);
+    expect(next.discard.white.map((c) => c.cardId)).toEqual(['initiate']);
+    expect(events.slice(0, 2)).toMatchObject([
+      { type: 'moved', from: S('e7'), to: S('e8'), name: 'Initiate' },
+      { type: 'evolved', color: 'white', square: S('e8'), name: 'Warlord', fromName: 'Initiate', cardId: 'warlord', cost: 0, promoted: true },
+    ]);
+    expect(next.active).toBe('black');
+    // It moves on its owner's next turn, like any piece that arrived on the last one.
+    const after = act(next, find(next, (a) => a.type === 'move'));
+    expect(legalActions(after).some((a) => a.type === 'move' && a.from === S('e8') && a.to === S('e1'))).toBe(true);
+  });
+
+  it('it can also promote by capturing onto the far row, and the plain move keeps it an Initiate', () => {
+    const state = bare(5);
+    state.pieces.find((p) => p.owner === 'black' && p.def.king)!.square = S('a8');
+    piece(state, 'white', 'initiate', 'e7');
+    piece(state, 'black', 'warrior', 'f8');
+    const paladin = give(state, 'white', 'paladin');
+    const capture = find(state, (a) => a.type === 'move' && a.to === S('f8') && a.promote === paladin);
+    const { state: next, events } = applyLegalAction(state, capture);
+    expect(pieceAt(next, S('f8'))).toMatchObject({ owner: 'white', cardId: 'paladin' });
+    expect(events.map((e) => e.type).slice(0, 3)).toEqual(['captured', 'moved', 'evolved']);
+    const kept = act(state, find(state, (a) => a.type === 'move' && a.to === S('e8') && !a.promote));
+    expect(pieceAt(kept, S('e8'))).toMatchObject({ cardId: 'initiate' });
+    expect(kept.hand.white.map((c) => c.uid)).toContain(paladin);
+  });
+
+  it('an Initiate waiting on the far row promotes on a later turn when a piece card is dropped on it, for free', () => {
+    let state = bare(0);
+    state.pieces.find((p) => p.owner === 'black' && p.def.king)!.square = S('a8');
+    piece(state, 'white', 'initiate', 'e8');
+    const elsewhere = piece(state, 'white', 'initiate', 'b3');
+    const colt = give(state, 'white', 'colt');
+    const evolves = legalActions(state).filter((a) => a.type === 'evolve');
+    expect(evolves).toEqual([{ type: 'evolve', cardUid: colt, target: S('e8') }]);
+    const { state: next, events } = applyLegalAction(state, evolves[0]!);
+    expect(pieceAt(next, S('e8'))).toMatchObject({ cardId: 'colt' });
+    expect(pieceAt(next, elsewhere.square)).toMatchObject({ cardId: 'initiate' });
+    expect(next.mana.white).toBe(0);
+    expect(next.active).toBe('white');
+    expect(events).toMatchObject([{ type: 'evolved', cost: 0, promoted: true }]);
+    // Like any evolution, the new piece waits for its owner's next turn.
+    expect(legalActions(next).some((a) => a.type === 'move' && a.from === S('e8'))).toBe(false);
+  });
+
+  it('a level-2 card still goes onto an Initiate elsewhere for its any-path price, and onto one on the far row for free', () => {
+    const state = bare(7);
+    piece(state, 'white', 'initiate', 'b3');
+    piece(state, 'white', 'initiate', 'g8');
+    const warrior = give(state, 'white', 'warrior');
+    const card = STARTER_CATALOG.warrior as PieceCard;
+    expect(evolveCost(state, card, pieceAt(state, S('b3'))!)).toBe(card.cost + STARTER_CATALOG.recruit!.cost);
+    expect(evolveCost(state, card, pieceAt(state, S('g8'))!)).toBe(0);
+    expect(evolveCost(state, STARTER_CATALOG.initiate as PieceCard, pieceAt(state, S('g8'))!)).toBeNull();
+    expect(legalActions(state).filter((a) => a.type === 'evolve' && a.cardUid === warrior)).toHaveLength(2);
+  });
+
+  it('a game begun before the change keeps its straight-stepping Initiate, with no double step or promotion', () => {
+    const state = bare(5);
+    state.pieces.find((p) => p.owner === 'black' && p.def.king)!.square = S('a8');
+    const def = { kind: 'initiate', name: 'Initiate', rules: [{ dirs: [[1, 0], [-1, 0], [0, 1], [0, -1]] as const, range: 1 }] };
+    state.pieces.push({ id: 'old', owner: 'white', def, cardId: 'initiate', square: S('e7'), activeFromTurn: 0 });
+    give(state, 'white', 'warlord');
+    expect(movesFrom(state, 'e7')).toEqual(squares('e6', 'd7', 'f7', 'e8'));
+    expect(legalActions(state).some((a) => a.type === 'move' && a.promote)).toBe(false);
+    const next = act(state, find(state, (a) => a.type === 'move' && a.to === S('d7')));
+    expect(pieceAt(next, S('d7'))).not.toHaveProperty('moved');
   });
 });
 
@@ -1519,14 +1692,22 @@ describe('port additions', () => {
     expect(cards.ancient_mystic_dragon!.text).toBe('Slides in any direction, any distance.');
     // A rule that only moves says "Moves", one that only captures says "Captures", like a chess pawn.
     expect(cards.duskfang!.text).toBe('Moves diagonally, 1 square. Captures like a knight.');
-    expect(cards.squire!.text).toBe('Moves forward, 1 square. Captures diagonally forward, 1 square.');
+    expect(cards.initiate!.text).toBe('Moves forward, 1 square (2 on its first move). Captures diagonally forward, 1 square.');
+    expect(cards.squire!.text).toBe('Steps straight, 1 square.');
     expect(cards.dispel!.type).toBe('spell');
   });
 
   it('sends types, the Initiate\'s any path and the longer viewer text', () => {
     const cards = viewFor({ state: bare(), seq: 0, events: [] }, 'white').cards;
-    expect(cards.initiate).toMatchObject({ tribe: 'Zealot', anyPath: true, abilityText: 'Any path: evolves into any level 2.' });
+    expect(cards.initiate).toMatchObject({
+      tribe: 'Zealot',
+      anyPath: true,
+      promotes: true,
+      abilityText: 'Any path: evolves into any level 2.\nPromotes: on the far row.',
+    });
     expect(cards.initiate!.detail).toContain('any level-2 card');
+    expect(cards.initiate!.detail).toContain('far row');
+    expect(cards.squire).not.toHaveProperty('promotes');
     expect(cards.warrior).toMatchObject({ tribe: 'Warrior' });
     expect(cards.warrior).not.toHaveProperty('anyPath');
     expect(cards.lava_breath).toMatchObject({ type: 'spell', tribe: 'Dragon', grants: 'lavaBreath', cost: 2 });
@@ -1547,7 +1728,8 @@ describe('port additions', () => {
   it('sends piece move rules so the client can draw them', () => {
     const cards = viewFor({ state: bare(), seq: 0, events: [] }, 'white').cards;
     expect(cards.duskfang!.rules).toEqual(STARTER_CATALOG.duskfang!.type === 'piece' ? STARTER_CATALOG.duskfang!.piece.rules : null);
-    expect(JSON.parse(JSON.stringify(cards.squire!.rules))[1].mode).toBe('capture');
+    expect(JSON.parse(JSON.stringify(cards.initiate!.rules))[1].mode).toBe('capture');
+    expect(JSON.parse(JSON.stringify(cards.initiate!.rules))[0]).toMatchObject({ mode: 'move', firstRange: 2 });
     expect(cards.insight!.rules).toBeUndefined();
   });
 
