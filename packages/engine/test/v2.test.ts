@@ -12,8 +12,10 @@ import {
   nextRecord,
   newGame,
   newRecord,
+  rebuildSteps,
   stateAt,
   viewAt,
+  type GameEvent,
   type GameRecord,
   parseSquare,
   pieceAt,
@@ -1193,6 +1195,39 @@ describe('looking back (Djabooty, 2026-10-13)', () => {
     expect(viewAt(record, record.steps!.length + 1, 'white')).toBeNull();
     expect(viewAt(record, -1, 'white')).toBeNull();
     expect(viewAt(record, 1.5, 'white')).toBeNull();
+  });
+
+  it('works the steps out again for a game kept before them, from its history', () => {
+    const decks = { white: starterDeck(), black: starterDeck() };
+    let took = 0;
+    for (let seed = 1; seed <= 6; seed++) {
+      const record = played(seed, 200);
+      const { start, steps, ...old } = record;
+      const began = performance.now();
+      const rebuilt = rebuildSteps(old, decks);
+      took = Math.max(took, performance.now() - began);
+      expect(rebuilt?.steps).toHaveLength(steps!.length);
+      expect(rebuilt!.start).toEqual(start);
+      expect(stateAt(rebuilt!, steps!.length)).toEqual(record.state);
+      // Events saved before the names, owners, cards and bounties were added to them.
+      const later = ['name', 'owner', 'bounty', 'income', 'fromName', 'consumedName'];
+      const bare = old.history!.map((events) =>
+        events.map((e) => {
+          const gone = ['captured', 'summoned', 'sealed', 'evolved'].includes(e.type) ? [...later, 'cardId'] : later;
+          return Object.fromEntries(Object.entries(e).filter(([k]) => e.type === 'learned' || e.type === 'lava' || !gone.includes(k))) as GameEvent;
+        }),
+      );
+      expect(rebuildSteps({ ...old, history: bare }, decks)?.steps).toHaveLength(steps!.length);
+    }
+    expect(took).toBeLessThan(2000);
+  });
+
+  it('leaves a game without steps when its history began late or its deck has changed', () => {
+    const decks = { white: starterDeck(), black: starterDeck() };
+    const { start, steps, ...old } = played(3, 80);
+    expect(rebuildSteps({ ...old, history: old.history!.slice(1) }, decks)).toBeNull();
+    expect(rebuildSteps(old, { white: [...decks.white].reverse(), black: decks.black })).toBeNull();
+    expect(rebuildSteps(old, { white: decks.white.slice(1), black: decks.black })).toBeNull();
   });
 
   it('a game saved before steps were kept has none, and does not begin them halfway', () => {

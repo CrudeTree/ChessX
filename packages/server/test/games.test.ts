@@ -189,6 +189,37 @@ describe('rules 2 games', () => {
     const carol = db.createUser({ email: 'carol@x.test', name: 'Carol', password_hash: null, google_id: null, facebook_id: null, avatar_url: null });
     expect(() => reloaded.sendPast(transport(carol.id), 0)).toThrow(GameError);
   });
+
+  it('a finished game saved before steps were kept gets them back when it is opened (Djabooty, 2026-10-15)', () => {
+    const { db, games, alice, bob } = setup();
+    const game = games.create(alice.id, false, []);
+    game.join(bob.id, []);
+    const white = transport(game.row.white_user_id!);
+    const black = transport(game.row.black_user_id!);
+    game.attach(white);
+    game.attach(black);
+    game.actV2(white, pick(game.record!.state, (a) => a.type === 'move'));
+    game.actV2(black, pick(game.record!.state, (a) => a.type === 'move'));
+    game.actV2(white, { type: 'resign' });
+    const opening = game.record!.start!.pieces.map((p) => p.square).sort();
+
+    // As such a game was saved: the history, but neither the start nor the steps.
+    const row = db.gameById(game.id)!;
+    const { start, steps, ...old } = JSON.parse(row.state_json!) as v2.GameRecord;
+    expect(steps).toHaveLength(3);
+    db.updateGame({ ...row, state_json: JSON.stringify(old) });
+
+    const reloaded = new GameManager(db, (id) => db.userById(id)?.name ?? '?').get(game.id)!;
+    const t = transport(game.row.white_user_id!);
+    reloaded.attach(t);
+    const opened = t.messages.find((m) => m.type === 'stateV2');
+    expect(opened?.type === 'stateV2' && opened.view.steps).toBe(3);
+    reloaded.sendPast(t, 0);
+    const past = t.messages.find((m) => m.type === 'pastV2');
+    if (past?.type !== 'pastV2') throw new Error('no past');
+    expect(past.view.pieces.map((p) => p.square).sort()).toEqual(opening);
+    expect(start).toBeDefined();
+  });
 });
 
 describe('cards, then a move that ends the turn (Djabooty, 2026-10-10)', () => {

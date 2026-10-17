@@ -1,4 +1,19 @@
-import { applyLegalAction, cloneState, incomeFor, isActive, isFrozen, isInCheck, isShielded, LAVA_COST, LAVA_TURNS, legalActions, SETUP_PIECES } from './engine.js';
+import {
+  applyLegalAction,
+  applyTrustedAction,
+  cloneState,
+  incomeFor,
+  isActive,
+  isFrozen,
+  isInCheck,
+  isShielded,
+  LAVA_COST,
+  LAVA_TURNS,
+  legalActions,
+  newGame,
+  SETUP_PIECES,
+} from './engine.js';
+import { RNG_STEP } from './rng.js';
 import {
   opposite,
   type Ability,
@@ -347,4 +362,102 @@ export function viewAt(record: GameRecord, step: number, you: Color, hotseat = f
   const state = stateAt(record, step, known);
   if (!state) return null;
   return viewFor({ state, seq: record.seq, events: record.history?.[step - 1] ?? [] }, you, { hotseat, past: true });
+}
+
+/** How many steps `rebuildSteps` may try for a game, some of them again after a wrong turn. */
+const REBUILD_TRIES = 5000;
+
+/**
+ * A record kept before its steps were (games begun before 2026-10-13), with them worked out again from its history,
+ * or null where that cannot be done. The game began as `decks` shuffled with a seed that its random numbers, drawn
+ * only for that shuffle, give away; each step is the legal action that does what that entry of the history tells.
+ * It is only taken when playing them comes to the game as it is, so a history that began late, or a deck or rules
+ * that have changed since, leave the game as it was, without steps.
+ */
+export function rebuildSteps(record: GameRecord, decks: Record<Color, string[]>): GameRecord | null {
+  const { history, state: end } = record;
+  if (record.steps || !history) return null;
+  try {
+    const rolls = Math.max(0, decks.white.length - 1) + Math.max(0, decks.black.length - 1);
+    const begun = newGame({ seed: (end.rng - Math.imul(RNG_STEP, rolls)) | 0, decks, catalog: end.catalog });
+    // A card still held or in the deck at the end was never played.
+    const kept = new Set([...end.hand.white, ...end.hand.black, ...end.deck.white, ...end.deck.black].map((c) => c.uid));
+    // Two copies of a card in hand do the same, and only a discard pile tells them apart afterwards: the copy that
+    // lies lower in it was most likely played first. A wrong guess shows at the end, and the other is tried then.
+    const discarded = new Map<string, number>();
+    for (const pile of [end.discard.white, end.discard.black]) pile.forEach((c, i) => discarded.set(c.uid, i));
+    const rank = (step: Step) => ('cardUid' in step ? (discarded.get(step.cardUid) ?? Infinity) : 0);
+    const steps: Step[] = [];
+    let tries = REBUILD_TRIES;
+    const walk = (state: GameState, at: number): boolean => {
+      if (at === history.length) return sameValue({ ...state, catalog: null }, { ...end, catalog: null });
+      const found = [...stepsDoing(state, history[at]!, kept)].sort(([a], [b]) => rank(a) - rank(b) || 0);
+      for (const [step, next] of found) {
+        if (--tries < 0) return false;
+        steps.push(step);
+        if (walk(next, at + 1)) return true;
+        steps.pop();
+      }
+      return false;
+    };
+    if (!walk(begun, 0)) return null;
+    const { catalog, ...start } = begun;
+    return { ...record, start, steps };
+  } catch {
+    return null;
+  }
+}
+
+/** The steps from `state` whose events are `events` (which may lack fields added to events since), with where each leads. */
+function* stepsDoing(state: GameState, events: GameEvent[], kept: Set<string>): Generator<[Step, GameState]> {
+  const only = events.length === 1 ? events[0]! : null;
+  if (only?.type === 'gameOver' && (only.status.kind === 'resigned' || only.status.kind === 'timeout')) {
+    yield [{ type: 'end', status: only.status }, { ...state, status: only.status }];
+    return;
+  }
+  for (const action of legalActions(state)) {
+    if ('cardUid' in action && kept.has(action.cardUid)) continue;
+    if (!events.some((e) => shows(action, e)) && (action.type !== 'endTurn' || events.some((e) => DONE_BY.has(e.type)))) continue;
+    const result = applyTrustedAction(state, action);
+    if (result.events.length === events.length && events.every((e, i) => Object.entries(e).every(([k, v]) => sameValue(v, (result.events[i] as Record<string, unknown>)[k])))) {
+      yield [action, result.state];
+    }
+  }
+}
+
+/** Events that an action other than End turn always leaves. */
+const DONE_BY = new Set<GameEvent['type']>(['deployed', 'moved', 'summoned', 'sealed', 'evolved', 'spellPlayed', 'pitched', 'lava']);
+
+/** Whether `e` is the event that `action` leaves, as far as can be told without playing it. */
+function shows(action: Action, e: GameEvent): boolean {
+  switch (action.type) {
+    case 'deploy':
+      return e.type === 'deployed' && e.square === action.to;
+    case 'move':
+      return e.type === 'moved' && e.from === action.from && e.to === action.to;
+    case 'summon':
+      return e.type === 'summoned' && e.square === action.to;
+    case 'seal':
+      return e.type === 'sealed' && e.square === action.target;
+    case 'evolve':
+      return e.type === 'evolved' && e.square === action.target;
+    case 'spell':
+      return e.type === 'spellPlayed' && e.target === action.target;
+    case 'pitch':
+      return e.type === 'pitched';
+    case 'lava':
+      return e.type === 'lava' && e.from === action.from && e.square === action.to;
+    case 'endTurn':
+      return false;
+  }
+}
+
+/** Deep equality that ignores key order and keys left undefined. */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null || Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a)) return a.length === (b as unknown[]).length && a.every((x, i) => sameValue(x, (b as unknown[])[i]));
+  const x = a as Record<string, unknown>;
+  const y = b as Record<string, unknown>;
+  return [...new Set([...Object.keys(x), ...Object.keys(y)])].every((k) => sameValue(x[k], y[k]));
 }

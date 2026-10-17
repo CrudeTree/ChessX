@@ -149,6 +149,8 @@ export class LiveGame {
   ) {
     this.state = parseState(row);
     this.record = parseRecord(row);
+    // A game begun before steps were kept gets them worked out again where it can, to be looked back through too.
+    if (this.record && !this.record.steps) this.record = v2.rebuildSteps(this.record, { white: v2.starterDeck(), black: v2.starterDeck() }) ?? this.record;
     this.chat = parseChat(row);
   }
 
