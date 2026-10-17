@@ -82,7 +82,7 @@ export interface PieceCard {
   detail?: string;
   /** Card face picture, a path under the client's public folder. */
   art?: string;
-  /** Picture drawn inside the piece token on the board. */
+  /** Picture drawn inside the piece token on the board: the creature alone, on a transparent background. */
   boardArt?: string;
   /**
    * Black's face of the card (Djabooty, 2026-10-11): a card has a light face for White and a dark one for Black,

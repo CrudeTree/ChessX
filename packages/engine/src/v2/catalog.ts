@@ -85,8 +85,11 @@ const DUSKFANG: PieceDef = {
  * pictures also show how strong a card is, from a humble Initiate up to the Ancient Mystic Dragon.
  */
 const faces = (id: string) => ({ art: `/art/${id}_white.png`, darkArt: `/art/${id}_dark.png` });
-/** A piece wears the same face on the board as on its card. */
-const pieceFaces = (id: string) => ({ ...faces(id), boardArt: `/art/${id}_white.png`, darkBoardArt: `/art/${id}_dark.png` });
+/**
+ * On the board a piece shows the creature of its face alone, cut out of the card's picture (Djabooty, 2026-10-17):
+ * `/figures/<id>_<face>.webp`, the cut-outs tools/figures makes, which the 3D board stands up too.
+ */
+const pieceFaces = (id: string) => ({ ...faces(id), boardArt: `/figures/${id}_white.webp`, darkBoardArt: `/figures/${id}_dark.webp` });
 
 /**
  * Starter cards. Costs and timers are PLACEHOLDERS to playtest, not final balance.

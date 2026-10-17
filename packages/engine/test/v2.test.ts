@@ -1555,9 +1555,9 @@ describe('port additions', () => {
     const cards = viewFor({ state: bare(), seq: 0, events: [] }, 'white').cards;
     expect(cards.duskfang).toMatchObject({
       art: '/art/duskfang_white.png',
-      boardArt: '/art/duskfang_white.png',
+      boardArt: '/figures/duskfang_white.webp',
       darkArt: '/art/duskfang_dark.png',
-      darkBoardArt: '/art/duskfang_dark.png',
+      darkBoardArt: '/figures/duskfang_dark.webp',
     });
     expect(cards.insight).toMatchObject({ art: '/art/insight_white.png', darkArt: '/art/insight_dark.png' });
     expect(cards.insight).not.toHaveProperty('boardArt');
@@ -1569,8 +1569,8 @@ describe('port additions', () => {
     for (const id of Object.keys(STARTER_CATALOG)) {
       const card = cards[id]!;
       const onBoard = (file: string) => (card.type === 'piece' ? file : undefined);
-      expect(faceArt(card, 'white')).toEqual({ art: `/art/${id}_white.png`, boardArt: onBoard(`/art/${id}_white.png`) });
-      expect(faceArt(card, 'black')).toEqual({ art: `/art/${id}_dark.png`, boardArt: onBoard(`/art/${id}_dark.png`) });
+      expect(faceArt(card, 'white')).toEqual({ art: `/art/${id}_white.png`, boardArt: onBoard(`/figures/${id}_white.webp`) });
+      expect(faceArt(card, 'black')).toEqual({ art: `/art/${id}_dark.png`, boardArt: onBoard(`/figures/${id}_dark.webp`) });
     }
     // A card with only one picture shows it to both sides.
     const single = { art: '/art/new_card.png', boardArt: '/art/new_card.png' };

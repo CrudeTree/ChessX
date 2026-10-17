@@ -1168,8 +1168,11 @@ export class GameScreen {
     // On the 3D board a figure stands there instead (as it does in the effects' copies of the token).
     const figured = this.board3d?.shows(figureName(piece, view)) ? ' figured' : '';
     const tok = el('div', `g2-piece ${piece.owner}${piece.king ? ' king' : ''}${tribe}${state}${boardArt ? ' art' : ''}${figured}`);
-    if (boardArt) tok.style.backgroundImage = `url("${boardArt}")`;
-    else tok.append(el('span', 'g2-piece-glyph', glyphFor(piece.kind, piece.name)));
+    if (boardArt) {
+      const figure = el('span', 'g2-piece-art');
+      figure.style.backgroundImage = `url("${boardArt}")`;
+      tok.append(figure);
+    } else tok.append(el('span', 'g2-piece-glyph', glyphFor(piece.kind, piece.name)));
     // The badge: what the piece moves like and its level, in its type's colour.
     if (card) {
       const badge = el('span', 'g2-piece-badge');

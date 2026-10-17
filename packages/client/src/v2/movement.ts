@@ -112,13 +112,14 @@ function boardSvg(piece: MovingPiece, { marks, rays, hops }: Reach): SVGElement 
 
   const cx = AT + 0.5;
   const cy = top(AT) + 0.5;
-  const tok = svgEl('g', {}, `tok ${piece.owner}`);
+  const tok = svgEl('g', {}, `tok ${piece.owner}${piece.art ? ' art' : ''}`);
   tok.append(svgEl('circle', { cx, cy, r: 0.43 }, 'tok-face'));
   if (piece.art) {
     const id = `g2-move-clip-${++clipIds}`;
     const clip = svgEl('clipPath', { id });
     clip.append(svgEl('circle', { cx, cy, r: 0.38 }));
-    const img = svgEl('image', { href: piece.art, x: cx - 0.6, y: cy - 0.58, width: 1.2, height: 1.2, preserveAspectRatio: 'xMidYMid slice', 'clip-path': `url(#${id})` });
+    // The board picture is the creature alone: all of it fits in the coin, none cropped away.
+    const img = svgEl('image', { href: piece.art, x: cx - 0.36, y: cy - 0.36, width: 0.72, height: 0.72, preserveAspectRatio: 'xMidYMid meet', 'clip-path': `url(#${id})` });
     tok.append(clip, img);
   } else {
     const glyph = svgEl('text', { x: cx, y: cy + 0.02, 'text-anchor': 'middle', 'dominant-baseline': 'central' }, 'tok-glyph');
