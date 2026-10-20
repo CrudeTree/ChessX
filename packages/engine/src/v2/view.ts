@@ -167,14 +167,16 @@ export interface PlayerView {
   /** The side to move pitched a card this turn. */
   pitched: boolean;
   /**
-   * Mana each side's next turn brings (the side to move: the turn it is playing). With center squares: what the ones
+   * Mana each side's next turn brings (the side to move: the turn it is playing). With mana squares: what the ones
    * each side holds now pay at the start of its next turn, if it still holds them.
    */
   income: Record<Color, number>;
   /** The most mana a turn of this game brings. */
   maxIncome: number;
-  /** The center squares that pay their holder; missing in games begun before them, which have a turn income. */
+  /** The mana squares that pay their holder; missing in games begun before them, which have a turn income. */
   shrines?: Square[];
+  /** Mana the mana squares have left to pay out; missing where they never run dry. */
+  well?: number;
   inCheck: boolean;
   /** Legal actions for the side to move when it is you (or both sides, in a practice game). */
   legalActions: Action[];
@@ -290,7 +292,9 @@ export function viewFor(record: GameRecord, you: Color, opts: ViewOptions = {}):
   const playing = state.status.kind === 'playing';
   const nextTurn = (color: Color) => state.turns[color] + (state.active === color ? 0 : 1);
   const income = (color: Color) =>
-    state.shrines ? shrinesHeld(state, color).length : incomeFor(nextTurn(color), incomeCap(state));
+    state.shrines
+      ? Math.min(shrinesHeld(state, color).length, state.well ?? Infinity)
+      : incomeFor(nextTurn(color), incomeCap(state));
   return {
     you: viewer,
     active: state.active,
@@ -328,6 +332,7 @@ export function viewFor(record: GameRecord, you: Color, opts: ViewOptions = {}):
     income: { white: income('white'), black: income('black') },
     maxIncome: incomeCap(state),
     ...(state.shrines ? { shrines: state.shrines } : {}),
+    ...(state.well !== undefined ? { well: state.well } : {}),
     inCheck: playing && state.phase === 'play' && isInCheck(state, state.active),
     legalActions: playing && !opts.past && state.active === viewer ? legalActions(state) : [],
     cards: viewCards(state.catalog),

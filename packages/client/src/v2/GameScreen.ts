@@ -6,7 +6,18 @@ import type { ChatMessage, RoomInfo } from '@chessx/protocol';
 import { fillEmbers } from '../embers.js';
 import type { Board3D, Figure } from './board3d.js';
 import { cardBack, fillFrame, hourglass, tiltWithPointer, tribeClass, type FrameCard } from './cardFrame.js';
-import { BoardFx, CARD_DIVE_MS, HATCH_T0_MS, LAVA_FLIGHT_MS, SPELL_HOLD_MS, SPELL_LANDS_MS, type BannerTone } from './fx.js';
+import {
+  BoardFx,
+  CARD_DIVE_MS,
+  HATCH_T0_MS,
+  LAVA_FLIGHT_MS,
+  SHIFT_GONE_MS,
+  SHIFT_LAND_MS,
+  SHIFT_MS,
+  SPELL_HOLD_MS,
+  SPELL_LANDS_MS,
+  type BannerTone,
+} from './fx.js';
 import { CardLibrary, type LibraryTool } from './library.js';
 import { describeEvents, type PieceMemory } from './log.js';
 import { movementPanel } from './movement.js';
@@ -83,7 +94,7 @@ const KING_HEIGHT = 1.4;
 const KING_RING = { white: '#e2b75e', black: '#c4b2ff' } as const;
 /** Set to 'off' when the player turns the 3D board off. */
 const BOARD_3D_KEY = 'chessx.board3d';
-const SHRINE_TIP = 'Center square: 1 mana at the start of each turn to the side whose piece (not its King) stands here';
+const SHRINE_TIP = 'Mana square: 1 mana at the start of each turn to the side whose piece (not its King) stands here';
 
 /** A piece's figure on the 3D board: named like its board picture, which is its owner's face; Kings have their own. */
 function figureName(piece: v2.ViewPiece, view: v2.PlayerView): string {
@@ -281,6 +292,12 @@ export class GameScreen {
   private hoverPile: Color | null = null;
   /** A cast spell's card is still flying to this discard pile: until `until`, it shows only its first `length` cards. */
   private pileHeld: Partial<Record<Color, { length: number; until: number }>> = {};
+  /**
+   * The mana squares are moving: the old ones show until `gone` (when their gems burst), none show until `land` (when
+   * the pillars come down on the new ones), and nothing can be played until it is over.
+   */
+  private shift: { from: Set<v2.Square>; gone: number; land: number } | null = null;
+  private shiftTimer = 0;
   /** Resurrect was dropped on a square: the cards it can raise there, to pick from. */
   private readonly raiseEl = el('div', 'g2-raise hidden');
   /** What the viewer showed last, so it only plays its entrance when that changes. */
@@ -837,6 +854,7 @@ export class GameScreen {
     this.hoverBoard = null;
     this.hoverPile = null;
     this.pileHeld = {};
+    this.endShift();
     this.closeRaise();
     this.inspectKey = '';
     this.renderEmptyInspect();
@@ -1374,12 +1392,15 @@ export class GameScreen {
           if (!cooled) sfx.cool(turnAt);
           cooled = true;
           break;
+        case 'shrinesMoved':
+          sfx.shift(turnAt, SHIFT_LAND_MS);
+          break;
         default:
           break;
       }
     }
     // With the banner (see `queueBanner`).
-    const at = turnAt + 150;
+    const at = turnAt + this.shiftDelay(view) + 150;
     const over = view.events.find((e): e is Extract<v2.GameEvent, { type: 'gameOver' }> => e.type === 'gameOver');
     if (over) {
       const tone = this.resultBanner(over.status, view)[1];
@@ -1520,11 +1541,43 @@ export class GameScreen {
         case 'turnStarted':
           e.held?.forEach((square, i) => this.fx.gain(square, '+1 mana', turnAt + 120 * i));
           break;
+        case 'shrinesMoved':
+          this.startShift(e.from, e.to, turnAt);
+          break;
         default:
           break;
       }
     }
-    this.queueBanner(view, turnAt);
+    this.queueBanner(view, turnAt + this.shiftDelay(view));
+  }
+
+  /**
+   * The mana squares ran dry and move, `delay` ms from now: the old ones burst, a banner says so, pillars of mana come
+   * down on the new ones, and for that moment nothing can be played, so both sides see what changed.
+   */
+  private startShift(from: v2.Square[], to: v2.Square[], delay: number): void {
+    const now = performance.now();
+    this.shift = { from: new Set(from), gone: now + delay + SHIFT_GONE_MS, land: now + delay + SHIFT_LAND_MS };
+    this.fx.shiftShrines(from, to, delay);
+    this.fx.banner('The mana moves', 'mana', to.map(v2.squareName).join(' · '), delay + SHIFT_GONE_MS);
+    for (const at of [SHIFT_GONE_MS, SHIFT_LAND_MS]) window.setTimeout(() => this.render(), delay + at + 20);
+    this.root.classList.add('g2-pausing');
+    window.clearTimeout(this.shiftTimer);
+    this.shiftTimer = window.setTimeout(() => {
+      this.endShift();
+      this.render();
+    }, delay + SHIFT_MS);
+  }
+
+  private endShift(): void {
+    window.clearTimeout(this.shiftTimer);
+    this.shift = null;
+    this.root.classList.remove('g2-pausing');
+  }
+
+  /** How much later the next turn's banner and chime come when the mana squares move first. */
+  private shiftDelay(view: v2.PlayerView): number {
+    return this.fx.enabled && view.events.some((e) => e.type === 'shrinesMoved') ? SHIFT_LAND_MS + 250 : 0;
   }
 
   private queueBanner(view: v2.PlayerView, at: number): void {
@@ -2829,7 +2882,14 @@ export class GameScreen {
     const lifted = this.pieceDrag?.ghost ? this.pieceDrag.from : (this.returning?.from ?? null);
     const away = this.dropped?.from ?? this.vanishing?.square ?? null;
     const aiming = this.aimLava !== null && this.aimLava === this.selectedSquare;
-    const shrines = new Set(view.shrines);
+    // While the mana squares move, the old ones show until their gems burst, and the new ones once their pillars land.
+    const shift = this.shift && now < this.shift.land ? this.shift : null;
+    const shrines = shift ? (now < shift.gone ? shift.from : new Set<v2.Square>()) : new Set(view.shrines);
+    const dry = shift !== null || view.well === 0;
+    const shrineTip =
+      view.well === undefined ? SHRINE_TIP
+      : dry ? `${SHRINE_TIP}. Run dry: they move as the next turn starts.`
+      : `${SHRINE_TIP}. The four share ${view.well} more mana, then they move.`;
 
     for (let square = 0; square < v2.FILES * v2.RANKS; square++) {
       const cell = this.cells[square]!;
@@ -2838,7 +2898,7 @@ export class GameScreen {
       const lava = view.lava.find((l) => l.square === square);
       const classes = ['g2-cell', (v2.fileOf(square) + v2.rankOf(square)) % 2 === 0 ? 'dark' : 'light'];
       const shrine = shrines.has(square);
-      if (shrine) classes.push(piece && !piece.king ? `shrine held-${piece.owner}` : 'shrine');
+      if (shrine) classes.push(dry ? 'shrine dry' : piece && !piece.king ? `shrine held-${piece.owner}` : 'shrine');
       if (movers.has(square) && square !== away) classes.push('movable');
       else if (this.arena && piece && square !== away) classes.push('grab');
       if (targets.has(square)) classes.push(this.pieceDrag?.hover === square ? 'target drag-over' : 'target');
@@ -2860,7 +2920,7 @@ export class GameScreen {
         classes.push(`drop${kind}`);
       }
       if (drop && held?.hover === square) classes.push('drop-hover');
-      const warning = this.sealWarning(drop) ?? (shrine ? SHRINE_TIP : null);
+      const warning = this.sealWarning(drop) ?? (shrine ? shrineTip : null);
       if (warning) cell.title = warning;
       else cell.removeAttribute('title');
       if (this.selectedSquare === square) classes.push('selected');
@@ -2875,6 +2935,7 @@ export class GameScreen {
         this.applyTokenFx(pool, `lava:${square}`, now);
         cell.appendChild(pool);
       }
+      if (shrine && !dry && view.well !== undefined) cell.appendChild(el('span', 'g2-well', String(view.well)));
       const tok = piece ? this.pieceToken(piece, view) : seal ? this.sealToken(seal, view) : null;
       if (tok) {
         this.applyTokenFx(tok, piece?.id ?? seal!.id, now);
@@ -2924,7 +2985,7 @@ export class GameScreen {
         const income = view.income[color];
         const amount = this.manaShown[color] ?? view.mana[color];
         if (view.shrines) {
-          const squares = `${income} center square${income === 1 ? '' : 's'}`;
+          const squares = `${income} mana square${income === 1 ? '' : 's'}`;
           mana.title = `${amount} mana. Holds ${squares}: +${income} at the start of the next turn, if still held.`;
         } else {
           const rise = income < view.maxIncome ? `; every 5th turn brings 1 more, up to ${view.maxIncome}` : ', as every turn will from now on';

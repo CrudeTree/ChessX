@@ -6,7 +6,7 @@ import type { v2 } from '@chessx/engine';
 
 type Color = v2.Color;
 
-export type BannerTone = 'turn' | 'check' | 'win' | 'lose' | 'draw';
+export type BannerTone = 'turn' | 'check' | 'win' | 'lose' | 'draw' | 'mana';
 
 /** How a token that just left the board goes: captured, sealed away, or a seal destroyed. */
 export type Vanish = 'capture' | 'consume' | 'shatter';
@@ -25,6 +25,10 @@ export const SPELL_HOLD_MS = 780;
 const SPELL_FLY_MS = 480;
 /** When it lands. */
 export const SPELL_LANDS_MS = SPELL_HOLD_MS + SPELL_FLY_MS;
+/** The mana squares moving (`shiftShrines`): when the old ones have burst, when the new ones land, and when it is over. */
+export const SHIFT_GONE_MS = 300;
+export const SHIFT_LAND_MS = 1250;
+export const SHIFT_MS = 2300;
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -252,6 +256,22 @@ export class BoardFx {
   cool(square: v2.Square, delay = 0): void {
     const spot = this.spot(square, 'cool', 1400, delay);
     spot?.append(el('div', 'g2-lava cooling'), el('div', 'g2-fx-steam'), el('div', 'g2-fx-steam late'));
+  }
+
+  /**
+   * The mana squares ran dry and move: the old ones' gems burst into blue sparks, then pillars of mana come down on the
+   * new ones and land together, shaking the board. The squares' own marks change in step (`SHIFT_GONE_MS`).
+   */
+  shiftShrines(from: v2.Square[], to: v2.Square[], delay = 0): void {
+    for (const square of from) {
+      const spot = this.spot(square, 'drain mana', 1100, delay);
+      spot?.append(el('div', 'g2-fx-gem'), el('div', 'g2-fx-ring ice'), sparks(12, 'ice'));
+    }
+    for (const square of to) {
+      const spot = this.spot(square, 'summon mana', 1700, delay + SHIFT_LAND_MS - BURST_MS);
+      spot?.append(rune(), el('div', 'g2-fx-pillar'), el('div', 'g2-fx-burst'), el('div', 'g2-fx-shock'), sparks(14, 'ice'));
+    }
+    this.quake(0.45, delay + SHIFT_LAND_MS);
   }
 
   /** Mana won on a square ("+2"), floating up from it. */

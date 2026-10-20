@@ -272,6 +272,20 @@ export class Sfx {
     if (force >= 0.75) this.braam(land, 2, 0.3 * force);
   }
 
+  /**
+   * The mana squares run dry and move: their gems shatter and drain away, then bright bells rise and the new ones land
+   * with a thump `landMs` later.
+   */
+  shift(delayMs: number, landMs: number): void {
+    const at = delayMs / 1000;
+    const land = (delayMs + landMs) / 1000;
+    this.glass(at, 0.5, 14);
+    this.whoosh(at, 0.6, 3200, 300, 0.12);
+    this.whoosh(land - 0.35, 0.35, 300, 3600, 0.13);
+    this.bells(land - 0.3, [81, 85, 88, 93, 97], 0.05, 0.05);
+    this.boom(land, 0.5);
+  }
+
   /** A seal is destroyed. */
   shatter(delayMs: number): void {
     const at = delayMs / 1000;

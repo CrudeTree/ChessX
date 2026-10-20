@@ -108,9 +108,9 @@ interface Weights {
   threat: number;
   /** Share of the other side's best capture, which the side about to act can still answer. */
   threatOther: number;
-  /** Per center square a piece (not a King) stands on: it pays 1 mana a turn, the only income. */
+  /** Per mana square a piece (not a King) stands on: it pays 1 mana a turn, the only income. */
   shrine: number;
-  /** Per piece (up to 2) aiming at a center square, to take it or hold it. */
+  /** Per piece (up to 2) aiming at a mana square, to take it or hold it. */
   shrineAim: number;
 }
 
@@ -229,7 +229,8 @@ function evaluate(state: GameState, me: Color, toMove: Color, w: Weights): numbe
 
   for (const piece of state.pieces) occupant[piece.square] = piece.owner;
   for (const spot of state.lava ?? []) lava[spot.square] = 1;
-  const shrines = state.shrines ?? [];
+  // Dry squares pay nothing more: they are about to move.
+  const shrines = state.well === 0 ? [] : (state.shrines ?? []);
   for (const piece of state.pieces) {
     const side = piece.owner;
     if (!piece.def.king && shrines.includes(piece.square)) score += sign(side) * w.shrine;
@@ -465,9 +466,13 @@ function dealt(cards: CardInstance[], random: () => number): CardInstance[] {
   return out;
 }
 
-/** The game as the bot may know it: the other side's hand dealt at random from its unseen cards, both decks shuffled. */
+/**
+ * The game as the bot may know it: the other side's hand dealt at random from its unseen cards, both decks shuffled,
+ * and where the mana squares will move next left to chance.
+ */
 function dealUnseen(state: GameState, me: Color, random: () => number): GameState {
   const world = cloneState(state);
+  world.rng = Math.floor(random() * 2 ** 32) | 0;
   const them = opposite(me);
   world.deck[me] = dealt(world.deck[me], random);
   const unseen = dealt([...world.hand[them], ...world.deck[them]], random);

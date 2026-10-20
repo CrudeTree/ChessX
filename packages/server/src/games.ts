@@ -94,6 +94,8 @@ const TURN_GRACE_MAX_MS = 15_000;
 
 /** The least time from the start of the bot's turn to its first play, so it does not land on top of your move. */
 const BOT_THINK_MS = 900;
+/** How much longer it waits when the mana squares moved as its turn began, so their move plays out first. */
+const BOT_SHIFT_MS = 2400;
 /** The bot's pause after each kind of play, long enough to watch it land (a spell's reveal is the longest). */
 const BOT_PAUSE_MS: Partial<Record<v2.Action['type'], number>> = { spell: 1500, summon: 1200, seal: 1200, evolve: 1300, pitch: 900, lava: 1000 };
 /** Plans asked for in one bot turn before it plays any legal action to keep the game going. */
@@ -436,9 +438,10 @@ export class LiveGame {
   /** The bot's whole turn at a pace you can watch. A plan that runs out, or stops being legal, is made again. */
   private async playBotTurn(bot: BotSeat): Promise<void> {
     const startedAt = Date.now();
+    const think = BOT_THINK_MS + (this.record?.events.some((e) => e.type === 'shrinesMoved') ? BOT_SHIFT_MS : 0);
     let lastPlay: v2.Action['type'] | null = null;
     const pause = (): Promise<void> =>
-      this.botPause(lastPlay ? (BOT_PAUSE_MS[lastPlay] ?? 0) : Math.max(0, BOT_THINK_MS - (Date.now() - startedAt)));
+      this.botPause(lastPlay ? (BOT_PAUSE_MS[lastPlay] ?? 0) : Math.max(0, think - (Date.now() - startedAt)));
     for (let round = 0; round < BOT_MAX_PLANS && this.botToMove(); round++) {
       let plan: v2.Action[] = [];
       try {

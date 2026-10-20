@@ -24,7 +24,7 @@ import {
 } from './types.js';
 
 export const HAND_SIZE = 3;
-/** Mana each side starts with: all there is until the center squares pay (Djabooty, 2026-10-20). */
+/** Mana each side starts with: all there is until the mana squares pay (Djabooty, 2026-10-20). */
 export const START_MANA = 6;
 /** What games without center squares started with. */
 const OLD_START_MANA = 2;
@@ -40,7 +40,7 @@ export const PITCH_MANA = 1;
 /**
  * The most mana a turn brings in games with a turn income. It rose to +4 until 2026-10-17, when Djabooty found late
  * games flooded with mana; games begun before that keep the old ramp (see `incomeCap`). Games begun since 2026-10-20
- * have no turn income: they earn from the center squares (`SHRINES`).
+ * have no turn income: they earn from the mana squares (`SHRINE_LAYOUTS`).
  */
 export const MAX_INCOME = 2;
 const OLD_MAX_INCOME = 4;
@@ -53,23 +53,57 @@ export function incomeFor(turn: number, most = MAX_INCOME): number {
   return Math.min(most, 1 + Math.floor((Math.max(turn, 1) - 1) / 5));
 }
 
-/** The most mana a turn of this game brings: one for each center square, or the turn income's cap. */
+/** The most mana a turn of this game brings: one for each mana square, or the turn income's cap. */
 export function incomeCap(state: GameState): number {
   return state.shrines ? state.shrines.length : (state.maxIncome ?? OLD_MAX_INCOME);
 }
 
-/** The center squares, d4, e4, d5 and e5, that pay their holder at the start of its turns (Djabooty, 2026-10-20). */
-export const SHRINES: readonly Square[] = [sq(3, 3), sq(4, 3), sq(3, 4), sq(4, 4)];
+/**
+ * Where the four mana squares can stand: a square in the left half of rows 3 and 4 with its mirror images left to right
+ * and top to bottom, so each side has two of them as near as the other side has its two (Djabooty, 2026-10-20). The
+ * rows the sides summon onto never hold one. The last is the center: d4, e4, d5 and e5.
+ */
+export const SHRINE_LAYOUTS: readonly (readonly Square[])[] = [2, 3].flatMap((rank) =>
+  [0, 1, 2, 3].map((file) => [sq(file, rank), sq(7 - file, rank), sq(file, 7 - rank), sq(7 - file, 7 - rank)]),
+);
+
+/** Mana the four squares pay out between them before they run dry and move (Djabooty, 2026-10-20). */
+export const WELL = 12;
 
 /**
- * The center squares a piece of `color` stands on. A King holds none: it is never taken, and the squares touch, so
- * one checked off a square would step onto the next. A sacrifice waiting there holds none either.
+ * The mana squares a piece of `color` stands on. A King holds none: it is never taken, so it could sit on one and only
+ * be checked off it. A sacrifice waiting there holds none either.
  */
 export function shrinesHeld(state: GameState, color: Color): Square[] {
   return (state.shrines ?? []).filter((square) => {
     const piece = pieceAt(state, square);
     return piece?.owner === color && !piece.def.king;
   });
+}
+
+/**
+ * A chance after the deal, `salt` telling one from another. It does not draw from the deal's generator, which a game's
+ * seed is worked out from (see `rebuildSteps`), so the same game always comes out the same.
+ */
+function chance(state: GameState, salt: number): number {
+  return nextRandom((state.rng ^ Math.imul(salt + 1, 0x9e3779b1)) | 0).value;
+}
+
+/**
+ * The mana squares ran dry: they move to another layout, one whose squares are all empty if there is one (else the
+ * emptiest), picked at random, and fill up again.
+ */
+function moveShrines(state: GameState, events: GameEvent[]): void {
+  const from = state.shrines ?? [];
+  const empty = (square: Square) => !pieceAt(state, square) && !sealAt(state, square) && !lavaAt(state, square);
+  const others = SHRINE_LAYOUTS.filter((layout) => layout.some((square, i) => square !== from[i]));
+  const free = others.map((layout) => layout.filter(empty).length);
+  const most = Math.max(...free);
+  const best = others.filter((_, i) => free[i] === most);
+  const to = [...best[Math.floor(chance(state, state.turns.white + state.turns.black) * best.length)]!];
+  state.shrines = to;
+  state.well = WELL;
+  events.push({ type: 'shrinesMoved', from, to });
 }
 
 /** Mana for capturing a piece: half its card's cost, rounded up (Djabooty, 2026-10-11). */
@@ -81,7 +115,7 @@ export interface NewGameOptions {
   seed: number;
   decks: Record<Color, string[]>;
   catalog?: Record<string, Card>;
-  /** False: the rules of games begun before 2026-10-20, with a turn income and no center squares, to replay them. */
+  /** False: the rules of games begun before 2026-10-20, with a turn income and no mana squares, to replay them. */
   shrines?: boolean;
 }
 
@@ -176,7 +210,7 @@ export function newGame(options: NewGameOptions): GameState {
     setupDeployed: { white: 0, black: 0 },
     actionTaken: false,
     cardPlayed: false,
-    ...(shrines ? { shrines: [...SHRINES] } : { maxIncome: MAX_INCOME }),
+    ...(shrines ? {} : { maxIncome: MAX_INCOME }),
     status: { kind: 'playing' },
     nextId: 0,
     rng: options.seed | 0,
@@ -197,6 +231,10 @@ export function newGame(options: NewGameOptions): GameState {
     });
     placeStartingPieces(state, color);
     draw(state, color, HAND_SIZE, []);
+  }
+  if (shrines) {
+    state.shrines = [...SHRINE_LAYOUTS[Math.floor(chance(state, 0) * SHRINE_LAYOUTS.length)]!];
+    state.well = WELL;
   }
   startTurn(state, 'white', []);
   return state;
@@ -871,7 +909,13 @@ const ENDS_TURN: ReadonlySet<Action['type']> = new Set(['move']);
 function startTurn(state: GameState, color: Color, events: GameEvent[]): void {
   state.active = color;
   state.turns[color] += 1;
-  const held = state.shrines ? shrinesHeld(state, color) : undefined;
+  // Squares that ran dry on the last turn move now, so the side that drained them is not first to the new ones.
+  if (state.well === 0) moveShrines(state, events);
+  let held = state.shrines ? shrinesHeld(state, color) : undefined;
+  if (held && state.well !== undefined) {
+    held = held.slice(0, state.well);
+    state.well -= held.length;
+  }
   const income = held ? held.length : incomeFor(state.turns[color], incomeCap(state));
   state.mana[color] += income;
   state.actionTaken = false;

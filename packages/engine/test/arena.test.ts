@@ -102,10 +102,11 @@ describe('the arena', () => {
 
   it('passes the turn without a move: the other side gets its income and its draw, and its sacrifices count down', () => {
     const before = edit(newArena(1), { type: 'place', cardId: 'recruit', color: 'black', square: S('d4') });
+    before.shrines = ['d4', 'e4', 'd5', 'e5'].map(S);
     before.seals.push({ id: 's-test', owner: 'black', square: S('e5'), card: STARTER_CATALOG.colt as PieceCard, timer: 1 });
     const { state, events } = applyArenaEdit(before, { type: 'pass' });
     expect(state.active).toBe('black');
-    // The Recruit on d4 holds a center square; the sacrifice on e5 rises only after the center squares have paid.
+    // The Recruit on d4 holds a mana square; the sacrifice on e5 rises only after the mana squares have paid.
     expect(state.mana.black).toBe(ARENA_MANA + 1);
     expect(state.hand.black).toHaveLength(1);
     expect(pieceAt(state, S('e5'))).toMatchObject({ owner: 'black', cardId: 'colt' });

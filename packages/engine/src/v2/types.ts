@@ -224,11 +224,16 @@ export interface GameState {
   /** The most mana a turn brings (see `incomeFor`); games begun before 2026-10-17 lack it and rise to 4. */
   maxIncome?: number;
   /**
-   * The center squares (Djabooty, 2026-10-20): at the start of each of your turns, 1 mana for each one a piece of yours
+   * The mana squares (Djabooty, 2026-10-20): at the start of each of your turns, 1 mana for each one a piece of yours
    * other than the King stands on, and no other income. Games begun before lack them and keep the turn income
    * (`maxIncome`).
    */
   shrines?: Square[];
+  /**
+   * Mana the mana squares have left to pay out; at 0 they move to new squares at the start of the next turn. Missing
+   * in games begun that morning, whose squares stay on d4, e4, d5 and e5 and never run dry.
+   */
+  well?: number;
   status: GameStatus;
   nextId: number;
   rng: number;
@@ -258,8 +263,10 @@ export type Action =
 export type GameEvent =
   | { type: 'deployed'; color: Color; pieceId: string; square: Square; name?: string }
   /** `income` is the mana the turn brought (Djabooty, 2026-10-11: +1 a turn, rising to +4); `mana` the new total. */
-  /** `held`: in a game with center squares, the ones that paid `income`. */
+  /** `held`: in a game with mana squares, the ones that paid `income`. */
   | { type: 'turnStarted'; color: Color; turn: number; mana: number; income?: number; held?: Square[] }
+  /** The mana squares ran dry and moved, as a turn began. */
+  | { type: 'shrinesMoved'; from: Square[]; to: Square[] }
   | { type: 'drew'; color: Color; count: number }
   | { type: 'moved'; pieceId: string; from: Square; to: Square; name?: string; owner?: Color }
   /** `bounty` is the mana the capturer got for it (Djabooty, 2026-10-11). */

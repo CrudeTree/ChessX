@@ -71,7 +71,7 @@ export function describeEvents(
         break;
       case 'turnStarted': {
         const gain =
-          e.held ? (e.held.length ? `+${e.held.length} from the center, ${e.mana} in all` : `${e.mana} mana`)
+          e.held ? (e.held.length ? `+${e.held.length} from the mana squares, ${e.mana} in all` : `${e.mana} mana`)
           : e.income === undefined ? `${e.mana} mana`
           : `+${e.income} mana, ${e.mana} in all`;
         lines.push({ text: `— ${names[e.color]}, turn ${e.turn} (${gain}) —`, color: e.color });
@@ -84,6 +84,11 @@ export function describeEvents(
       case 'drew':
         lines.push({ text: `${names[e.color]} draws ${e.count} card${e.count > 1 ? 's' : ''}.`, color: e.color });
         break;
+      case 'shrinesMoved': {
+        const to = e.to.map(v2.squareName);
+        lines.push({ text: `The mana squares ran dry and move to ${to.slice(0, -1).join(', ')} and ${to.at(-1)}.`, important: true });
+        break;
+      }
       case 'moved': {
         const owner = e.owner ?? ownerOf(e.pieceId);
         const taken = captures.get(e.pieceId);

@@ -11,6 +11,8 @@ import {
   isInCheck,
   legalActions,
   MAX_INCOME,
+  SHRINE_LAYOUTS,
+  WELL,
   nextRecord,
   newGame,
   newRecord,
@@ -102,11 +104,11 @@ describe('setup', () => {
     expect(state.active).toBe('white');
     expect(state.turns).toEqual({ white: 1, black: 0 });
     // 3-card hands (Djabooty, 2026-10-10), then White's turn 1 draws one more. 6 mana each, and nothing more until a
-    // center square pays (Djabooty, 2026-10-20).
+    // mana square pays (Djabooty, 2026-10-20).
     expect(state.hand.white).toHaveLength(4);
     expect(state.hand.black).toHaveLength(3);
     expect(state.mana).toEqual({ white: 6, black: 6 });
-    expect(state.shrines).toEqual(['d4', 'e4', 'd5', 'e5'].map(S));
+    expect(SHRINE_LAYOUTS).toContainEqual(state.shrines);
     expect(FILES).toBe(8);
     expect(S('h8')).toBe(63);
     expect(() => S('i1')).toThrow();
@@ -171,8 +173,9 @@ describe('setup', () => {
 });
 
 describe('turn flow and resources', () => {
-  it('a move ends the turn: the other side gains its center square\'s +1 mana (no cap) and draws a card at once', () => {
+  it('a move ends the turn: the other side gains its mana square\'s +1 mana (no cap) and draws a card at once', () => {
     let state = bare(40);
+    state.shrines = ['d4', 'e4', 'd5', 'e5'].map(S);
     piece(state, 'black', 'initiate', 'd5');
     state.deck.black = [{ uid: 'dk1', cardId: 'squire' }];
     expect(legalActions(state).some((a) => a.type === 'endTurn')).toBe(false);
@@ -688,6 +691,8 @@ describe('evolving (Djabooty, 2026-10-11)', () => {
 
   it('the Dragon line: a Wyrmling grows into a Mystic Dragon, then into a full queen, one level at a time', () => {
     let state = bare(20);
+    // d4 is a mana square here: it pays the Dragon's side 1 mana as White's next turn starts.
+    state.shrines = ['d4', 'e4', 'd5', 'e5'].map(S);
     state.pieces.find((p) => p.owner === 'black' && p.def.king)!.square = S('a8');
     piece(state, 'white', 'wyrmling', 'd4');
     const mystic = give(state, 'white', 'mystic_dragon');
@@ -1020,20 +1025,50 @@ describe('mana (Djabooty, 2026-10-11)', () => {
   });
 });
 
-describe('the center squares (Djabooty, 2026-10-20)', () => {
+describe('the mana squares (Djabooty, 2026-10-20)', () => {
+  const CENTER = ['d4', 'e4', 'd5', 'e5'].map(S);
   const started = (events: GameEvent[]) => events.find((e) => e.type === 'turnStarted');
   const kingMove = (state: GameState) => find(state, (a) => a.type === 'move' && a.from === state.pieces.find((p) => p.owner === state.active && p.def.king)!.square);
+  /** A bare position whose mana squares are the center, with `well` mana left in them. */
+  function centered(well = WELL): GameState {
+    const state = bare(0);
+    state.shrines = [...CENTER];
+    state.well = well;
+    return state;
+  }
 
-  it('a new game has no turn income: 6 mana each, and turn 1 brings nothing', () => {
+  it('a new game has no turn income: 6 mana each, turn 1 brings nothing, and 12 mana wait in the squares', () => {
     const state = game();
     expect(state.maxIncome).toBeUndefined();
+    expect(state.well).toBe(WELL);
     const { state: next, events } = applyLegalAction(state, find(state, (a) => a.type === 'move' && a.from === S('c2') && a.to === S('c3')));
     expect(started(events)).toMatchObject({ color: 'black', turn: 1, mana: 6, income: 0, held: [] });
     expect(next.mana).toEqual({ white: 6, black: 6 });
   });
 
-  it('each center square a piece of yours stands on pays 1 mana at the start of your turn', () => {
-    let state = bare(0);
+  it('the squares are mirrored left to right and top to bottom, in the middle four rows, and differ from game to game', () => {
+    expect(SHRINE_LAYOUTS).toHaveLength(8);
+    for (const layout of SHRINE_LAYOUTS) {
+      for (const square of layout) {
+        const [file, rank] = [square % 8, Math.floor(square / 8)];
+        expect(rank).toBeGreaterThanOrEqual(2);
+        expect(rank).toBeLessThanOrEqual(5);
+        expect(layout).toContain(rank * 8 + (7 - file));
+        expect(layout).toContain((7 - rank) * 8 + file);
+      }
+    }
+    expect(SHRINE_LAYOUTS).toContainEqual(CENTER);
+    const seen = new Set<string>();
+    for (let seed = 1; seed <= 40; seed++) {
+      const shrines = game(seed).shrines!;
+      expect(SHRINE_LAYOUTS).toContainEqual(shrines);
+      seen.add(shrines.join());
+    }
+    expect(seen.size).toBeGreaterThan(4);
+  });
+
+  it('each mana square a piece of yours stands on pays 1 mana at the start of your turn', () => {
+    let state = centered();
     piece(state, 'white', 'initiate', 'd4');
     piece(state, 'white', 'recruit', 'e5');
     piece(state, 'black', 'initiate', 'd5');
@@ -1044,10 +1079,11 @@ describe('the center squares (Djabooty, 2026-10-20)', () => {
     result = applyLegalAction(state, kingMove(state));
     expect(started(result.events)).toMatchObject({ color: 'white', income: 2, held: [S('d4'), S('e5')] });
     expect(result.state.mana.white).toBe(2);
+    expect(result.state.well).toBe(WELL - 3);
   });
 
   it('pays only what is still held when the turn starts: a holder taken in between earns nothing', () => {
-    let state = bare(0);
+    let state = centered();
     piece(state, 'white', 'initiate', 'd4');
     piece(state, 'black', 'initiate', 'e5');
     state = act(state, kingMove(state));
@@ -1059,7 +1095,7 @@ describe('the center squares (Djabooty, 2026-10-20)', () => {
   });
 
   it('neither a sacrifice waiting on one nor a King standing on one holds it', () => {
-    const state = bare(0);
+    const state = centered();
     state.seals.push({ id: 's1', owner: 'black', square: S('e4'), card: STARTER_CATALOG.colt as PieceCard, timer: 3 });
     state.pieces.find((p) => p.owner === 'black' && p.def.king)!.square = S('d5');
     piece(state, 'black', 'recruit', 'e5');
@@ -1067,15 +1103,56 @@ describe('the center squares (Djabooty, 2026-10-20)', () => {
     expect(started(events)).toMatchObject({ color: 'black', income: 1, held: [S('e5')] });
   });
 
-  it('the view shows the center squares and what each side holds now', () => {
-    const state = bare(0);
+  it('the view shows the mana squares, the mana left in them and what each side holds now', () => {
+    const state = centered(9);
     piece(state, 'white', 'initiate', 'e4');
     piece(state, 'black', 'initiate', 'd5');
     piece(state, 'black', 'recruit', 'e5');
     const view = viewFor({ state, seq: 0, events: [] }, 'white');
-    expect(view.shrines).toEqual(['d4', 'e4', 'd5', 'e5'].map(S));
+    expect(view.shrines).toEqual(CENTER);
+    expect(view.well).toBe(9);
     expect(view.income).toEqual({ white: 1, black: 2 });
     expect(view.maxIncome).toBe(4);
+  });
+
+  it('the last of the mana pays only as far as it goes', () => {
+    let state = centered(1);
+    piece(state, 'white', 'initiate', 'd4');
+    piece(state, 'white', 'recruit', 'e4');
+    state = act(state, kingMove(state));
+    const { state: after, events } = applyLegalAction(state, kingMove(state));
+    expect(started(events)).toMatchObject({ color: 'white', income: 1, held: [S('d4')] });
+    expect(after.well).toBe(0);
+  });
+
+  it('dry squares move as the next turn starts, to another mirrored layout of empty squares, and fill up again', () => {
+    let state = centered(1);
+    piece(state, 'black', 'initiate', 'd5');
+    // One square of every other layout but c4, f4, c5 and f5 is taken.
+    for (const square of ['a3', 'b3', 'c3', 'd3', 'a4', 'b4']) piece(state, 'white', 'recruit', square);
+    state = act(state, kingMove(state));
+    expect(state.well).toBe(0);
+    expect(state.shrines).toEqual(CENTER);
+    // Black drained them on its turn; they move as White's starts, so White is first to the new ones.
+    const { state: after, events } = applyLegalAction(state, kingMove(state));
+    const moved = ['c4', 'f4', 'c5', 'f5'].map(S);
+    expect(events[events.findIndex((e) => e.type === 'shrinesMoved')]).toEqual({ type: 'shrinesMoved', from: CENTER, to: moved });
+    expect(events.findIndex((e) => e.type === 'shrinesMoved')).toBeLessThan(events.findIndex((e) => e.type === 'turnStarted'));
+    expect(started(events)).toMatchObject({ color: 'white', income: 0, held: [] });
+    expect(after.shrines).toEqual(moved);
+    expect(after.well).toBe(WELL);
+  });
+
+  it('games begun on the morning of 2026-10-20 keep their center for good: it never runs dry', () => {
+    let state = centered();
+    delete state.well;
+    state.pieces.find((p) => p.owner === 'black' && p.def.king)!.square = S('a8');
+    piece(state, 'white', 'initiate', 'd4');
+    for (let i = 0; i < 30; i++) state = act(state, kingMove(state));
+    expect(state.shrines).toEqual(CENTER);
+    expect(state.mana.white).toBe(15);
+    expect(state.well).toBeUndefined();
+    expect(viewFor({ state, seq: 0, events: [] }, 'white').well).toBeUndefined();
   });
 });
 
@@ -1322,8 +1399,9 @@ describe('looking back (Djabooty, 2026-10-13)', () => {
       const { start, steps, ...old } = record;
       const rebuilt = rebuildSteps(old, decks);
       expect(rebuilt?.steps).toHaveLength(steps!.length);
+      expect(rebuilt!.start).toEqual(start);
       expect(rebuilt!.start!.maxIncome).toBe(income === 'capped' ? MAX_INCOME : undefined);
-      expect(rebuilt!.start!.shrines).toEqual(income === 'center' ? record.state.shrines : undefined);
+      expect(rebuilt!.start!.shrines === undefined).toBe(income !== 'center');
       expect(stateAt(rebuilt!, steps!.length)).toEqual(record.state);
     }
   });
