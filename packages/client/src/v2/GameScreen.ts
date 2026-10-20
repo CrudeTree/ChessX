@@ -3,6 +3,7 @@
 
 import { v2 } from '@chessx/engine';
 import type { ChatMessage, RoomInfo } from '@chessx/protocol';
+import { fillEmbers } from '../embers.js';
 import type { Board3D, Figure } from './board3d.js';
 import { cardBack, fillFrame, hourglass, tiltWithPointer, tribeClass, type FrameCard } from './cardFrame.js';
 import { BoardFx, CARD_DIVE_MS, HATCH_T0_MS, LAVA_FLIGHT_MS, SPELL_HOLD_MS, SPELL_LANDS_MS, type BannerTone } from './fx.js';
@@ -501,7 +502,10 @@ export class GameScreen {
       this.openChat(false);
     };
 
-    root.append(this.detailEl, main, side, this.sheetShade);
+    const embers = el('div', 'hx-embers g2-embers');
+    embers.setAttribute('aria-hidden', 'true');
+    fillEmbers(embers, 14, 2.2);
+    root.append(embers, this.detailEl, main, side, this.sheetShade);
     this.placeStatus();
     this.placeInspect();
     this.narrow.addEventListener('change', () => {
@@ -3000,7 +3004,7 @@ export class GameScreen {
     btn.dataset.pile = color;
     const thumb = el('span', 'g2-pile-card');
     if (top) this.paintThumb(thumb, card, top.cardId, color);
-    const count = el('span', 'g2-pile-count', `Discard ${pile.length}`);
+    const count = el('span', 'g2-pile-count', this.narrow.matches ? String(pile.length) : `Discard ${pile.length}`);
     btn.append(thumb, count);
     if (pitch) {
       btn.classList.add('pitch-drop');

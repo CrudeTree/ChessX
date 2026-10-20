@@ -11,44 +11,58 @@
     <link rel="icon" href="/icons/icon-192.png" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <title>ChessX</title>
+    <meta name="description" content="Chess with a deck of cards. Summon, evolve and sacrifice your pieces, then checkmate the King." />
+    <!-- Link previews (chat apps, social sites): the title screen. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="ChessX" />
+    <meta property="og:title" content="ChessX" />
+    <meta property="og:description" content="Chess with a deck of cards. Summon, evolve and sacrifice your pieces, then checkmate the King." />
+    <meta property="og:url" content="https://playchessx.com/" />
+    <meta property="og:image" content="https://playchessx.com/og.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <!-- Sign in / register -->
+    <!-- Sign in / register: the home page's title screen, with the form where its buttons go -->
     <div id="auth" class="screen hidden">
-      <div class="auth-art left" aria-hidden="true">
-        <img src="/art/elder_wyrm.png" alt="" class="float a" />
-        <img src="/art/stone_sentinel.png" alt="" class="float b" />
+      <div class="hx-bg" aria-hidden="true">
+        <div class="hx-sky"></div>
+        <div class="hx-floor"><div class="hx-plane"><div class="hx-tiles"></div></div></div>
+        <div class="hx-horizon"></div>
+        <div class="hx-embers"></div>
       </div>
-      <div class="panel">
-        <h1>Chess<span>X</span></h1>
-        <div id="providers" class="providers">
-          <a id="google" class="provider google hidden" href="/api/auth/google">Continue with Google</a>
-          <a id="facebook" class="provider facebook hidden" href="/api/auth/facebook">Continue with Facebook</a>
-          <div id="providers-or" class="or hidden">or use email</div>
+      <div class="ax-stage">
+        <div class="ax-pitch">
+          <h1 class="hx-title">Chess<span>X</span></h1>
+          <div class="panel">
+            <div id="providers" class="providers">
+              <a id="google" class="provider google hidden" href="/api/auth/google">Continue with Google</a>
+              <a id="facebook" class="provider facebook hidden" href="/api/auth/facebook">Continue with Facebook</a>
+              <div id="providers-or" class="or hidden">or use email</div>
+            </div>
+            <form id="auth-form" autocomplete="on">
+              <label id="name-row" class="hidden">
+                Display name
+                <input id="reg-name" maxlength="24" placeholder="What your friends will see" autocomplete="nickname" />
+              </label>
+              <label>
+                Email
+                <input id="email" type="email" placeholder="you@example.com" autocomplete="email" required />
+              </label>
+              <label>
+                Password
+                <input id="password" type="password" placeholder="At least 8 characters" autocomplete="current-password" required minlength="8" />
+              </label>
+              <button id="auth-submit" class="primary" type="submit">Sign in</button>
+            </form>
+            <p class="switch"><span id="auth-switch-text">New here?</span> <a id="auth-switch" href="#">Create an account</a></p>
+            <p id="auth-error" class="error"></p>
+            <p id="conn" class="conn">connecting…</p>
+          </div>
         </div>
-        <form id="auth-form" autocomplete="on">
-          <label id="name-row" class="hidden">
-            Display name
-            <input id="reg-name" maxlength="24" placeholder="What your friends will see" autocomplete="nickname" />
-          </label>
-          <label>
-            Email
-            <input id="email" type="email" placeholder="you@example.com" autocomplete="email" required />
-          </label>
-          <label>
-            Password
-            <input id="password" type="password" placeholder="At least 8 characters" autocomplete="current-password" required minlength="8" />
-          </label>
-          <button id="auth-submit" class="primary" type="submit">Sign in</button>
-        </form>
-        <p class="switch"><span id="auth-switch-text">New here?</span> <a id="auth-switch" href="#">Create an account</a></p>
-        <p id="auth-error" class="error"></p>
-        <p id="conn" class="conn">connecting…</p>
-      </div>
-      <div class="auth-art right" aria-hidden="true">
-        <img src="/art/the_ox.png" alt="" class="float c" />
-        <img src="/art/storm_drake.png" alt="" class="float d" />
+        <div class="hx-fan" aria-hidden="true"></div>
       </div>
     </div>
 
@@ -207,10 +221,10 @@
           <button type="button" data-side="black">Black</button>
         </div>
         <div class="bot-levels">
-          <button type="button" data-level="easy" title="Plays fast and loose, and misses threats">Easy</button>
-          <button type="button" data-level="medium" title="Plays its own turn well">Medium</button>
-          <button type="button" data-level="hard" title="Checks your best reply first">Hard</button>
-          <button type="button" data-level="expert" title="Looks three turns ahead">Expert</button>
+          <button type="button" data-level="easy" title="Plays fast and loose, and misses threats"><span class="bot-glyph" aria-hidden="true">&#x265F;&#xFE0E;</span>Easy</button>
+          <button type="button" data-level="medium" title="Plays its own turn well"><span class="bot-glyph" aria-hidden="true">&#x265E;&#xFE0E;</span>Medium</button>
+          <button type="button" data-level="hard" title="Checks your best reply first"><span class="bot-glyph" aria-hidden="true">&#x265C;&#xFE0E;</span>Hard</button>
+          <button type="button" data-level="expert" title="Looks three turns ahead"><span class="bot-glyph" aria-hidden="true">&#x265B;&#xFE0E;</span>Expert</button>
         </div>
         <button type="button" id="bot-pick-close" class="bot-cancel">Cancel</button>
       </div>

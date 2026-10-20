@@ -1,7 +1,7 @@
 {
   "name": "ChessX",
   "short_name": "ChessX",
-  "description": "Chess meets a card game: pieces with HP, decks, summons. Play friends online.",
+  "description": "Chess with a deck of cards: summon, evolve and sacrifice your pieces, then checkmate the King.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

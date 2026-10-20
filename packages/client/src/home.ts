@@ -1,6 +1,8 @@
-// The home page's hero: a hand of real cards fanned beside the title, and embers rising off the board.
+// The title screen of the home and sign-in pages: a hand of real cards fanned beside the title, and embers rising
+// off the board.
 
 import { v2 } from '@chessx/engine';
+import { fillEmbers } from './embers.js';
 import { fillFrame, tiltWithPointer } from './v2/cardFrame.js';
 import { glyphFor } from './v2/GameScreen.js';
 
@@ -60,22 +62,10 @@ function buildFan(fan: HTMLElement): void {
   });
 }
 
-/** Fixed spreads rather than random ones, so the page looks the same on every visit. */
-function buildEmbers(box: HTMLElement): void {
-  for (let i = 0; i < EMBERS; i++) {
-    const e = el('span', i % 3 === 0 ? 'hx-ember dusk' : 'hx-ember');
-    e.style.setProperty('--x', `${(i * 37 + 11) % 100}%`);
-    e.style.setProperty('--size', `${2 + (i % 3)}px`);
-    e.style.setProperty('--drift', `${((i * 29) % 70) - 35}px`);
-    e.style.animationDuration = `${7 + ((i * 13) % 7)}s`;
-    e.style.animationDelay = `${(-i * 1.37).toFixed(2)}s`;
-    box.append(e);
-  }
-}
-
+/** The home page and the sign-in page share the title screen: each has a fan and embers. */
 export function initHome(): void {
-  const fan = document.getElementById('hx-fan');
-  if (fan && !fan.childElementCount) buildFan(fan);
-  const embers = document.getElementById('hx-embers');
-  if (embers && !embers.childElementCount) buildEmbers(embers);
+  for (const fan of document.querySelectorAll<HTMLElement>('.hx-fan')) if (!fan.childElementCount) buildFan(fan);
+  for (const box of document.querySelectorAll<HTMLElement>('.hx-bg .hx-embers')) {
+    if (!box.childElementCount) fillEmbers(box, EMBERS);
+  }
 }

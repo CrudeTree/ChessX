@@ -66,6 +66,12 @@ const MODEL_MAX_WIDTH = 1.7;
 const PAD_X = 0.08;
 const PAD_TOP = 0.08;
 const PAD_BOTTOM = 0.03;
+/**
+ * Room kept over the leaning board's far edge (in board widths), for the figures on its back row. The rest of the
+ * height the lean frees is given back to the page, so the bar above sits on the board. The style sheet widens the
+ * board to match (`.g2-boardwrap:has(.g2-board.three)`).
+ */
+const HEADROOM = 0.11;
 /** A figure's base: radius and thickness, in squares. */
 const BASE_R = 0.38;
 const BASE_H = 0.07;
@@ -866,6 +872,7 @@ export class Board3D {
     const board = this.board.style;
     board.transform = '';
     board.transformOrigin = '';
+    board.marginTop = '';
     board.removeProperty('--tilt');
   }
 
@@ -890,6 +897,9 @@ export class Board3D {
       board.transformOrigin = '50% 100%';
       board.transform = `perspective(${eye}px) rotateX(${tilt / DEG}deg)`;
       board.setProperty('--tilt', `${tilt / DEG}deg`);
+      // Leaning back about its near edge, the board's far edge comes down to this share of its height.
+      const seen = (Math.cos(tilt) * DEPTH) / (DEPTH + Math.sin(tilt));
+      board.marginTop = `${-Math.max(0, 1 - seen - HEADROOM) * S}px`;
     }
 
     const padX = PAD_X * S;
@@ -1066,6 +1076,7 @@ export class Board3D {
     const board = this.board.style;
     board.transform = '';
     board.transformOrigin = '';
+    board.marginTop = '';
     board.removeProperty('--tilt');
   }
 
