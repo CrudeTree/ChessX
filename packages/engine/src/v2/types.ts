@@ -223,6 +223,12 @@ export interface GameState {
   pitched?: boolean;
   /** The most mana a turn brings (see `incomeFor`); games begun before 2026-10-17 lack it and rise to 4. */
   maxIncome?: number;
+  /**
+   * The center squares (Djabooty, 2026-10-20): at the start of each of your turns, 1 mana for each one a piece of yours
+   * other than the King stands on, and no other income. Games begun before lack them and keep the turn income
+   * (`maxIncome`).
+   */
+  shrines?: Square[];
   status: GameStatus;
   nextId: number;
   rng: number;
@@ -252,7 +258,8 @@ export type Action =
 export type GameEvent =
   | { type: 'deployed'; color: Color; pieceId: string; square: Square; name?: string }
   /** `income` is the mana the turn brought (Djabooty, 2026-10-11: +1 a turn, rising to +4); `mana` the new total. */
-  | { type: 'turnStarted'; color: Color; turn: number; mana: number; income?: number }
+  /** `held`: in a game with center squares, the ones that paid `income`. */
+  | { type: 'turnStarted'; color: Color; turn: number; mana: number; income?: number; held?: Square[] }
   | { type: 'drew'; color: Color; count: number }
   | { type: 'moved'; pieceId: string; from: Square; to: Square; name?: string; owner?: Color }
   /** `bounty` is the mana the capturer got for it (Djabooty, 2026-10-11). */

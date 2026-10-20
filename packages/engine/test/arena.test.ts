@@ -7,7 +7,6 @@ import {
   STARTER_CATALOG,
   applyArenaEdit,
   applyLegalAction,
-  incomeFor,
   legalActions,
   newArena,
   parseArenaOp,
@@ -102,11 +101,12 @@ describe('the arena', () => {
   });
 
   it('passes the turn without a move: the other side gets its income and its draw, and its sacrifices count down', () => {
-    const before = newArena(1);
+    const before = edit(newArena(1), { type: 'place', cardId: 'recruit', color: 'black', square: S('d4') });
     before.seals.push({ id: 's-test', owner: 'black', square: S('e5'), card: STARTER_CATALOG.colt as PieceCard, timer: 1 });
     const { state, events } = applyArenaEdit(before, { type: 'pass' });
     expect(state.active).toBe('black');
-    expect(state.mana.black).toBe(ARENA_MANA + incomeFor(1));
+    // The Recruit on d4 holds a center square; the sacrifice on e5 rises only after the center squares have paid.
+    expect(state.mana.black).toBe(ARENA_MANA + 1);
     expect(state.hand.black).toHaveLength(1);
     expect(pieceAt(state, S('e5'))).toMatchObject({ owner: 'black', cardId: 'colt' });
     expect(events.map((e) => e.type)).toEqual(expect.arrayContaining(['turnStarted', 'drew', 'hatched']));

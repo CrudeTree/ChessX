@@ -70,10 +70,13 @@ export function describeEvents(
         lines.push({ text: `${names[e.color]} deploys ${pieceName(e.pieceId)} on ${v2.squareName(e.square)}`, color: e.color });
         break;
       case 'turnStarted': {
-        const gain = e.income === undefined ? `${e.mana} mana` : `+${e.income} mana, ${e.mana} in all`;
+        const gain =
+          e.held ? (e.held.length ? `+${e.held.length} from the center, ${e.mana} in all` : `${e.mana} mana`)
+          : e.income === undefined ? `${e.mana} mana`
+          : `+${e.income} mana, ${e.mana} in all`;
         lines.push({ text: `— ${names[e.color]}, turn ${e.turn} (${gain}) —`, color: e.color });
         // Against the same cap: a game begun before income stopped at +2 still rises to +4.
-        if (e.income !== undefined && e.turn > 1 && e.income > v2.incomeFor(e.turn - 1, e.income)) {
+        if (!e.held && e.income !== undefined && e.turn > 1 && e.income > v2.incomeFor(e.turn - 1, e.income)) {
           lines.push({ text: `${names[e.color]}'s income rises to +${e.income} mana a turn.`, color: e.color, important: true });
         }
         break;

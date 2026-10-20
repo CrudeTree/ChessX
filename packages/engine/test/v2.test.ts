@@ -10,6 +10,7 @@ import {
   incomeFor,
   isInCheck,
   legalActions,
+  MAX_INCOME,
   nextRecord,
   newGame,
   newRecord,
@@ -74,6 +75,8 @@ function bare(mana = 3): GameState {
 
 /** The deploy phase new games had before the 2026-10-08 ruling, as a saved game would hold it. */
 function legacySetup(state: GameState): GameState {
+  delete state.shrines;
+  delete state.maxIncome;
   state.phase = 'setup';
   state.pieces = state.pieces.filter((p) => p.def.king);
   state.turns = { white: 0, black: 0 };
@@ -98,10 +101,12 @@ describe('setup', () => {
     expect(state.phase).toBe('play');
     expect(state.active).toBe('white');
     expect(state.turns).toEqual({ white: 1, black: 0 });
-    // 3-card hands (Djabooty, 2026-10-10), then White's turn 1 draws one more and adds the normal +1 to the starting 2 mana.
+    // 3-card hands (Djabooty, 2026-10-10), then White's turn 1 draws one more. 6 mana each, and nothing more until a
+    // center square pays (Djabooty, 2026-10-20).
     expect(state.hand.white).toHaveLength(4);
     expect(state.hand.black).toHaveLength(3);
-    expect(state.mana).toEqual({ white: 3, black: 2 });
+    expect(state.mana).toEqual({ white: 6, black: 6 });
+    expect(state.shrines).toEqual(['d4', 'e4', 'd5', 'e5'].map(S));
     expect(FILES).toBe(8);
     expect(S('h8')).toBe(63);
     expect(() => S('i1')).toThrow();
@@ -166,8 +171,9 @@ describe('setup', () => {
 });
 
 describe('turn flow and resources', () => {
-  it('a move ends the turn: the other side gains +1 mana (no cap) and draws a card at once', () => {
+  it('a move ends the turn: the other side gains its center square\'s +1 mana (no cap) and draws a card at once', () => {
     let state = bare(40);
+    piece(state, 'black', 'initiate', 'd5');
     state.deck.black = [{ uid: 'dk1', cardId: 'squire' }];
     expect(legalActions(state).some((a) => a.type === 'endTurn')).toBe(false);
     state = act(state, find(state, (a) => a.type === 'move' && a.from === S('d1')));
@@ -913,11 +919,13 @@ describe('Mana Surge, Resurrect, Shield, Freeze and Smite (Djabooty, 2026-10-12)
 
 describe('mana (Djabooty, 2026-10-11)', () => {
   /**
-   * Plays King shuffles until White has started `turn` turns, returning the turnStarted events White got; `old`: a game
-   * begun before income was capped at +2.
+   * Plays King shuffles until White has started `turn` turns, returning the turnStarted events White got, in a game with
+   * a turn income (begun before the center squares); `old`: begun before that income was capped at +2.
    */
   function playTo(turn: number, old = false): { state: GameState; incomes: number[] } {
     let state = bare(0);
+    delete state.shrines;
+    state.maxIncome = MAX_INCOME;
     if (old) delete state.maxIncome;
     state.turns = { white: 0, black: 0 };
     state.active = 'black';
@@ -932,13 +940,16 @@ describe('mana (Djabooty, 2026-10-11)', () => {
   }
   const kingAt = (state: GameState) => state.pieces.find((p) => p.owner === state.active && p.def.king)!.square;
 
-  it('income is +1 on turns 1 to 5, then +2 for good (Djabooty, 2026-10-17: late games had too much mana)', () => {
+  it('a turn income is +1 on turns 1 to 5, then +2 for good (Djabooty, 2026-10-17: late games had too much mana)', () => {
     expect(Array.from({ length: 20 }, (_, i) => incomeFor(i + 1))).toEqual([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]);
-    expect(game().maxIncome).toBe(2);
+    const turnIncome = newGame({ seed: 7, decks: { white: starterDeck(), black: starterDeck() }, shrines: false });
+    expect(turnIncome).toMatchObject({ maxIncome: 2, mana: { white: 3, black: 2 } });
+    expect(turnIncome.shrines).toBeUndefined();
     const { state, incomes } = playTo(16);
     expect(incomes).toEqual([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]);
     expect(state.mana.white).toBe(27);
     expect(viewFor({ state, seq: 0, events: [] }, 'white').maxIncome).toBe(2);
+    expect(viewFor({ state, seq: 0, events: [] }, 'white').shrines).toBeUndefined();
     // The view shows what the side to move got this turn and what the other side's next turn brings.
     const { state: fifth } = playTo(5);
     const blackToMove = act(fifth, find(fifth, (a) => a.type === 'move' && a.from === kingAt(fifth)));
@@ -1006,6 +1017,65 @@ describe('mana (Djabooty, 2026-10-11)', () => {
     state.seals.push({ id: 's1', owner: 'black', square: S('a6'), card: STARTER_CATALOG.duskfang as PieceCard, timer: 2 });
     state = act(state, { type: 'move', from: S('a2'), to: S('a6') });
     expect(state.mana.white).toBe(0);
+  });
+});
+
+describe('the center squares (Djabooty, 2026-10-20)', () => {
+  const started = (events: GameEvent[]) => events.find((e) => e.type === 'turnStarted');
+  const kingMove = (state: GameState) => find(state, (a) => a.type === 'move' && a.from === state.pieces.find((p) => p.owner === state.active && p.def.king)!.square);
+
+  it('a new game has no turn income: 6 mana each, and turn 1 brings nothing', () => {
+    const state = game();
+    expect(state.maxIncome).toBeUndefined();
+    const { state: next, events } = applyLegalAction(state, find(state, (a) => a.type === 'move' && a.from === S('c2') && a.to === S('c3')));
+    expect(started(events)).toMatchObject({ color: 'black', turn: 1, mana: 6, income: 0, held: [] });
+    expect(next.mana).toEqual({ white: 6, black: 6 });
+  });
+
+  it('each center square a piece of yours stands on pays 1 mana at the start of your turn', () => {
+    let state = bare(0);
+    piece(state, 'white', 'initiate', 'd4');
+    piece(state, 'white', 'recruit', 'e5');
+    piece(state, 'black', 'initiate', 'd5');
+    let result = applyLegalAction(state, kingMove(state));
+    expect(started(result.events)).toMatchObject({ color: 'black', income: 1, held: [S('d5')] });
+    expect(result.state.mana.black).toBe(1);
+    state = result.state;
+    result = applyLegalAction(state, kingMove(state));
+    expect(started(result.events)).toMatchObject({ color: 'white', income: 2, held: [S('d4'), S('e5')] });
+    expect(result.state.mana.white).toBe(2);
+  });
+
+  it('pays only what is still held when the turn starts: a holder taken in between earns nothing', () => {
+    let state = bare(0);
+    piece(state, 'white', 'initiate', 'd4');
+    piece(state, 'black', 'initiate', 'e5');
+    state = act(state, kingMove(state));
+    expect(state.mana.black).toBe(1);
+    const { state: after, events } = applyLegalAction(state, { type: 'move', from: S('e5'), to: S('d4') });
+    expect(started(events)).toMatchObject({ color: 'white', income: 0, held: [] });
+    expect(after.mana.white).toBe(0);
+    expect(viewFor({ state: after, seq: 0, events: [] }, 'white').income).toEqual({ white: 0, black: 1 });
+  });
+
+  it('neither a sacrifice waiting on one nor a King standing on one holds it', () => {
+    const state = bare(0);
+    state.seals.push({ id: 's1', owner: 'black', square: S('e4'), card: STARTER_CATALOG.colt as PieceCard, timer: 3 });
+    state.pieces.find((p) => p.owner === 'black' && p.def.king)!.square = S('d5');
+    piece(state, 'black', 'recruit', 'e5');
+    const { events } = applyLegalAction(state, kingMove(state));
+    expect(started(events)).toMatchObject({ color: 'black', income: 1, held: [S('e5')] });
+  });
+
+  it('the view shows the center squares and what each side holds now', () => {
+    const state = bare(0);
+    piece(state, 'white', 'initiate', 'e4');
+    piece(state, 'black', 'initiate', 'd5');
+    piece(state, 'black', 'recruit', 'e5');
+    const view = viewFor({ state, seq: 0, events: [] }, 'white');
+    expect(view.shrines).toEqual(['d4', 'e4', 'd5', 'e5'].map(S));
+    expect(view.income).toEqual({ white: 1, black: 2 });
+    expect(view.maxIncome).toBe(4);
   });
 });
 
@@ -1149,7 +1219,7 @@ describe('the game log (Djabooty, 2026-10-11)', () => {
     const { events } = applyLegalAction(state, { type: 'move', from: S('b1'), to: S('c3') });
     expect(events[0]).toMatchObject({ type: 'captured', name: 'Apprentice', owner: 'black', cardId: 'apprentice', bounty: 1 });
     expect(events[1]).toMatchObject({ type: 'moved', name: 'Colt', owner: 'white', from: S('b1'), to: S('c3') });
-    expect(events[2]).toMatchObject({ type: 'turnStarted', color: 'black', turn: 1, income: 1 });
+    expect(events[2]).toMatchObject({ type: 'turnStarted', color: 'black', turn: 1, income: 0, held: [] });
   });
 
   it('a record keeps every action\'s events, and the view sends them only when asked', () => {
@@ -1170,12 +1240,12 @@ describe('the game log (Djabooty, 2026-10-11)', () => {
 
 describe('looking back (Djabooty, 2026-10-13)', () => {
   /**
-   * A random game played through a record, as the server plays it, ended by a resignation if still going; `old`: begun
-   * before income was capped at +2.
+   * A random game played through a record, as the server plays it, ended by a resignation if still going. `income`: the
+   * center squares, or a turn income capped at +2 (games begun from 2026-10-17), or one rising to +4 (before).
    */
-  function played(seed: number, length: number, old = false): GameRecord {
-    const begun = game(seed);
-    if (old) delete begun.maxIncome;
+  function played(seed: number, length: number, income: 'center' | 'capped' | 'rising' = 'center'): GameRecord {
+    const begun = income === 'center' ? game(seed) : newGame({ seed, decks: { white: starterDeck(), black: starterDeck() }, shrines: false });
+    if (income === 'rising') delete begun.maxIncome;
     let record = newRecord(begun);
     let pick = seed * 104729;
     for (let n = 0; n < length && record.state.status.kind === 'playing'; n++) {
@@ -1222,7 +1292,8 @@ describe('looking back (Djabooty, 2026-10-13)', () => {
     const decks = { white: starterDeck(), black: starterDeck() };
     let took = 0;
     for (let seed = 1; seed <= 6; seed++) {
-      const record = played(seed, 200);
+      // Games kept before their steps (begun before 2026-10-13) had the turn income that rose to +4.
+      const record = played(seed, 200, 'rising');
       const { start, steps, ...old } = record;
       const began = performance.now();
       const rebuilt = rebuildSteps(old, decks);
@@ -1243,15 +1314,18 @@ describe('looking back (Djabooty, 2026-10-13)', () => {
     expect(took).toBeLessThan(2000);
   });
 
-  it('works the steps out for a game begun before income was capped, which keeps rising to +4', () => {
+  it('works the steps out under each income rule: rising to +4, capped at +2, or the center squares', () => {
     const decks = { white: starterDeck(), black: starterDeck() };
-    const record = played(4, 200, true);
-    expect(record.state.turns.white).toBeGreaterThan(10);
-    const { start, steps, ...old } = record;
-    const rebuilt = rebuildSteps(old, decks);
-    expect(rebuilt?.steps).toHaveLength(steps!.length);
-    expect(rebuilt!.start!.maxIncome).toBeUndefined();
-    expect(stateAt(rebuilt!, steps!.length)).toEqual(record.state);
+    for (const income of ['rising', 'capped', 'center'] as const) {
+      const record = played(4, 200, income);
+      expect(record.state.turns.white).toBeGreaterThan(10);
+      const { start, steps, ...old } = record;
+      const rebuilt = rebuildSteps(old, decks);
+      expect(rebuilt?.steps).toHaveLength(steps!.length);
+      expect(rebuilt!.start!.maxIncome).toBe(income === 'capped' ? MAX_INCOME : undefined);
+      expect(rebuilt!.start!.shrines).toEqual(income === 'center' ? record.state.shrines : undefined);
+      expect(stateAt(rebuilt!, steps!.length)).toEqual(record.state);
+    }
   });
 
   it('leaves a game without steps when its history began late or its deck has changed', () => {

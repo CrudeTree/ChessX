@@ -24,7 +24,10 @@ import {
 } from './types.js';
 
 export const HAND_SIZE = 3;
-export const START_MANA = 2;
+/** Mana each side starts with: all there is until the center squares pay (Djabooty, 2026-10-20). */
+export const START_MANA = 6;
+/** What games without center squares started with. */
+const OLD_START_MANA = 2;
 /** Deploy phase of games saved before the 2026-10-08 setup ruling; new games skip it. */
 export const SETUP_PIECES = 3;
 export const KING_FILE = 3;
@@ -35,8 +38,9 @@ export const LAVA_TURNS = 2;
 export const PITCH_MANA = 1;
 
 /**
- * The most mana a turn brings. It rose to +4 until 2026-10-17, when Djabooty found late games flooded with mana; games
- * begun before that keep the old ramp (see `incomeCap`).
+ * The most mana a turn brings in games with a turn income. It rose to +4 until 2026-10-17, when Djabooty found late
+ * games flooded with mana; games begun before that keep the old ramp (see `incomeCap`). Games begun since 2026-10-20
+ * have no turn income: they earn from the center squares (`SHRINES`).
  */
 export const MAX_INCOME = 2;
 const OLD_MAX_INCOME = 4;
@@ -49,9 +53,23 @@ export function incomeFor(turn: number, most = MAX_INCOME): number {
   return Math.min(most, 1 + Math.floor((Math.max(turn, 1) - 1) / 5));
 }
 
-/** The most mana a turn of this game brings. */
+/** The most mana a turn of this game brings: one for each center square, or the turn income's cap. */
 export function incomeCap(state: GameState): number {
-  return state.maxIncome ?? OLD_MAX_INCOME;
+  return state.shrines ? state.shrines.length : (state.maxIncome ?? OLD_MAX_INCOME);
+}
+
+/** The center squares, d4, e4, d5 and e5, that pay their holder at the start of its turns (Djabooty, 2026-10-20). */
+export const SHRINES: readonly Square[] = [sq(3, 3), sq(4, 3), sq(3, 4), sq(4, 4)];
+
+/**
+ * The center squares a piece of `color` stands on. A King holds none: it is never taken, and the squares touch, so
+ * one checked off a square would step onto the next. A sacrifice waiting there holds none either.
+ */
+export function shrinesHeld(state: GameState, color: Color): Square[] {
+  return (state.shrines ?? []).filter((square) => {
+    const piece = pieceAt(state, square);
+    return piece?.owner === color && !piece.def.king;
+  });
 }
 
 /** Mana for capturing a piece: half its card's cost, rounded up (Djabooty, 2026-10-11). */
@@ -63,6 +81,8 @@ export interface NewGameOptions {
   seed: number;
   decks: Record<Color, string[]>;
   catalog?: Record<string, Card>;
+  /** False: the rules of games begun before 2026-10-20, with a turn income and no center squares, to replay them. */
+  shrines?: boolean;
 }
 
 const COLORS: Color[] = ['white', 'black'];
@@ -139,12 +159,14 @@ function placeStartingPieces(state: GameState, color: Color): void {
 }
 
 export function newGame(options: NewGameOptions): GameState {
+  const shrines = options.shrines !== false;
+  const mana = shrines ? START_MANA : OLD_START_MANA;
   const state: GameState = {
     catalog: options.catalog ?? STARTER_CATALOG,
     phase: 'play',
     active: 'white',
     turns: { white: 0, black: 0 },
-    mana: { white: START_MANA, black: START_MANA },
+    mana: { white: mana, black: mana },
     hand: { white: [], black: [] },
     deck: { white: [], black: [] },
     discard: { white: [], black: [] },
@@ -154,7 +176,7 @@ export function newGame(options: NewGameOptions): GameState {
     setupDeployed: { white: 0, black: 0 },
     actionTaken: false,
     cardPlayed: false,
-    maxIncome: MAX_INCOME,
+    ...(shrines ? { shrines: [...SHRINES] } : { maxIncome: MAX_INCOME }),
     status: { kind: 'playing' },
     nextId: 0,
     rng: options.seed | 0,
@@ -849,12 +871,13 @@ const ENDS_TURN: ReadonlySet<Action['type']> = new Set(['move']);
 function startTurn(state: GameState, color: Color, events: GameEvent[]): void {
   state.active = color;
   state.turns[color] += 1;
-  const income = incomeFor(state.turns[color], incomeCap(state));
+  const held = state.shrines ? shrinesHeld(state, color) : undefined;
+  const income = held ? held.length : incomeFor(state.turns[color], incomeCap(state));
   state.mana[color] += income;
   state.actionTaken = false;
   state.cardPlayed = false;
   state.pitched = false;
-  events.push({ type: 'turnStarted', color, turn: state.turns[color], mana: state.mana[color], income });
+  events.push({ type: 'turnStarted', color, turn: state.turns[color], mana: state.mana[color], income, ...(held ? { held } : {}) });
   draw(state, color, 1, events);
 
   // Lava cools once the other player has taken its turns: at the start of the turn of the side that made it.

@@ -108,6 +108,10 @@ interface Weights {
   threat: number;
   /** Share of the other side's best capture, which the side about to act can still answer. */
   threatOther: number;
+  /** Per center square a piece (not a King) stands on: it pays 1 mana a turn, the only income. */
+  shrine: number;
+  /** Per piece (up to 2) aiming at a center square, to take it or hold it. */
+  shrineAim: number;
 }
 
 const WEIGHTS: Weights = {
@@ -128,6 +132,8 @@ const WEIGHTS: Weights = {
   near: 0.15,
   threat: 0.8,
   threatOther: 0.3,
+  shrine: 0.7,
+  shrineAim: 0.06,
 };
 
 const WIN = 10_000;
@@ -223,8 +229,10 @@ function evaluate(state: GameState, me: Color, toMove: Color, w: Weights): numbe
 
   for (const piece of state.pieces) occupant[piece.square] = piece.owner;
   for (const spot of state.lava ?? []) lava[spot.square] = 1;
+  const shrines = state.shrines ?? [];
   for (const piece of state.pieces) {
     const side = piece.owner;
+    if (!piece.def.king && shrines.includes(piece.square)) score += sign(side) * w.shrine;
     const worth = piece.def.king ? KING_ATTACKER : pieceWorth(state, piece, w);
     const takes = canCapture(piece, side === toMove ? moverTurn : otherTurn);
     const guards = canCapture(piece, side === toMove ? moverTurn + 1 : otherTurn);
@@ -250,6 +258,9 @@ function evaluate(state: GameState, me: Color, toMove: Color, w: Weights): numbe
     const worth = cardWorth(seal.card) * w.sealDecay ** seal.timer;
     material[seal.owner] += worth;
     score += sign(seal.owner) * worth;
+  }
+  for (const square of shrines) {
+    for (const side of COLORS) score += sign(side) * w.shrineAim * Math.min(2, control[side][square]!);
   }
   const mana = (color: Color): number => Math.min(state.mana[color], w.manaCap);
   score += w.mana * (mana(me) - mana(opposite(me)));

@@ -13,6 +13,7 @@ import {
   legalActions,
   newGame,
   SETUP_PIECES,
+  shrinesHeld,
 } from './engine.js';
 import { RNG_STEP } from './rng.js';
 import {
@@ -165,10 +166,15 @@ export interface PlayerView {
   cardPlayed: boolean;
   /** The side to move pitched a card this turn. */
   pitched: boolean;
-  /** Mana each side's next turn brings (the side to move: the turn it is playing). */
+  /**
+   * Mana each side's next turn brings (the side to move: the turn it is playing). With center squares: what the ones
+   * each side holds now pay at the start of its next turn, if it still holds them.
+   */
   income: Record<Color, number>;
   /** The most mana a turn of this game brings. */
   maxIncome: number;
+  /** The center squares that pay their holder; missing in games begun before them, which have a turn income. */
+  shrines?: Square[];
   inCheck: boolean;
   /** Legal actions for the side to move when it is you (or both sides, in a practice game). */
   legalActions: Action[];
@@ -283,6 +289,8 @@ export function viewFor(record: GameRecord, you: Color, opts: ViewOptions = {}):
   const viewer: Color = opts.hotseat ? state.active : you;
   const playing = state.status.kind === 'playing';
   const nextTurn = (color: Color) => state.turns[color] + (state.active === color ? 0 : 1);
+  const income = (color: Color) =>
+    state.shrines ? shrinesHeld(state, color).length : incomeFor(nextTurn(color), incomeCap(state));
   return {
     you: viewer,
     active: state.active,
@@ -317,8 +325,9 @@ export function viewFor(record: GameRecord, you: Color, opts: ViewOptions = {}):
     actionTaken: state.actionTaken,
     cardPlayed: state.cardPlayed === true,
     pitched: state.pitched === true,
-    income: { white: incomeFor(nextTurn('white'), incomeCap(state)), black: incomeFor(nextTurn('black'), incomeCap(state)) },
+    income: { white: income('white'), black: income('black') },
     maxIncome: incomeCap(state),
+    ...(state.shrines ? { shrines: state.shrines } : {}),
     inCheck: playing && state.phase === 'play' && isInCheck(state, state.active),
     legalActions: playing && !opts.past && state.active === viewer ? legalActions(state) : [],
     cards: viewCards(state.catalog),
@@ -388,9 +397,10 @@ export function rebuildSteps(record: GameRecord, decks: Record<Color, string[]>)
   if (record.steps || !history) return null;
   try {
     const rolls = Math.max(0, decks.white.length - 1) + Math.max(0, decks.black.length - 1);
-    const begun = newGame({ seed: (end.rng - Math.imul(RNG_STEP, rolls)) | 0, decks, catalog: end.catalog });
+    const shrines = end.shrines !== undefined;
+    const begun = newGame({ seed: (end.rng - Math.imul(RNG_STEP, rolls)) | 0, decks, catalog: end.catalog, shrines });
     // The income cap the game began with (none, before 2026-10-17); the first turn's income is the same either way.
-    begun.maxIncome = end.maxIncome;
+    if (!shrines) begun.maxIncome = end.maxIncome;
     // A card still held or in the deck at the end was never played.
     const kept = new Set([...end.hand.white, ...end.hand.black, ...end.deck.white, ...end.deck.black].map((c) => c.uid));
     // Two copies of a card in hand do the same, and only a discard pile tells them apart afterwards: the copy that

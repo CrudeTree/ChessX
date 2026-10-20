@@ -83,6 +83,7 @@ const KING_HEIGHT = 1.4;
 const KING_RING = { white: '#e2b75e', black: '#c4b2ff' } as const;
 /** Set to 'off' when the player turns the 3D board off. */
 const BOARD_3D_KEY = 'chessx.board3d';
+const SHRINE_TIP = 'Center square: 1 mana at the start of each turn to the side whose piece (not its King) stands here';
 
 /** A piece's figure on the 3D board: named like its board picture, which is its owner's face; Kings have their own. */
 function figureName(piece: v2.ViewPiece, view: v2.PlayerView): string {
@@ -1516,6 +1517,9 @@ export class GameScreen {
           this.tokenFx.set(e.pieceId, { kind: 'fx-rise', at: now + turnAt + HATCH_RISE_DELAY });
           break;
         }
+        case 'turnStarted':
+          e.held?.forEach((square, i) => this.fx.gain(square, '+1 mana', turnAt + 120 * i));
+          break;
         default:
           break;
       }
@@ -2825,6 +2829,7 @@ export class GameScreen {
     const lifted = this.pieceDrag?.ghost ? this.pieceDrag.from : (this.returning?.from ?? null);
     const away = this.dropped?.from ?? this.vanishing?.square ?? null;
     const aiming = this.aimLava !== null && this.aimLava === this.selectedSquare;
+    const shrines = new Set(view.shrines);
 
     for (let square = 0; square < v2.FILES * v2.RANKS; square++) {
       const cell = this.cells[square]!;
@@ -2832,6 +2837,8 @@ export class GameScreen {
       const seal = view.seals.find((s) => s.square === square);
       const lava = view.lava.find((l) => l.square === square);
       const classes = ['g2-cell', (v2.fileOf(square) + v2.rankOf(square)) % 2 === 0 ? 'dark' : 'light'];
+      const shrine = shrines.has(square);
+      if (shrine) classes.push(piece && !piece.king ? `shrine held-${piece.owner}` : 'shrine');
       if (movers.has(square) && square !== away) classes.push('movable');
       else if (this.arena && piece && square !== away) classes.push('grab');
       if (targets.has(square)) classes.push(this.pieceDrag?.hover === square ? 'target drag-over' : 'target');
@@ -2853,7 +2860,7 @@ export class GameScreen {
         classes.push(`drop${kind}`);
       }
       if (drop && held?.hover === square) classes.push('drop-hover');
-      const warning = this.sealWarning(drop);
+      const warning = this.sealWarning(drop) ?? (shrine ? SHRINE_TIP : null);
       if (warning) cell.title = warning;
       else cell.removeAttribute('title');
       if (this.selectedSquare === square) classes.push('selected');
@@ -2916,8 +2923,13 @@ export class GameScreen {
         const mana = el('span', 'g2-mana');
         const income = view.income[color];
         const amount = this.manaShown[color] ?? view.mana[color];
-        const rise = income < view.maxIncome ? `; every 5th turn brings 1 more, up to ${view.maxIncome}` : ', as every turn will from now on';
-        mana.title = `${amount} mana. ${turn ? 'This' : 'The next'} turn brings ${income}${rise}.`;
+        if (view.shrines) {
+          const squares = `${income} center square${income === 1 ? '' : 's'}`;
+          mana.title = `${amount} mana. Holds ${squares}: +${income} at the start of the next turn, if still held.`;
+        } else {
+          const rise = income < view.maxIncome ? `; every 5th turn brings 1 more, up to ${view.maxIncome}` : ', as every turn will from now on';
+          mana.title = `${amount} mana. ${turn ? 'This' : 'The next'} turn brings ${income}${rise}.`;
+        }
         mana.append(el('i', 'g2-gem'), el('b', '', String(amount)), el('span', 'g2-mana-word', ' mana'), el('span', 'g2-income', `+${income}`));
         if (this.arena) {
           mana.prepend(this.manaStep(color, -1));
