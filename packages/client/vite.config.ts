@@ -1,6 +1,23 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 
-export default defineConfig({
+const BUILD_ID = Date.now().toString(36);
+
+/** Serves the build's id as /version.json, so a tab still running an older build can tell (see update.ts). */
+function versionFile(): Plugin {
+  return {
+    name: 'chessx-version-file',
+    apply: 'build',
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ build: BUILD_ID }) });
+    },
+  };
+}
+
+export default defineConfig(({ command }) => ({
+  define: {
+    __BUILD_ID__: JSON.stringify(command === 'build' ? BUILD_ID : 'dev'),
+  },
+  plugins: [versionFile()],
   server: {
     port: 5173,
     proxy: {
@@ -13,4 +30,4 @@ export default defineConfig({
   build: {
     target: 'es2022',
   },
-});
+}));

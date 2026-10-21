@@ -3688,6 +3688,11 @@ button,
     min-height: 100%;
   }
 
+  /* Nothing may widen the page: Android would lay it out that much taller too, past the bottom of the screen. */
+  html {
+    overflow-x: hidden;
+  }
+
   .screen {
     height: auto;
     min-height: 100dvh;
@@ -8287,8 +8292,8 @@ body.g2-grabbing * {
 /*
  * Phones: the whole game fits one screen, so a pull up on a card never fights a page scroll.
  * The board takes whatever height is left; the side column becomes a sheet behind the ☰ button.
- * The screen is pinned to the window rather than sized in vh: some Android browsers measured 100dvh taller than what
- * shows, which let the page scroll (and left the hand below the fold and a held card far from the finger).
+ * The screen is pinned to the window and holds everything in it: anything reaching past the right edge of the page
+ * made Android lay the whole page out wider and taller than the screen, the hand below the fold.
  */
 @media (max-width: 899px) {
   #game2 {

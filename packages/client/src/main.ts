@@ -24,6 +24,7 @@ import { InspectPanel } from './inspect.js';
 import { describeEvents } from './log.js';
 import { ApiError, authApi, balanceApi, Net, openGameId, profileApi, rememberOpenGame } from './net.js';
 import { colorName, drawThumbnail } from './thumbnail.js';
+import { loadUpdate, updateWaiting, watchForUpdates } from './update.js';
 import { GameScreen } from './v2/GameScreen.js';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -181,10 +182,11 @@ function routeFromLocation(): Route {
 
 const routePath = (r: Route): string => (r.screen === 'game' ? `/game/${r.id}` : r.screen === 'binder' ? '/binder' : r.screen === 'editor' ? '/editor' : '/');
 
-/** Record that we are now on `route` (no-op if history already says so). */
+/** Record that we are now on `route` (no-op if history already says so); with a newer build out, load it there. */
 function pushRoute(route: Route): void {
   const cur = history.state as Route | null;
   if (cur && cur.screen === route.screen && (cur.screen !== 'game' || cur.id === (route as { id: string }).id)) return;
+  if (updateWaiting()) return loadUpdate(routePath(route));
   history.pushState(route, '', routePath(route));
 }
 
@@ -1254,6 +1256,7 @@ net.onMessage = async (msg: ServerMessage) => {
 // Boot: are we signed in?
 
 initAttention();
+watchForUpdates();
 onServiceWorkerMessage((m) => {
   // A notification was tapped while this tab was already open: go where it points.
   if (m.type === 'open' && m.url) {
