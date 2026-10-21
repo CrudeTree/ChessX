@@ -8287,13 +8287,17 @@ body.g2-grabbing * {
 /*
  * Phones: the whole game fits one screen, so a pull up on a card never fights a page scroll.
  * The board takes whatever height is left; the side column becomes a sheet behind the ☰ button.
+ * The screen is pinned to the window rather than sized in vh: some Android browsers measured 100dvh taller than what
+ * shows, which let the page scroll (and left the hand below the fold and a held card far from the finger).
  */
 @media (max-width: 899px) {
   #game2 {
+    position: fixed;
+    inset: 0;
     flex-direction: column;
     align-items: stretch;
-    height: 100vh;
-    height: 100dvh;
+    height: auto;
+    min-height: 0;
     gap: 6px;
     padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
     overflow: hidden;
@@ -8490,15 +8494,16 @@ body.g2-grabbing * {
     scrollbar-width: none;
   }
 
+  /* The board fills the width, so a taller phone has height to spare: the cards take it, easier to read and grab. */
   @media (min-height: 720px) {
     .g2-handrow {
-      --card-w: 74px;
+      --card-w: 84px;
     }
   }
 
   @media (min-height: 800px) {
     .g2-handrow {
-      --card-w: 84px;
+      --card-w: 92px;
     }
   }
 
