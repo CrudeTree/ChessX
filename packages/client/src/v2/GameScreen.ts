@@ -147,6 +147,13 @@ interface CardDrag {
 
 /** Pixels the pointer must travel before a press on a card or piece becomes a drag rather than a click. */
 const DRAG_THRESHOLD = 6;
+/** A finger holds a card by its foot: this many pixels of the card lie below the point it touches. */
+const TOUCH_GRIP = 10;
+/**
+ * Over the board a card held by a finger shrinks to about a square, so the board around it stays in sight: the scale of
+ * `.g2-drag-ghost.touch.on-board` in style.css.
+ */
+const TOUCH_BOARD_SCALE = 0.55;
 
 /**
  * A press on one of your pieces that can move. `ghost` is null until the pointer has moved past DRAG_THRESHOLD;
@@ -2078,10 +2085,16 @@ export class GameScreen {
       const ghost = tile.cloneNode(true) as HTMLElement;
       ghost.classList.remove('lifted', 'fresh', 'inspected');
       ghost.classList.add('g2-drag-ghost');
+      if (drag.pointerType !== 'mouse') ghost.classList.add('touch');
       if (!this.dropTargets(drag.uid).size && !this.untargetedSpell(drag.uid) && !this.pitchAction(drag.uid)) ghost.classList.add('nowhere');
-      ghost.style.fontSize = getComputedStyle(tile).fontSize;
+      const size = parseFloat(getComputedStyle(tile).fontSize);
+      ghost.style.fontSize = `${size}px`;
       ghost.style.animationDelay = '';
       document.body.appendChild(ghost);
+      // As big as the card in the hand, also where the phone's text size scales a copy out on the page differently.
+      if (ghost.offsetHeight && tile.offsetHeight && Math.abs(ghost.offsetHeight - tile.offsetHeight) > 1) {
+        ghost.style.fontSize = `${(size * tile.offsetHeight) / ghost.offsetHeight}px`;
+      }
       drag.ghost = ghost;
       sound.sfx?.cardLift();
       this.hoverCard = null;
@@ -2090,14 +2103,16 @@ export class GameScreen {
       this.render();
     }
     e.preventDefault();
-    // The card hangs above the pointer so the square it would land on stays visible.
+    const aim = this.cardAim(drag, e.clientX, e.clientY);
+    drag.ghost.classList.toggle('on-board', aim.onBoard);
     drag.ghost.style.left = `${e.clientX - drag.ghost.offsetWidth / 2}px`;
-    drag.ghost.style.top = `${e.clientY - drag.ghost.offsetHeight - 6}px`;
+    drag.ghost.style.top =
+      drag.pointerType === 'mouse' ? `${e.clientY - drag.ghost.offsetHeight - 6}px` : `${aim.y - drag.ghost.offsetHeight / 2}px`;
     const anywhere = this.untargetedSpell(drag.uid) !== null;
     const drops = this.dropTargets(drag.uid);
-    const square = this.squareAt(e.clientX, e.clientY, (sq) => drops.has(sq));
+    const square = this.squareAt(aim.x, aim.y, (sq) => drops.has(sq));
     const hover = square !== null && (anywhere || drops.has(square)) ? square : null;
-    const pitch = this.overPitch(e.clientX, e.clientY);
+    const pitch = this.overPitch(aim.x, aim.y);
     if (pitch !== drag.pitch) {
       drag.pitch = pitch;
       drag.ghost.classList.toggle('over', hover !== null || pitch);
@@ -2112,6 +2127,20 @@ export class GameScreen {
       this.showSealWarning(drag);
     }
   };
+
+  /**
+   * Where a held card aims, and whether it is over the board. A mouse holds the card up above the pointer, which aims,
+   * so the square it would land on stays in sight. A finger holds the card by its foot instead (`TOUCH_GRIP`), and
+   * over the board the card shrinks to about a square and aims with its middle, so it lands where it is shown.
+   */
+  private cardAim(drag: CardDrag, x: number, y: number): { x: number; y: number; onBoard: boolean } {
+    if (drag.pointerType === 'mouse' || !drag.ghost) return { x, y, onBoard: false };
+    const height = drag.ghost.offsetHeight;
+    const board = this.boardEl.getBoundingClientRect();
+    const small = y + TOUCH_GRIP - (height * TOUCH_BOARD_SCALE) / 2;
+    const onBoard = x >= board.left && x <= board.right && small >= board.top && small <= board.bottom;
+    return { x, y: onBoard ? small : y + TOUCH_GRIP - height / 2, onBoard };
+  }
 
   /** Whether the pointer is over the discard pile that takes a pitched card (see `renderPlayers`). */
   private overPitch(x: number, y: number): boolean {
@@ -2211,9 +2240,11 @@ export class GameScreen {
       this.drag = null;
       return;
     }
+    const aim = this.cardAim(drag, e.clientX, e.clientY);
+    ghost.classList.remove('on-board');
     const drops = this.dropTargets(drag.uid);
-    const square = e.type === 'pointerup' ? this.squareAt(e.clientX, e.clientY, (sq) => drops.has(sq)) : null;
-    const pitch = e.type === 'pointerup' && square === null && this.overPitch(e.clientX, e.clientY) ? this.pitchAction(drag.uid) : null;
+    const square = e.type === 'pointerup' ? this.squareAt(aim.x, aim.y, (sq) => drops.has(sq)) : null;
+    const pitch = e.type === 'pointerup' && square === null && this.overPitch(aim.x, aim.y) ? this.pitchAction(drag.uid) : null;
     const gem = pitch ? this.root.querySelector(`.g2-player.${this.view?.you} .g2-gem`)?.getBoundingClientRect() : undefined;
     const action = this.dropAction(drag.uid, square);
     this.drag = null;

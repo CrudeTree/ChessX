@@ -6047,6 +6047,21 @@ body.g2-grabbing * {
   box-shadow: 0 0 0 0.12em var(--edge), 0 1.2em 2.4em rgba(0, 0, 0, 0.6), 0 0 1.4em rgba(255, 90, 80, 0.85);
 }
 
+/*
+ * Held by a finger (GameScreen's cardAim): by its foot, full size; over the board, about as big as a square, upright,
+ * landing where it is shown. Letting go (returning, landing, casting, pitching, below) takes over from here.
+ */
+.g2-drag-ghost.touch {
+  scale: 1;
+  transform-origin: 50% 50%;
+  transition: scale 0.14s ease, rotate 0.14s ease;
+}
+
+.g2-drag-ghost.touch.on-board {
+  scale: 0.55;
+  rotate: 0deg;
+}
+
 .g2-card.g2-drag-ghost.returning {
   transition: left 0.2s ease, top 0.2s ease, opacity 0.2s ease, rotate 0.2s ease;
   opacity: 0.4;
