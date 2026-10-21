@@ -64,6 +64,44 @@ function sparks(count: number, cls = ''): HTMLElement {
   return group;
 }
 
+/** A jagged bolt `height` px tall, from straight above down to (0, 0), each turn up to `jag` px aside. */
+function boltPath(height: number, jag: number, turns: number): string {
+  let d = `M${((Math.random() - 0.5) * jag).toFixed(1)} ${-height}`;
+  for (let i = 1; i < turns; i++) d += ` L${((Math.random() - 0.5) * 2 * jag).toFixed(1)} ${(-height + (height * i) / turns).toFixed(1)}`;
+  return `${d} L0 0`;
+}
+
+/**
+ * Where a held card, a ball of static, shoots down into a square (centred at `x`, `y` on the page, `size` px across): a
+ * bolt of lightning from above, a flash, two rings and sparks, in `owner`'s colours. It takes itself away when done.
+ */
+export function strikeBurst(x: number, y: number, size: number, owner: Color): HTMLElement {
+  const burst = el('div', `g2-strike ${owner}`);
+  burst.style.left = `${x}px`;
+  burst.style.top = `${y}px`;
+  burst.style.setProperty('--size', `${size}px`);
+  const tall = size * 2.6;
+  const wide = size * 0.9;
+  const bolts = [boltPath(tall, size * 0.18, 7), boltPath(tall * 0.7, size * 0.14, 5)];
+  burst.insertAdjacentHTML(
+    'beforeend',
+    `<svg class="g2-strike-bolt" viewBox="${-wide / 2} ${-tall} ${wide} ${tall}" style="width:${wide}px;height:${tall}px" aria-hidden="true">` +
+      bolts.map((d, i) => `<path class="glow${i ? ' thin' : ''}" d="${d}"/><path class="line${i ? ' thin' : ''}" d="${d}"/>`).join('') +
+      '</svg>',
+  );
+  burst.append(el('i', 'g2-strike-flash'), el('i', 'g2-strike-ring'), el('i', 'g2-strike-ring late'));
+  for (let i = 0; i < 14; i++) {
+    const spark = el('i', 'g2-strike-spark');
+    const angle = (i / 14) * Math.PI * 2 + Math.random() * 0.4;
+    const reach = size * (0.7 + Math.random() * 0.8);
+    spark.style.setProperty('--dx', `${(Math.cos(angle) * reach).toFixed(1)}px`);
+    spark.style.setProperty('--dy', `${(Math.sin(angle) * reach * 0.75).toFixed(1)}px`);
+    burst.append(spark);
+  }
+  window.setTimeout(() => burst.remove(), 900);
+  return burst;
+}
+
 export class BoardFx {
   /** Lies on the board itself, so its effects sit on (and tilt with) the squares. */
   private readonly floor = el('div', 'g2-fx');
@@ -135,7 +173,7 @@ export class BoardFx {
   }
 
   /** The board jolts as something lands on it, `force` from 0 (a nudge) to 1 (a slam). */
-  private quake(force: number, delay: number): void {
+  quake(force: number, delay = 0): void {
     const d = 1 + force * 4;
     for (const el of [this.board, this.shaken]) {
       el?.animate(

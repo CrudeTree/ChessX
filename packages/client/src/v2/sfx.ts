@@ -286,6 +286,20 @@ export class Sfx {
     this.boom(land, 0.5);
   }
 
+  /**
+   * A held card, a ball of static, shoots down into the board: crackling as it charges, a rush as it dives, and a
+   * sharp zap with a thump where it lands, `landMs` later.
+   */
+  strike(landMs: number): void {
+    const land = landMs / 1000;
+    this.crackle(0, land, 0.2, 9);
+    this.tone({ at: 0, wave: 'sawtooth', freq: 260, to: 1900, glide: land, decay: land + 0.04, peak: 0.045, filter: { type: 'bandpass', freq: 1600, q: 3 } });
+    this.whoosh(land * 0.4, land * 0.6, 3200, 600, 0.12);
+    this.noise({ at: land, attack: 0.002, decay: 0.22, peak: 0.24, room: 0.35, filter: { type: 'highpass', freq: 2400, to: 900, time: 0.2 } });
+    this.tone({ at: land, wave: 'square', freq: 1400, to: 180, glide: 0.12, decay: 0.16, peak: 0.05, filter: { type: 'lowpass', freq: 3000 } });
+    this.boom(land, 0.35);
+  }
+
   /** A seal is destroyed. */
   shatter(delayMs: number): void {
     const at = delayMs / 1000;

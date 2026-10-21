@@ -16,6 +16,7 @@ import {
   SHIFT_MS,
   SPELL_HOLD_MS,
   SPELL_LANDS_MS,
+  strikeBurst,
   type BannerTone,
 } from './fx.js';
 import { CardLibrary, type LibraryTool } from './library.js';
@@ -140,6 +141,8 @@ interface CardDrag {
   startY: number;
   scrollFrom: number | null;
   ghost: HTMLElement | null;
+  /** The ball of static the card turns into over the board (`orbFor`). */
+  orb: HTMLElement | null;
   hover: v2.Square | null;
   /** Over your discard pile, where letting go pitches the card for mana. */
   pitch: boolean;
@@ -149,11 +152,10 @@ interface CardDrag {
 const DRAG_THRESHOLD = 6;
 /** A finger holds a card by its foot: this many pixels of the card lie below the point it touches. */
 const TOUCH_GRIP = 10;
-/**
- * Over the board a card held by a finger shrinks to about a square, so the board around it stays in sight: the scale of
- * `.g2-drag-ghost.touch.on-board` in style.css.
- */
-const TOUCH_BOARD_SCALE = 0.55;
+/** Over the board a held card is a ball of static; a finger holds the ball this many pixels above where it touches. */
+const TOUCH_ORB_LIFT = 36;
+/** Let go on a square, the ball charges and dives in: it lands this long after (ms), and the summon plays on from there. */
+const STRIKE_MS = 190;
 
 /**
  * A press on one of your pieces that can move. `ghost` is null until the pointer has moved past DRAG_THRESHOLD;
@@ -1353,7 +1355,7 @@ export class GameScreen {
         case 'deployed': {
           const cardId = view.pieces.find((p) => p.id === e.pieceId)?.cardId;
           const cost = cardId ? (view.cards[cardId]?.cost ?? 0) : 0;
-          sfx.summon(e.color, !this.wasDropped(e.square, now), Math.min(1, cost / 5));
+          sfx.summon(e.color, !this.wasDropped(e.square, now), Math.min(1, cost / 5), this.untilImpact(e.square, now));
           break;
         }
         case 'moved':
@@ -1435,10 +1437,11 @@ export class GameScreen {
         case 'deployed': {
           const piece = view.pieces.find((p) => p.id === e.pieceId);
           if (!piece) break;
+          const impact = this.untilImpact(e.square, now);
           const card = this.takeLanding(e.square, now) ? null : this.cardFace(piece.cardId, piece.owner, view);
           const cost = piece.cardId ? (view.cards[piece.cardId]?.cost ?? 0) : 0;
-          this.fx.summon(e.square, piece.owner, card, 0, Math.min(1, cost / 5));
-          this.tokenFx.set(piece.id, { kind: 'fx-rise', at: now + (card ? CARD_DIVE_MS : 0) });
+          this.fx.summon(e.square, piece.owner, card, impact, Math.min(1, cost / 5));
+          this.tokenFx.set(piece.id, { kind: 'fx-rise', at: now + impact + (card ? CARD_DIVE_MS : 0) });
           break;
         }
         case 'moved': {
@@ -1473,11 +1476,12 @@ export class GameScreen {
           break;
         }
         case 'sealed': {
+          const impact = this.untilImpact(e.square, now);
           const consumed = pieceBefore.get(e.consumedPieceId);
-          if (consumed) this.fx.vanish(e.square, this.pieceToken(consumed, prev), 'consume', 80);
-          this.board3d?.leave(e.consumedPieceId, 'consume', 80);
-          this.fx.seal(e.square, e.color, this.takeLanding(e.square, now) ? null : cardBack());
-          this.tokenFx.set(e.sealId, { kind: 'fx-seal-in', at: now });
+          if (consumed) this.fx.vanish(e.square, this.pieceToken(consumed, prev), 'consume', impact + 80);
+          this.board3d?.leave(e.consumedPieceId, 'consume', impact + 80);
+          this.fx.seal(e.square, e.color, this.takeLanding(e.square, now) ? null : cardBack(), impact);
+          this.tokenFx.set(e.sealId, { kind: 'fx-seal-in', at: now + impact });
           break;
         }
         case 'evolved': {
@@ -2050,6 +2054,7 @@ export class GameScreen {
       startY: e.clientY,
       scrollFrom: null,
       ghost: null,
+      orb: null,
       hover: null,
       pitch: false,
     };
@@ -2104,10 +2109,7 @@ export class GameScreen {
     }
     e.preventDefault();
     const aim = this.cardAim(drag, e.clientX, e.clientY);
-    drag.ghost.classList.toggle('on-board', aim.onBoard);
-    drag.ghost.style.left = `${e.clientX - drag.ghost.offsetWidth / 2}px`;
-    drag.ghost.style.top =
-      drag.pointerType === 'mouse' ? `${e.clientY - drag.ghost.offsetHeight - 6}px` : `${aim.y - drag.ghost.offsetHeight / 2}px`;
+    this.placeHeld(drag, e.clientX, e.clientY, aim);
     const anywhere = this.untargetedSpell(drag.uid) !== null;
     const drops = this.dropTargets(drag.uid);
     const square = this.squareAt(aim.x, aim.y, (sq) => drops.has(sq));
@@ -2124,22 +2126,51 @@ export class GameScreen {
       this.boardEl.classList.toggle('drop-over', anywhere && hover !== null);
       drag.hover = hover;
       drag.ghost.classList.toggle('over', hover !== null || pitch);
+      drag.orb?.classList.toggle('over', hover !== null);
       this.showSealWarning(drag);
     }
   };
 
   /**
-   * Where a held card aims, and whether it is over the board. A mouse holds the card up above the pointer, which aims,
-   * so the square it would land on stays in sight. A finger holds the card by its foot instead (`TOUCH_GRIP`), and
-   * over the board the card shrinks to about a square and aims with its middle, so it lands where it is shown.
+   * Moves the held card with the pointer. Over the board it is drawn into a ball of static where it aims, small enough
+   * to put on the exact square, and off the board it comes back out of it.
+   */
+  private placeHeld(drag: CardDrag, x: number, y: number, aim: { x: number; y: number; onBoard: boolean }): void {
+    const ghost = drag.ghost!;
+    const top = drag.pointerType === 'mouse' ? y - ghost.offsetHeight - 6 : y + TOUCH_GRIP - ghost.offsetHeight;
+    ghost.style.left = `${x - ghost.offsetWidth / 2}px`;
+    ghost.style.top = `${top}px`;
+    ghost.style.transformOrigin = `50% ${aim.y - top}px`;
+    ghost.classList.toggle('to-orb', aim.onBoard);
+    if (!aim.onBoard && !drag.orb) return;
+    const orb = this.orbFor(drag);
+    orb.style.left = `${aim.x}px`;
+    orb.style.top = `${aim.y}px`;
+    orb.classList.toggle('on', aim.onBoard);
+  }
+
+  /** The ball of static a held card turns into over the board, in its side's colours, made when first needed. */
+  private orbFor(drag: CardDrag): HTMLElement {
+    if (!drag.orb) {
+      const nowhere = drag.ghost?.classList.contains('nowhere') ? ' nowhere' : '';
+      const orb = el('div', `g2-orb ${this.view?.you ?? 'white'}${nowhere}`);
+      orb.append(el('i', 'core'), el('i', 'arcs'), el('i', 'arcs late'));
+      document.body.appendChild(orb);
+      drag.orb = orb;
+    }
+    return drag.orb;
+  }
+
+  /**
+   * Where a held card aims, and whether that is over the board, where the card is a ball of static centred there. A
+   * mouse aims with its pointer, and off the board the card hangs above it. A finger holds the card by its foot
+   * (`TOUCH_GRIP`) and the ball a little above itself (`TOUCH_ORB_LIFT`), so the fingertip does not cover it.
    */
   private cardAim(drag: CardDrag, x: number, y: number): { x: number; y: number; onBoard: boolean } {
-    if (drag.pointerType === 'mouse' || !drag.ghost) return { x, y, onBoard: false };
-    const height = drag.ghost.offsetHeight;
+    const aimY = drag.pointerType === 'mouse' ? y : y - TOUCH_ORB_LIFT;
     const board = this.boardEl.getBoundingClientRect();
-    const small = y + TOUCH_GRIP - (height * TOUCH_BOARD_SCALE) / 2;
-    const onBoard = x >= board.left && x <= board.right && small >= board.top && small <= board.bottom;
-    return { x, y: onBoard ? small : y + TOUCH_GRIP - height / 2, onBoard };
+    const onBoard = x >= board.left && x <= board.right && aimY >= board.top && aimY <= board.bottom;
+    return { x, y: aimY, onBoard };
   }
 
   /** Whether the pointer is over the discard pile that takes a pitched card (see `renderPlayers`). */
@@ -2241,7 +2272,8 @@ export class GameScreen {
       return;
     }
     const aim = this.cardAim(drag, e.clientX, e.clientY);
-    ghost.classList.remove('on-board');
+    const orb = drag.orb;
+    ghost.style.transformOrigin = '';
     const drops = this.dropTargets(drag.uid);
     const square = e.type === 'pointerup' ? this.squareAt(aim.x, aim.y, (sq) => drops.has(sq)) : null;
     const pitch = e.type === 'pointerup' && square === null && this.overPitch(aim.x, aim.y) ? this.pitchAction(drag.uid) : null;
@@ -2249,6 +2281,7 @@ export class GameScreen {
     const action = this.dropAction(drag.uid, square);
     this.drag = null;
     if (pitch) {
+      this.fadeOrb(orb);
       this.burnAway(ghost, gem);
       this.hooks.act(pitch);
       this.clearSelection();
@@ -2256,16 +2289,23 @@ export class GameScreen {
       return;
     }
     if (action?.type === 'spell' && action.pick !== undefined && square !== null && this.raiseOptions(drag.uid, square).length > 1) {
+      this.fadeOrb(orb);
+      ghost.classList.remove('to-orb');
       this.render();
       this.snapBack(ghost, drag.uid);
       this.openRaise(drag.uid, square);
       return;
     }
     if (action && square !== null) {
-      if (action.type === 'spell') {
+      if (orb && aim.onBoard && this.fx.enabled) {
+        ghost.remove();
+        this.strike(orb, square, action.type !== 'spell');
+      } else if (action.type === 'spell') {
+        this.fadeOrb(orb);
         this.castAway(ghost);
         sound.sfx?.cardCast();
       } else {
+        this.fadeOrb(orb);
         this.land(ghost, square);
         sound.sfx?.cardDrop();
       }
@@ -2274,9 +2314,52 @@ export class GameScreen {
       this.render();
       return;
     }
+    this.fadeOrb(orb);
+    ghost.classList.remove('to-orb');
     this.render();
     this.snapBack(ghost, drag.uid);
   };
+
+  /** The ball of static goes out, as the card it was goes back to the hand or into the discard pile. */
+  private fadeOrb(orb: HTMLElement | null): void {
+    if (!orb) return;
+    orb.classList.remove('on');
+    window.setTimeout(() => orb.remove(), 200);
+  }
+
+  /**
+   * Let go on a square, the ball of static shoots down into it: it swells, dives in and bursts there in lightning, a
+   * flash, rings and sparks, shaking the board. What the card does (a summon's pillar of light, a spell) plays on from
+   * there (`untilImpact`). `landed`: a card that stays on the square, as a summon, a sacrifice or an evolution.
+   */
+  private strike(orb: HTMLElement, square: v2.Square, landed: boolean): void {
+    const box = this.cells[square]?.getBoundingClientRect();
+    if (!box) return orb.remove();
+    const x = box.left + box.width / 2;
+    const y = box.top + box.height / 2;
+    if (landed) this.landed.set(square, performance.now() + STRIKE_MS);
+    orb.classList.add('striking');
+    orb.animate(
+      [
+        { left: orb.style.left, top: orb.style.top, scale: 1 },
+        { left: orb.style.left, top: `${parseFloat(orb.style.top) - box.height * 0.25}px`, scale: 1.5, offset: 0.4 },
+        { left: `${x}px`, top: `${y}px`, scale: 0.5 },
+      ],
+      { duration: STRIKE_MS, easing: 'cubic-bezier(0.55, 0, 0.85, 0.45)', fill: 'forwards' },
+    );
+    sound.sfx?.strike(STRIKE_MS);
+    window.setTimeout(() => {
+      orb.remove();
+      document.body.appendChild(strikeBurst(x, y, box.width, this.view?.you ?? 'white'));
+      this.fx.quake(0.5);
+    }, STRIKE_MS);
+  }
+
+  /** How long until the ball of static a card was let go as lands on `square`; 0 once it has, or if there is none. */
+  private untilImpact(square: v2.Square, now: number): number {
+    const at = this.landed.get(square);
+    return at === undefined ? 0 : Math.max(0, at - now);
+  }
 
   /** What Resurrect (`uid`) could raise onto `square` from the caster's discard pile: one card per name, newest first. */
   private raiseOptions(uid: string, square: v2.Square): { action: Action; card: v2.ViewCard | undefined; cardId: string }[] {
@@ -2404,6 +2487,7 @@ export class GameScreen {
     if (!this.drag) return;
     this.removeDragListeners();
     this.drag.ghost?.remove();
+    this.drag.orb?.remove();
     this.drag = null;
     if (this.view) this.render();
   }
