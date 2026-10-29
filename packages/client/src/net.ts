@@ -141,7 +141,26 @@ export class Net {
     if (this.closedByUser) return;
     // Only intent-carrying requests are worth replaying; list refreshes happen on `welcome` anyway.
     if (msg.type === 'listGames' || msg.type === 'getSocial' || msg.type === 'openGame' || msg.type === 'leave') return;
+    /*
+     * Plays and arena edits are never replayed. Sent minutes apart from the tap that made them, they would land on a
+     * board the player is no longer looking at: the card that seemed not to respond would be summoned somewhere else
+     * the moment the socket came back, and several of them would all arrive at once. The screen says the connection
+     * is down instead (main.ts), and the player plays again when it is back.
+     */
+    if (msg.type === 'actionV2' || msg.type === 'action' || msg.type === 'arenaV2') {
+      this.dropped = (this.dropped ?? 0) + 1;
+      return;
+    }
     if (this.pending.length < 8) this.pending.push(msg);
+  }
+
+  /** How many plays were dropped because the socket was down; `takeDropped` reads and clears it. */
+  dropped = 0;
+
+  takeDropped(): number {
+    const n = this.dropped ?? 0;
+    this.dropped = 0;
+    return n;
   }
 
   /** Replay requests made while disconnected. Called after the server's `welcome`. */

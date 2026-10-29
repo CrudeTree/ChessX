@@ -810,11 +810,20 @@ export class Board3D {
   ) {
     this.kit = new Kit(new Set(index.models), new Set(index.standees));
     this.canvas.className = 'g2-figures';
-    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, alpha: true, antialias: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    /*
+     * A phone's device pixel ratio is often 3, and drawing three times as many pixels per square is what a phone GPU
+     * cannot pay for: the board is redrawn on every frame a figure moves, and a card dragged over it has to keep up
+     * with the finger. On a screen this size the extra pixels are barely visible, so a phone caps them lower. A
+     * desktop keeps the sharper picture it had.
+     */
+    const phone = window.matchMedia('(max-width: 899px)').matches;
+    const ratio = Math.min(window.devicePixelRatio, phone ? 1.5 : 2);
+    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, alpha: true, antialias: !phone && ratio <= 2 });
+    this.renderer.setPixelRatio(ratio);
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // A phone gets one shadow-map lookup per pixel rather than a soft blur across several: its dearest shader.
+    this.renderer.shadowMap.type = phone ? THREE.BasicShadowMap : THREE.PCFSoftShadowMap;
     this.canvas.addEventListener('webglcontextlost', (e) => {
       e.preventDefault();
       this.onLost?.();
@@ -944,7 +953,9 @@ export class Board3D {
     cam.near = 0.1 * S;
     cam.far = 3.5 * S;
     cam.updateProjectionMatrix();
-    const map = S < SMALL_BOARD ? 1024 : 2048;
+    // A phone's shadow map is a quarter the size: its GPU is the one that cannot pay for a big one.
+    const small = S < SMALL_BOARD;
+    const map = small ? 512 : 2048;
     if (shadow.mapSize.x !== map) {
       shadow.mapSize.set(map, map);
       shadow.map?.dispose();
@@ -1041,7 +1052,11 @@ export class Board3D {
     near.sort((a, b) => a.at - b.at);
     let best: Piece | null = null;
     let bestAt = Infinity;
-    // Nearest first, until no part of the rest can be nearer than what is hit.
+    /*
+     * Nearest first, until no part of the rest can be nearer than what is hit. The cheap box test above has already
+     * said which figures the ray passes through, so the dear per-triangle test only runs for those, and only while
+     * one could still be the nearest. On a crowded board this is the whole cost of a pointer move.
+     */
     for (const { piece, at: reach } of near) {
       if (reach >= bestAt) break;
       const at = piece.hit(r, 'shape');

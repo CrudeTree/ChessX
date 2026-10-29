@@ -143,6 +143,10 @@ interface CardDrag {
   ghost: HTMLElement | null;
   /** The ball of static the card turns into over the board (`orbFor`). */
   orb: HTMLElement | null;
+  /** The held card's size in pixels, measured once when the drag starts (`placeHeld`). */
+  size?: { w: number; h: number };
+  /** Where the held card can go, worked out once per drag rather than on every pointer move (`dropTargets`). */
+  drops?: Map<v2.Square, Action>;
   hover: v2.Square | null;
   /** Over your discard pile, where letting go pitches the card for mana. */
   pitch: boolean;
@@ -177,6 +181,10 @@ interface PieceDrag {
   startX: number;
   startY: number;
   ghost: HTMLElement | null;
+  /** The dragged piece's size in pixels, measured once when the ghost is made (`onPieceMove`). */
+  size?: { w: number; h: number };
+  /** Where the piece can go, worked out once per drag rather than on every pointer move (`targets`). */
+  targets?: Map<v2.Square, Action>;
   hover: v2.Square | null;
 }
 
@@ -1106,13 +1114,18 @@ export class GameScreen {
    * are played by dragging them instead. A move that can promote is its plain form here; `act` offers the rest.
    */
   private targets(): Map<v2.Square, Action> {
+    const from = this.selectedSquare;
     const out = new Map<v2.Square, Action>();
-    if (this.selectedSquare === null) return out;
+    if (from === null) return out;
+    // A drag asks for this on every pointer move; the legal actions only change when the server answers.
+    const held = this.pieceDrag;
+    if (held && held.from === from && held.targets) return held.targets;
     const kind = this.aimLava === this.selectedSquare ? 'lava' : 'move';
     for (const a of this.legal()) {
       if (a.type === 'move' && a.promote) continue;
       if ((a.type === 'move' || a.type === 'lava') && a.type === kind && a.from === this.selectedSquare) out.set(a.to, a);
     }
+    if (held && held.from === from) held.targets = out;
     return out;
   }
 
@@ -1573,7 +1586,12 @@ export class GameScreen {
 
   /**
    * The mana squares ran dry and move, `delay` ms from now: the old ones burst, a banner says so, pillars of mana come
-   * down on the new ones, and for that moment nothing can be played, so both sides see what changed.
+   * down on the new ones, so both sides see what changed.
+   *
+   * Nothing is taken away from the player while it plays. This used to set `pointer-events: none` on the whole screen
+   * for the length of the animation, which on a slow phone (where the timers ran late) left the board dead for
+   * seconds: a press on a card did nothing, and the drag the player started after it landed somewhere else. The
+   * effects still hide the old squares and the banners still play; the board just stays answerable throughout.
    */
   private startShift(from: v2.Square[], to: v2.Square[], delay: number): void {
     const now = performance.now();
@@ -1581,7 +1599,6 @@ export class GameScreen {
     this.fx.shiftShrines(from, to, delay);
     this.fx.banner('The mana moves', 'mana', to.map(v2.squareName).join(' · '), delay + SHIFT_GONE_MS);
     for (const at of [SHIFT_GONE_MS, SHIFT_LAND_MS]) window.setTimeout(() => this.render(), delay + at + 20);
-    this.root.classList.add('g2-pausing');
     window.clearTimeout(this.shiftTimer);
     this.shiftTimer = window.setTimeout(() => {
       this.endShift();
@@ -2032,6 +2049,9 @@ export class GameScreen {
    * target goes anywhere (`untargetedSpell`).
    */
   private dropTargets(uid: string): Map<v2.Square, Action> {
+    // A drag asks for this on every pointer move, and the legal actions do not change until the server answers.
+    const held = this.drag;
+    if (held && held.uid === uid && held.drops) return held.drops;
     const out = new Map<v2.Square, Action>();
     for (const a of this.legal()) {
       if (!('cardUid' in a) || a.cardUid !== uid) continue;
@@ -2039,6 +2059,7 @@ export class GameScreen {
       else if (a.type === 'seal' || a.type === 'evolve') out.set(a.target, a);
       else if (a.type === 'spell' && a.target !== undefined) out.set(a.target, a);
     }
+    if (held && held.uid === uid) held.drops = out;
     return out;
   }
 
@@ -2131,10 +2152,12 @@ export class GameScreen {
     const aim = this.cardAim(drag, e.clientX, e.clientY);
     this.placeHeld(drag, e.clientX, e.clientY, aim);
     const anywhere = this.untargetedSpell(drag.uid) !== null;
+    // Cached for the drag (`dropTargets`), so a spell's whole board and a summon's squares are worked out once.
     const drops = this.dropTargets(drag.uid);
-    const square = this.squareAt(aim.x, aim.y, (sq) => drops.has(sq));
+    const square = this.squareAt(aim.x, aim.y, anywhere ? undefined : (sq) => drops.has(sq));
     const hover = square !== null && (anywhere || drops.has(square)) ? square : null;
-    const pitch = this.overPitch(aim.x, aim.y);
+    // The pile takes a card only off the board, so the point is not looked up while the aim is over it.
+    const pitch = aim.onBoard ? false : this.overPitch(aim.x, aim.y);
     if (pitch !== drag.pitch) {
       drag.pitch = pitch;
       drag.ghost.classList.toggle('over', hover !== null || pitch);
@@ -2157,8 +2180,15 @@ export class GameScreen {
    */
   private placeHeld(drag: CardDrag, x: number, y: number, aim: { x: number; y: number; onBoard: boolean; orbY: number }): void {
     const ghost = drag.ghost!;
-    const top = drag.pointerType === 'mouse' ? y - ghost.offsetHeight - 6 : y + TOUCH_GRIP - ghost.offsetHeight;
-    ghost.style.left = `${x - ghost.offsetWidth / 2}px`;
+    /*
+     * The card's size never changes during a drag, so it is measured once (on the first move, when `size` is unset)
+     * and kept. Reading offsetWidth/offsetHeight between the style writes below forced a synchronous layout on every
+     * pointer move, which on a phone is the difference between a card that keeps up with the finger and one that
+     * trails seconds behind it.
+     */
+    const size = drag.size ?? (drag.size = { w: ghost.offsetWidth, h: ghost.offsetHeight });
+    const top = drag.pointerType === 'mouse' ? y - size.h - 6 : y + TOUCH_GRIP - size.h;
+    ghost.style.left = `${x - size.w / 2}px`;
     ghost.style.top = `${top}px`;
     ghost.style.transformOrigin = `50% ${aim.y - top}px`;
     ghost.classList.toggle('to-orb', aim.onBoard);
@@ -2598,9 +2628,11 @@ export class GameScreen {
       if (!ghost) return;
     }
     // Under a finger the piece rides above it, so the finger does not hide it; it lands where the finger is.
-    const lift = drag.pointerType === 'touch' ? ghost.offsetHeight * 0.9 : 0;
-    ghost.style.left = `${e.clientX - ghost.offsetWidth / 2}px`;
-    ghost.style.top = `${e.clientY - ghost.offsetHeight / 2 - lift}px`;
+    // Its size cannot change mid-drag, so it is measured on the first move and kept (see `placeHeld`).
+    const size = drag.size ?? (drag.size = { w: ghost.offsetWidth, h: ghost.offsetHeight });
+    const lift = drag.pointerType === 'touch' ? size.h * 0.9 : 0;
+    ghost.style.left = `${e.clientX - size.w / 2}px`;
+    ghost.style.top = `${e.clientY - size.h / 2 - lift}px`;
     this.board3d?.follow(e.clientX, e.clientY, drag.pointerType === 'touch');
     const targets = this.targets();
     const square = this.squareAt(e.clientX, e.clientY, (sq) => targets.has(sq) || this.canRelocate(drag.from, sq), true);

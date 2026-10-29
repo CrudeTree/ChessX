@@ -8161,13 +8161,11 @@ body.g2-grabbing * {
 }
 
 /*
- * While the mana squares move (GameScreen's startShift), nothing can be played and all but the board fades back, so
- * both sides take in the change. Nothing is laid over the board: a layer over the 3D board stalls its drawing.
+ * While the mana squares move (GameScreen's startShift) all but the board fades back, so both sides take in the change.
+ * Nothing is laid over the board: a layer over the 3D board stalls its drawing. The screen stays answerable throughout:
+ * it used to take pointer events away for the length of the animation, which on a slow phone left the board dead for
+ * seconds and sent the drag that followed somewhere the player never touched.
  */
-#game2.g2-pausing {
-  pointer-events: none;
-}
-
 #game2.g2-pausing :is(.g2-detail, .g2-side, .g2-statusblock, .g2-hand, .g2-player, .g2-piles) {
   animation: g2-dim 2300ms ease both;
 }

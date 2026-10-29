@@ -1070,6 +1070,21 @@ function showToast(message: string, kind: 'error' | 'info' = 'error'): void {
 
 net.onStatus = (connected) => {
   connLabel.textContent = connected ? 'connected' : 'reconnecting…';
+  /*
+   * A dropped socket in a game used to be invisible: the board stayed drawn and every card played, every move, went
+   * into `net`'s pending queue and was replayed in a burst when the socket came back. On the phone that is a card that
+   * ignores the finger, then jumps to a square seconds later; the queue's actions all land at once, including ones the
+   * player only made because nothing seemed to be happening. Say so, and keep saying it, so the board is not read as
+   * live when it is not.
+   */
+  if (!connected) showToast('Connection lost: plays are paused until it comes back.', 'error');
+  else if (!game2Screen.classList.contains('hidden') || !gameScreen.classList.contains('hidden')) {
+    const lost = net.takeDropped();
+    showToast(
+      lost ? `Reconnected. ${lost} play${lost === 1 ? '' : 's'} made while offline did not go through: check the board.` : 'Reconnected.',
+      lost ? 'error' : 'info',
+    );
+  }
 };
 
 net.onUnauthorized = () => {
