@@ -639,6 +639,27 @@ describe('evolving (Djabooty, 2026-10-11)', () => {
     expect(played.some((a) => 'cardUid' in a && (a.cardUid === warlord || a.cardUid === archmage))).toBe(false);
   });
 
+  it('a Squire is the Warrior line\'s other first level, so a Warrior goes onto it too (Djabooty, 2026-10-29)', () => {
+    const state = bare(7);
+    state.mana.white = 6;
+    const squire = piece(state, 'white', 'squire', 'c3');
+    const recruit = piece(state, 'white', 'recruit', 'e3');
+    const warrior = give(state, 'white', 'warrior');
+    const cost = STARTER_CATALOG.warrior as PieceCard;
+    // Both first levels take the Warrior for its printed cost, and neither is treated as a skipped level.
+    expect(evolveCost(state, cost, pieceAt(state, S('c3'))!)).toBe(cost.cost);
+    expect(evolveCost(state, cost, pieceAt(state, S('e3'))!)).toBe(cost.cost);
+    expect(cost).toMatchObject({ line: 'Warrior', level: 2, evolvesFrom: 'recruit', evolvesFromAlso: ['squire'] });
+    expect(legalActions(state).filter((a) => a.type === 'evolve' && a.cardUid === warrior)).toHaveLength(2);
+    const { state: next, events } = applyLegalAction(state, { type: 'evolve', cardUid: warrior, target: S('c3') });
+    expect(pieceAt(next, S('c3'))).toMatchObject({ cardId: 'warrior' });
+    expect(next.pieces.some((p) => p.id === squire.id)).toBe(false);
+    expect(events).toContainEqual(expect.objectContaining({ type: 'evolved', fromName: 'Squire', name: 'Warrior', cost: 4 }));
+    // The Recruit is untouched, and a level 3 still cannot leapfrog onto a first level.
+    expect(next.pieces.some((p) => p.id === recruit.id)).toBe(true);
+    expect(evolveCost(state, STARTER_CATALOG.warlord as PieceCard, pieceAt(state, S('c3'))!)).toBeNull();
+  });
+
   it('Initiates take any path (Djabooty, 2026-10-11): a level-2 card goes onto one for its cost plus the level it skips', () => {
     const state = bare(5);
     const initiate = piece(state, 'white', 'initiate', 'e3');
@@ -1498,6 +1519,12 @@ describe('starter deck', () => {
       const from = STARTER_CATALOG[card.evolvesFrom]!;
       expect(deck.has(card.evolvesFrom)).toBe(true);
       expect(from).toMatchObject({ type: 'piece', line: card.line, level: card.level! - 1 });
+      // A line begun by more than one card: each of the others is in the deck too, at the same level and in the line.
+      for (const also of card.evolvesFromAlso ?? []) {
+        expect(deck.has(also), also).toBe(true);
+        expect(STARTER_CATALOG[also], also).toMatchObject({ type: 'piece', line: card.line, level: card.level! - 1 });
+        expect(STARTER_CATALOG[also]!.type === 'piece' && STARTER_CATALOG[also]!.evolvesFrom).toBeFalsy();
+      }
     }
   });
 
@@ -1927,6 +1954,33 @@ describe('port additions', () => {
     expect(catalog.wyrmling).toEqual({ ...wyrmling, cost: 1 });
     expect(catalog.insight).toEqual(STARTER_CATALOG.insight);
     expect(catalog.custom).toBe(custom);
+  });
+
+  it('a game saved before the Squire joined the Warrior line picks up the line, so its Squires can evolve', () => {
+    // As it was saved: a first-level Warrior with no line of its own and no card evolving from it.
+    const oldSquire: PieceCard = {
+      type: 'piece',
+      id: 'squire',
+      name: 'Squire',
+      cost: 1,
+      sealTimer: 1,
+      piece: (STARTER_CATALOG.squire as PieceCard).piece,
+      tribe: 'Warrior',
+    };
+    const oldWarrior: PieceCard = { ...(STARTER_CATALOG.warrior as PieceCard), evolvesFromAlso: undefined };
+    const catalog = withCurrentArt({ squire: oldSquire, warrior: oldWarrior, recruit: STARTER_CATALOG.recruit as PieceCard });
+    expect(catalog.squire).toMatchObject({ line: 'Warrior', level: 1 });
+    expect(catalog.warrior).toMatchObject({ evolvesFrom: 'recruit', evolvesFromAlso: ['squire'] });
+    // The balance the game was saved with is kept: only the card's place in its line is brought up to date.
+    expect(catalog.squire).toMatchObject({ cost: 1, sealTimer: 1 });
+    // And the engine now lets the Warrior go onto that Squire.
+    const state = bare(3);
+    state.catalog = catalog;
+    state.mana.white = 9;
+    piece(state, 'white', 'squire', 'c3');
+    const warrior = give(state, 'white', 'warrior');
+    expect(evolveCost(state, catalog.warrior as PieceCard, pieceAt(state, S('c3'))!)).toBe(4);
+    expect(legalActions(state).some((a) => a.type === 'evolve' && a.cardUid === warrior && a.target === S('c3'))).toBe(true);
   });
 
   it('resigned and timeout results end the game with no legal actions', () => {

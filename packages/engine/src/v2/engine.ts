@@ -272,15 +272,21 @@ export function canPromote(piece: Piece): boolean {
 
 /**
  * What playing evolution `card` onto `piece` costs, or null if it cannot go there. It goes onto the card it evolves
- * from for its printed cost. A level-2 card also goes onto a piece whose card takes any path (the Initiate), for its
- * cost plus the cost of the first level it skips (Djabooty, 2026-10-11). Any piece card goes onto a piece promoting on
- * the far row, for free (Djabooty, 2026-10-17).
+ * from for its printed cost, and onto any other first-level card of its line (`evolvesFromAlso`: the Squire and the
+ * Recruit are both the Warrior's first level) for that too. A level-2 card also goes onto a piece whose card takes any
+ * path (the Initiate), for its cost plus the cost of the first level it skips (Djabooty, 2026-10-11). Any piece card
+ * goes onto a piece promoting on the far row, for free (Djabooty, 2026-10-17).
  */
 export function evolveCost(state: GameState, card: PieceCard, piece: Piece): number | null {
   if (piece.def.king || !piece.cardId) return null;
   if (canPromote(piece) && !card.piece.promotes) return 0;
   if (!card.evolvesFrom) return null;
   if (piece.cardId === card.evolvesFrom) return card.cost;
+  // A line begun by more than one card: the other first levels evolve into this one for its printed cost.
+  if (card.evolvesFromAlso?.includes(piece.cardId)) {
+    const sibling = state.catalog[piece.cardId];
+    if (sibling?.type === 'piece' && !sibling.evolvesFrom && sibling.level === card.level! - 1) return card.cost;
+  }
   const base = state.catalog[piece.cardId];
   const skipped = state.catalog[card.evolvesFrom];
   if (base?.type !== 'piece' || !base.anyPath || skipped?.type !== 'piece' || skipped.evolvesFrom) return null;

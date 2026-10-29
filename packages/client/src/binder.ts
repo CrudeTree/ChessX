@@ -54,6 +54,8 @@ function sortIntoBands(cards: Card[]): Band[] {
   const bands: Band[] = [];
   for (const [name, members] of byType) {
     const line: Card[][] = [];
+    // A line can begin with more than one card (the Squire and the Recruit are both the Warrior's first level), and
+    // they share a row: one level of the line is every card at that level.
     let level = members.filter((c) => c.line && !c.evolvesFrom);
     while (level.length) {
       line.push(level);

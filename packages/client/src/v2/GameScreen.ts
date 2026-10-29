@@ -117,7 +117,9 @@ export function frameOfCard(card: v2.ViewCard, owner: Color, cards: Record<strin
     sealTimer: card.sealTimer,
     line: card.line,
     level: card.level,
-    evolvesFrom: card.evolvesFrom ? (cards[card.evolvesFrom]?.name ?? card.evolvesFrom) : undefined,
+    evolvesFrom: card.evolvesFrom
+      ? [cards[card.evolvesFrom]?.name ?? card.evolvesFrom, ...(card.evolvesFromAlso ?? []).map((id) => cards[id]?.name ?? id)].join(' or ')
+      : undefined,
     tribe: card.tribe,
     text: card.text,
     ability: card.abilityText,
@@ -1922,8 +1924,7 @@ export class GameScreen {
   }
 
   private howToPlay(uid: string, card: v2.ViewCard | undefined): string {
-    if (card?.type === 'spell') {
-      if (card.grants) {
+    if (card?.type === 'spell') {      if (card.grants) {
         const who = card.tribe ? `one of your ${card.tribe}s` : 'one of your pieces';
         return `Drag it onto ${who} to teach it ${v2.ABILITIES[card.grants].name}.`;
       }
@@ -1945,17 +1946,24 @@ export class GameScreen {
     if (card?.evolvesFrom) {
       const cards = this.view?.cards ?? {};
       const from = cards[card.evolvesFrom];
+      // A line begun by more than one card: the Squire is the Warrior's other first level.
+      const also = (card.evolvesFromAlso ?? []).map((id) => cards[id]?.name ?? id);
+      const names = [from?.name ?? card.evolvesFrom, ...also];
+      const fromText = names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names.at(-1)}` : names[0]!;
       // A level-2 card can also go onto an Initiate (any path), for its own cost plus the level it skips.
       const anyPath = from && !from.evolvesFrom ? Object.values(cards).find((c) => c.anyPath) : undefined;
-      const also = anyPath ? ` (or onto ${/^[aeiou]/i.test(anyPath.name) ? 'an' : 'a'} ${anyPath.name}, paying ${from!.name}'s ${from!.cost} mana as well)` : '';
-      return `Drag it onto your ${from?.name ?? 'earlier form'}${also} to evolve it, if that piece was already on the board when your turn began. The new piece can move from your next turn.`;
+      const alsoPath = anyPath ? ` (or onto ${/^[aeiou]/i.test(anyPath.name) ? 'an' : 'a'} ${anyPath.name}, paying ${from!.name}'s ${from!.cost} mana as well)` : '';
+      return `Drag it onto your ${fromText}${alsoPath} to evolve it, if that piece was already on the board when your turn began. The new piece can move from your next turn.`;
     }
     return 'Drag it to a free square on your first two rows to summon it, or onto one of your pieces (not the King) to sacrifice that piece for it.';
   }
 
   /** "Evolves into Mystic Dragon." for a card with a next level in this game's cards. */
   private evolvesInto(cardId: string, view: v2.PlayerView): string | null {
-    const next = Object.values(view.cards).filter((c) => c.evolvesFrom === cardId).map((c) => c.name);
+    // The next level up: it names this card as the one it evolves from, or as one of its first levels (`evolvesFromAlso`).
+    const next = Object.values(view.cards)
+      .filter((c) => c.evolvesFrom === cardId || (c.evolvesFromAlso ?? []).includes(cardId))
+      .map((c) => c.name);
     return next.length ? `Evolves into ${next.join(' or ')}.` : null;
   }
 
@@ -2289,8 +2297,10 @@ export class GameScreen {
     if (target && promotes && v2.rankOf(target.square) === v2.backRank(v2.opposite(target.owner))) {
       return `promotes ${target.name}${into}, free`;
     }
-    // Onto an Initiate (any path): the level it skips is paid for as well.
-    const skipped = card?.evolvesFrom && target?.cardId !== card.evolvesFrom ? this.view?.cards[card.evolvesFrom] : undefined;
+    // Onto an Initiate (any path): the level it skips is paid for as well. Onto another first level of its own line
+    // (the Squire to the Warrior) nothing is skipped: that card is this level.
+    const ownFirstLevel = !!target?.cardId && (card?.evolvesFromAlso ?? []).includes(target.cardId);
+    const skipped = card?.evolvesFrom && !ownFirstLevel && target?.cardId !== card.evolvesFrom ? this.view?.cards[card.evolvesFrom] : undefined;
     const cost = card && skipped ? ` for ${card.cost + skipped.cost} mana, skipping ${skipped.name}` : '';
     return `evolves ${target?.name ?? 'this piece'}${into}${cost}`;
   }

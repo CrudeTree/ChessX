@@ -83,16 +83,17 @@ function libraryRows(cards: Card[]): Card[][] {
   const pieces = cards.filter((c) => c.type === 'piece');
   const rows: Card[][] = [];
   const placed = new Set<string>();
-  for (const root of pieces.filter((c) => c.line && !c.evolvesFrom)) {
+  // One row per line, however many cards begin it (the Squire and the Recruit are both the Warrior's first level).
+  for (const line of [...new Set(pieces.map((c) => c.line).filter((l): l is string => !!l))]) {
     const row: Card[] = [];
-    let level = [root];
+    let level = pieces.filter((c) => c.line === line && !c.evolvesFrom);
     while (level.length) {
       row.push(...level);
       const ids = new Set(level.map((c) => c.id));
       level = pieces.filter((c) => c.evolvesFrom !== undefined && ids.has(c.evolvesFrom));
     }
     for (const c of row) placed.add(c.id);
-    rows.push(row);
+    if (row.length) rows.push(row);
   }
   const loose: Card[] = [];
   for (const card of pieces.filter((c) => !placed.has(c.id))) {

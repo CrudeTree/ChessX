@@ -101,6 +101,10 @@ const pieceFaces = (id: string) => ({ ...faces(id), boardArt: `/figures/${id}_wh
  * `sealTimer` is 0. Page, Tower, Cathedral Runner and Hopper became the Recruit, Warlord, Archmage and Paladin;
  * Dawnfang moved exactly like Eclipse Knight and was folded into it.
  *
+ * A line may begin with more than one card (Djabooty, 2026-10-29): the Squire and the Recruit are both the first-level
+ * Warrior, so a Warrior goes onto either (`evolvesFromAlso`). Before that the Squire was in no line at all, and a
+ * player who dragged a Warrior onto one got nothing.
+ *
  * Costs raised so strong pieces come later (Djabooty, 2026-10-11): a Paladin costs at least 4. Every level costs
  * more than the one below it, and a first level that leaps off the back row (Colt, Wyrmling) costs 2, not 1.
  *
@@ -124,7 +128,9 @@ export const STARTER_CATALOG: Record<string, Card> = {
       'Promotes: when it reaches the far row, pick any piece card in your hand and it becomes that piece, for free. Keep it as it is if you like, and drop a piece card on it on a later turn to promote it then.',
     ...pieceFaces('initiate'),
   },
-  squire: { type: 'piece', id: 'squire', name: 'Squire', cost: 1, sealTimer: 1, piece: SQUIRE, tribe: 'Warrior', ...pieceFaces('squire') },
+  // The Squire and the Recruit are the same first-level Warrior (Djabooty, 2026-10-29: a Squire could never become a
+  // Warrior, because only the Recruit was in the line). Either one goes on to the Warrior.
+  squire: { type: 'piece', id: 'squire', name: 'Squire', cost: 1, sealTimer: 1, piece: SQUIRE, line: 'Warrior', level: 1, tribe: 'Warrior', ...pieceFaces('squire') },
 
   recruit: { type: 'piece', id: 'recruit', name: 'Recruit', cost: 1, sealTimer: 1, piece: RECRUIT, line: 'Warrior', level: 1, tribe: 'Warrior', ...pieceFaces('recruit') },
   warrior: {
@@ -137,6 +143,8 @@ export const STARTER_CATALOG: Record<string, Card> = {
     line: 'Warrior',
     level: 2,
     evolvesFrom: 'recruit',
+    // The Squire is the same first level, so the Warrior grows from either (Djabooty, 2026-10-29).
+    evolvesFromAlso: ['squire'],
     tribe: 'Warrior',
     ...pieceFaces('warrior'),
   },
@@ -344,14 +352,27 @@ export const STARTER_CATALOG: Record<string, Card> = {
 
 /**
  * A saved game keeps the costs, moves and rules its cards had when it began, but shows today's pictures and type
- * lines.
+ * lines. Which card a piece evolves from is a fact about the card rather than a number of the game's balance, so it is
+ * taken from today too: a game begun before the Squire was put in the Warrior line (Djabooty, 2026-10-29) can evolve
+ * one, where before it could not.
  */
 export function withCurrentArt(catalog: Record<string, Card>): Record<string, Card> {
   const out: Record<string, Card> = {};
   for (const [id, card] of Object.entries(catalog)) {
     const now = STARTER_CATALOG[id];
     if (card.type === 'piece' && now?.type === 'piece') {
-      out[id] = { ...card, art: now.art, darkArt: now.darkArt, boardArt: now.boardArt, darkBoardArt: now.darkBoardArt, tribe: card.tribe ?? now.tribe };
+      out[id] = {
+        ...card,
+        art: now.art,
+        darkArt: now.darkArt,
+        boardArt: now.boardArt,
+        darkBoardArt: now.darkBoardArt,
+        tribe: card.tribe ?? now.tribe,
+        // A card's place in its line: its level, and the first levels it evolves from.
+        ...(card.line === undefined ? { line: now.line } : {}),
+        ...(card.level === undefined ? { level: now.level } : {}),
+        ...(now.evolvesFromAlso ? { evolvesFromAlso: now.evolvesFromAlso } : {}),
+      };
     } else if (card.type === 'spell' && now?.type === 'spell') {
       out[id] = { ...card, art: now.art, darkArt: now.darkArt };
     } else {

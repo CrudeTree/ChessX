@@ -85,6 +85,8 @@ export interface ViewCard {
   darkBoardArt?: string;
   /** Pieces: the card this one evolves from; it can only be played onto a piece of that card. */
   evolvesFrom?: string;
+  /** Pieces: other first-level cards of the line this one also evolves from (the Squire, as well as the Recruit). */
+  evolvesFromAlso?: string[];
   /** Pieces: the evolution line and the level in it, 1 to 3. */
   line?: string;
   level?: number;
@@ -262,6 +264,7 @@ function viewCard(card: Card): ViewCard {
     if (card.boardArt) out.boardArt = card.boardArt;
     if (card.darkBoardArt) out.darkBoardArt = card.darkBoardArt;
     if (card.evolvesFrom) out.evolvesFrom = card.evolvesFrom;
+    if (card.evolvesFromAlso?.length) out.evolvesFromAlso = card.evolvesFromAlso;
     if (card.line) out.line = card.line;
     if (card.level) out.level = card.level;
     if (card.abilityText) out.abilityText = card.abilityText;

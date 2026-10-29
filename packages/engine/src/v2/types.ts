@@ -70,6 +70,12 @@ export interface PieceCard {
    * changes into it on its square; it cannot be summoned or sealed.
    */
   evolvesFrom?: string;
+  /**
+   * Other first-level cards that evolve into this one as well (Djabooty, 2026-10-29). A line can begin with more than
+   * one card: the Squire and the Recruit are both the first-level Warrior, so a Warrior goes onto either. Each is the
+   * same level, so what one costs the other costs.
+   */
+  evolvesFromAlso?: string[];
   /** The evolution line it belongs to (e.g. "Dragon") and its level in it, 1 to 3. */
   line?: string;
   level?: number;
