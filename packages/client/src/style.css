@@ -5987,6 +5987,21 @@ body.g2-grabbing * {
   scale: 1.08;
 }
 
+/*
+ * A card that lifts under the pointer must not take its own hit area with it. The lift moves the card up by about a
+ * fifth of its width, and without this the bottom of the card is left behind: the pointer that was on the card is now
+ * below it, the card drops back under the pointer, lifts again... a flicker that makes a press there miss. The strip
+ * keeps the card under the pointer at rest and while lifted, so hovering and clicking are steady.
+ */
+.g2-card::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--card-w) * -0.22);
+  height: calc(var(--card-w) * 0.22);
+}
+
 .g2-card.inspected {
   outline: 2px solid #7fb8ff;
   outline-offset: 2px;

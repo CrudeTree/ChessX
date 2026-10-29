@@ -152,8 +152,17 @@ interface CardDrag {
 const DRAG_THRESHOLD = 6;
 /** A finger holds a card by its foot: this many pixels of the card lie below the point it touches. */
 const TOUCH_GRIP = 10;
-/** Over the board a held card is a ball of static; a finger holds the ball this many pixels above where it touches. */
+/**
+ * Off the board a finger's card hangs by its foot and its ball of static this far above the fingertip, so the finger
+ * does not cover it. Over the board the ball sits on the square under the finger instead (`cardAim`).
+ */
 const TOUCH_ORB_LIFT = 36;
+/**
+ * A mouse drag only scrolls the hand when it is this many times more sideways than it is up or down, and has gone at
+ * least `SCROLL_SLOP` pixels. A click that wanders a few pixels sideways plays the card instead of being swallowed.
+ */
+const SIDEWAYS_RATIO = 1.6;
+const SCROLL_SLOP = 16;
 /** Let go on a square, the ball charges and dives in: it lands this long after (ms), and the summon plays on from there. */
 const STRIKE_MS = 190;
 
@@ -2040,7 +2049,13 @@ export class GameScreen {
   }
 
   private pressCard(e: PointerEvent, uid: string, tile: HTMLElement): void {
-    if (e.button !== 0 || this.drag || this.pieceDrag) return;
+    if (e.button !== 0 || this.pieceDrag) return;
+    /*
+     * A press whose release was never seen (the browser took the pointer for a scroll, or a second finger landed)
+     * would otherwise leave a drag standing for ever, and every card after it would be ignored. A press is a fresh
+     * start: whatever was held before is put down.
+     */
+    if (this.drag) this.cancelDrag();
     // Stops the browser starting a text selection; the click still fires.
     if (e.pointerType === 'mouse') e.preventDefault();
     // Touch pointers are captured by the pressed tile, which is rebuilt when the drag starts;
@@ -2075,14 +2090,19 @@ export class GameScreen {
     }
     if (!drag.ghost) {
       if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
-      // Only a pull up towards the board picks the card up; a sideways swipe scrolls the hand.
-      if (-dy < Math.abs(dx)) {
-        if (e.pointerType === 'mouse' && row) {
-          drag.scrollFrom = row.scrollLeft;
-          return;
-        }
-        this.removeDragListeners();
-        this.drag = null;
+      /*
+       * Past the threshold the card is picked up, in whichever direction the gesture happens to start: a drag that
+       * begins by wandering sideways is still a drag towards the board, and dropping it there made the card seem to
+       * ignore the press until it was tried again.
+       *
+       * A sideways swipe over the hand scrolls it instead. On a finger the browser already does that: `.draggable`
+       * carries `touch-action: pan-x`, so a swipe along the hand scrolls natively and the browser cancels the pointer
+       * (this drag ends with it). Only a mouse needs asking, and only when the move is decisively along the hand.
+       */
+      const sideways = Math.abs(dx) > Math.abs(dy) * SIDEWAYS_RATIO && Math.abs(dx) > SCROLL_SLOP;
+      const canScroll = !!row && row.scrollWidth > row.clientWidth + 1;
+      if (e.pointerType === 'mouse' && sideways && canScroll) {
+        drag.scrollFrom = row.scrollLeft;
         return;
       }
       const tile = this.tileFor(drag.uid);
@@ -2135,7 +2155,7 @@ export class GameScreen {
    * Moves the held card with the pointer. Over the board it is drawn into a ball of static where it aims, small enough
    * to put on the exact square, and off the board it comes back out of it.
    */
-  private placeHeld(drag: CardDrag, x: number, y: number, aim: { x: number; y: number; onBoard: boolean }): void {
+  private placeHeld(drag: CardDrag, x: number, y: number, aim: { x: number; y: number; onBoard: boolean; orbY: number }): void {
     const ghost = drag.ghost!;
     const top = drag.pointerType === 'mouse' ? y - ghost.offsetHeight - 6 : y + TOUCH_GRIP - ghost.offsetHeight;
     ghost.style.left = `${x - ghost.offsetWidth / 2}px`;
@@ -2145,7 +2165,7 @@ export class GameScreen {
     if (!aim.onBoard && !drag.orb) return;
     const orb = this.orbFor(drag);
     orb.style.left = `${aim.x}px`;
-    orb.style.top = `${aim.y}px`;
+    orb.style.top = `${aim.orbY}px`;
     orb.classList.toggle('on', aim.onBoard);
   }
 
@@ -2162,15 +2182,38 @@ export class GameScreen {
   }
 
   /**
-   * Where a held card aims, and whether that is over the board, where the card is a ball of static centred there. A
-   * mouse aims with its pointer, and off the board the card hangs above it. A finger holds the card by its foot
-   * (`TOUCH_GRIP`) and the ball a little above itself (`TOUCH_ORB_LIFT`), so the fingertip does not cover it.
+   * Where a held card aims, and whether that is over the board, where the card is a ball of static.
+   *
+   * The aim is the square the card would land on, and the ball is drawn on that square's middle, so what the player
+   * sees is what they get. A mouse aims with its pointer. A finger aims with the square it is touching: lifting the
+   * aim clear of the fingertip (`TOUCH_ORB_LIFT`) moved it up to a whole row on a phone, where a square is only ~36px
+   * tall, so a card let go on the near row or by a far edge landed on a square the player was not touching.
    */
-  private cardAim(drag: CardDrag, x: number, y: number): { x: number; y: number; onBoard: boolean } {
-    const aimY = drag.pointerType === 'mouse' ? y : y - TOUCH_ORB_LIFT;
+  private cardAim(drag: CardDrag, x: number, y: number): { x: number; y: number; onBoard: boolean; orbY: number } {
+    if (drag.pointerType === 'mouse') return { x, y, onBoard: this.overBoard(x, y), orbY: y };
+    const square = this.cellAt(x, y);
+    const box = square === null ? undefined : this.cells[square]?.getBoundingClientRect();
+    if (!box) {
+      // Off the board the card hangs above the finger, its ball with it.
+      return { x, y, onBoard: false, orbY: y - TOUCH_ORB_LIFT };
+    }
+    // On the board the ball sits on the middle of the square under the finger: the square it will land on.
+    const midY = box.top + box.height / 2;
+    return { x: box.left + box.width / 2, y: midY, onBoard: true, orbY: midY };
+  }
+
+  /** The square of the board under (x, y) on the page, by what is drawn there. */
+  private cellAt(x: number, y: number): v2.Square | null {
+    const hit = document.elementFromPoint(x, y);
+    if (!hit || !this.boardEl.contains(hit)) return null;
+    const cell = hit.closest<HTMLElement>('[data-sq]');
+    return cell ? Number(cell.dataset.sq) : null;
+  }
+
+  /** Whether (x, y) is over the playing surface, whatever the finger covers. */
+  private overBoard(x: number, y: number): boolean {
     const board = this.boardEl.getBoundingClientRect();
-    const onBoard = x >= board.left && x <= board.right && aimY >= board.top && aimY <= board.bottom;
-    return { x, y: aimY, onBoard };
+    return x >= board.left && x <= board.right && y >= board.top && y <= board.bottom;
   }
 
   /** Whether the pointer is over the discard pile that takes a pitched card (see `renderPlayers`). */
