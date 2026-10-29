@@ -7794,17 +7794,22 @@ body.g2-grabbing * {
   width: var(--bw, 100vw);
   height: var(--bh, 100vh);
   pointer-events: none;
+  /*
+   * A true circle centred on the dragon, not an ellipse: the board's visible box is not square (the 3D board leans back,
+   * so its bounding box is shorter than it is wide), and a percentage-radius ellipse came out stretched and off-centre
+   * looking. --glow is half the board's diagonal, so the dark reaches every corner wherever the dragon stands.
+   */
   background:
-    radial-gradient(ellipse 42% 42% at var(--hx, 50%) var(--hy, 50%), transparent 4%, rgba(8, 10, 22, 0.62) 52%, rgba(2, 3, 8, 0.94) 100%),
-    radial-gradient(ellipse 34% 34% at var(--hx, 50%) var(--hy, 50%), rgba(120, 150, 255, 0.14), transparent 70%);
+    radial-gradient(circle var(--glow, 50vmax) at var(--hx, 50%) var(--hy, 50%), transparent 5%, rgba(8, 10, 22, 0.62) 55%, rgba(2, 3, 8, 0.94) 100%),
+    radial-gradient(circle var(--glow, 50vmax) at var(--hx, 50%) var(--hy, 50%), rgba(120, 150, 255, 0.14) 0%, transparent 62%);
   opacity: 0;
   animation: g2-elder-dark 2800ms ease-in-out calc(var(--delay, 0ms) + var(--t0)) both;
 }
 
 .g2-elder.black .g2-elder-dark {
   background:
-    radial-gradient(ellipse 42% 42% at var(--hx, 50%) var(--hy, 50%), transparent 4%, rgba(14, 8, 26, 0.65) 52%, rgba(4, 2, 10, 0.95) 100%),
-    radial-gradient(ellipse 34% 34% at var(--hx, 50%) var(--hy, 50%), rgba(150, 110, 255, 0.16), transparent 70%);
+    radial-gradient(circle var(--glow, 50vmax) at var(--hx, 50%) var(--hy, 50%), transparent 5%, rgba(14, 8, 26, 0.65) 55%, rgba(4, 2, 10, 0.95) 100%),
+    radial-gradient(circle var(--glow, 50vmax) at var(--hx, 50%) var(--hy, 50%), rgba(150, 110, 255, 0.16) 0%, transparent 62%);
 }
 
 /* In quickly, held through the descent, then back out as the piece settles. */

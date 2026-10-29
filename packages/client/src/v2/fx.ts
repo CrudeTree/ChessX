@@ -247,16 +247,20 @@ export class BoardFx {
     stage.style.setProperty('--cell', `${w}px`);
     stage.style.setProperty('--delay', `${delay}ms`);
     /*
-     * The dark has to cover the whole board, so it is placed in board coordinates (not the square's) and its glow is
-     * centred on the square that is receiving the dragon.
+     * The dark has to cover the whole board, so it is placed in board coordinates rather than the square's. Its glow is
+     * centred on the square the dragon is landing on — both axes, from that square's own offset in the board. Taking
+     * the horizontal centre from the board instead left the spotlight in the middle column whatever column the dragon
+     * was actually summoned to, while the vertical one tracked the piece correctly.
      */
     const board = this.board.getBoundingClientRect();
     stage.style.setProperty('--bx', `${board.left - at.left}px`);
     stage.style.setProperty('--by', `${board.top - at.top}px`);
     stage.style.setProperty('--bw', `${board.width}px`);
     stage.style.setProperty('--bh', `${board.height}px`);
-    stage.style.setProperty('--hx', `${board.width / 2}px`);
-    stage.style.setProperty('--hy', `${w / 2 + (at.top - board.top)}px`);
+    stage.style.setProperty('--hx', `${at.left - board.left + w / 2}px`);
+    stage.style.setProperty('--hy', `${at.top - board.top + h / 2}px`);
+    // Half the diagonal, so the dark still reaches the far corners from any square on the board.
+    stage.style.setProperty('--glow', `${Math.hypot(board.width, board.height) / 2}px`);
     // The board's own lean, so the beam rises square with it instead of straight up out of a tilted floor.
     const tilt = getComputedStyle(this.board).getPropertyValue('--tilt').trim();
     if (tilt) stage.style.setProperty('--tilt', tilt);
