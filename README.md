@@ -54,6 +54,8 @@ cp /opt/chessx/deploy/.env.example /opt/chessx/deploy/.env   # set PUBLIC_URL to
 
 The container listens on `127.0.0.1:8080` only. Point your existing reverse proxy at it — `deploy/nginx.conf.example` (with the WebSocket headers and Cloudflare real-IP settings) or `deploy/Caddyfile.example`. Re-run `deploy.sh` to update. The database lives in the `chessx_data` Docker volume.
 
+The container runs as the unprivileged `node` user (uid 1000), never as root. A data volume created by an older image that still ran as root belongs to root, so `deploy.sh` hands it to that user first (`deploy/set-volume-owner.sh`), which only changes ownership and never the files. A volume created from scratch is owned correctly from the start and needs no help.
+
 DNS on Cloudflare for `playchessx.com`: an **A** record `@` → droplet IP and a **CNAME** `www` → `playchessx.com`, both proxied (orange cloud). Under SSL/TLS pick **Full (strict)** and either install a Cloudflare Origin Certificate in the proxy or use certbot; WebSockets are on by default in Cloudflare's Network settings.
 
 Managed hosts, if you'd rather not run it yourself:

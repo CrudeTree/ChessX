@@ -17,6 +17,12 @@ if [ ! -f deploy/.env ]; then
 fi
 
 git pull --ff-only
+
+# The container runs as the unprivileged `node` user. A data volume first created while the image still ran as root
+# belongs to root and would be unwritable, so hand it over before the container is recreated. Harmless when it is
+# already correct (it only changes ownership, not the files).
+bash deploy/set-volume-owner.sh
+
 docker compose -f deploy/docker-compose.yml up -d --build
 docker image prune -f >/dev/null
 

@@ -7,7 +7,7 @@ import { currentBalance, v2 } from '@chessx/engine';
 import { PROTOCOL_VERSION, decode, encode, levelFor, type ClientMessage, type PlayerInfo, type ServerMessage, type SiteStats } from '@chessx/protocol';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { dirname, extname, join, normalize } from 'node:path';
+import { dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocket, WebSocketServer } from 'ws';
 import { Admin, AdminError } from './admin.js';
@@ -18,6 +18,7 @@ import { GameError, GameManager, type LiveGame, type Transport } from './games.j
 import { Notifier } from './notify.js';
 import { Progression, ProgressionError } from './progression.js';
 import { SocialError, SocialService } from './social.js';
+import { clientPathFor } from './static.js';
 
 const PORT = Number(process.env.PORT ?? 8080);
 const here = dirname(fileURLToPath(import.meta.url));
@@ -177,11 +178,12 @@ function serveStatic(req: IncomingMessage, res: ServerResponse, url: URL): void 
     res.end('ChessX server running. Build the client (npm run build) to serve it from here.');
     return;
   }
-  let path = normalize(join(clientDist, decodeURIComponent(url.pathname)));
-  if (!path.startsWith(clientDist)) {
+  const contained = clientPathFor(clientDist, url.pathname);
+  if (contained === null) {
     res.writeHead(403).end();
     return;
   }
+  let path = contained;
   if (!existsSync(path) || statSync(path).isDirectory()) path = join(clientDist, 'index.html');
   // Vite names bundles by content hash, so they can be cached forever; everything else
   // (index.html, sw.js, art) must be re-checked so a deploy is picked up on the next load.
