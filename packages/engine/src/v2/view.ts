@@ -96,6 +96,8 @@ export interface ViewCard {
   abilityText?: string;
   /** Pieces: any level-2 card can be played onto it (the Initiate). */
   anyPath?: boolean;
+  /** Pieces: an elder, whose arrival the board plays as a ceremony (the Ancient Mystic Dragon). */
+  elder?: boolean;
   /** Pieces: on the far row it becomes any piece card from the hand, for free (the Initiate). */
   promotes?: boolean;
   /** Spells: the ability it teaches a piece. */
@@ -269,6 +271,7 @@ function viewCard(card: Card): ViewCard {
     if (card.level) out.level = card.level;
     if (card.abilityText) out.abilityText = card.abilityText;
     if (card.anyPath) out.anyPath = true;
+    if (card.elder) out.elder = true;
     if (card.piece.promotes) out.promotes = true;
   } else {
     out.spell = card.effect.kind;

@@ -89,6 +89,12 @@ export interface PieceCard {
    * onto it, for that card's cost plus the cost of the first level it skips.
    */
   anyPath?: boolean;
+  /**
+   * An elder: a piece whose arrival is a ceremony rather than a summon (the Ancient Mystic Dragon, Djabooty
+   * 2026-10-29). It is summoned or evolved into the same way as any other, but the board dims and its sigil opens for
+   * a few seconds. Cosmetic only: the rules do not look at it.
+   */
+  elder?: boolean;
   /** Printed under how it moves, for a piece that does more than move (the Initiate's any path). */
   abilityText?: string;
   /** The longer rules the card viewer shows beside the card. */

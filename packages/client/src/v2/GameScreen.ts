@@ -9,6 +9,8 @@ import { cardBack, fillFrame, hourglass, tiltWithPointer, tribeClass, type Frame
 import {
   BoardFx,
   CARD_DIVE_MS,
+  ELDER_LAND_MS,
+  ELDER_T0_MS,
   HATCH_T0_MS,
   LAVA_FLIGHT_MS,
   SHIFT_GONE_MS,
@@ -1379,6 +1381,11 @@ export class GameScreen {
         case 'deployed': {
           const cardId = view.pieces.find((p) => p.id === e.pieceId)?.cardId;
           const cost = cardId ? (view.cards[cardId]?.cost ?? 0) : 0;
+          // The elder's arrival has its own, longer cue, in time with its ceremony on the board.
+          if (this.isElder(cardId ?? null, view)) {
+            sfx.elder(e.color, !this.wasDropped(e.square, now), this.untilImpact(e.square, now));
+            break;
+          }
           sfx.summon(e.color, !this.wasDropped(e.square, now), Math.min(1, cost / 5), this.untilImpact(e.square, now));
           break;
         }
@@ -1396,6 +1403,10 @@ export class GameScreen {
           break;
         case 'evolved': {
           const cardId = view.pieces.find((p) => p.id === e.pieceId)?.cardId;
+          if (this.isElder(cardId ?? null, view)) {
+            sfx.elder(e.color, !this.wasDropped(e.square, now));
+            break;
+          }
           sfx.evolve(e.color, !this.wasDropped(e.square, now), evolveForce(cardId ? view.cards[cardId] : undefined));
           break;
         }
@@ -1464,6 +1475,12 @@ export class GameScreen {
           const impact = this.untilImpact(e.square, now);
           const card = this.takeLanding(e.square, now) ? null : this.cardFace(piece.cardId, piece.owner, view);
           const cost = piece.cardId ? (view.cards[piece.cardId]?.cost ?? 0) : 0;
+          // The Ancient Mystic Dragon gets a whole ceremony, a few seconds of its own (see fx.ts elderSummon).
+          if (this.isElder(piece.cardId, view)) {
+            this.fx.elderSummon(e.square, piece.owner, card, impact);
+            this.tokenFx.set(piece.id, { kind: 'fx-rise', at: now + impact + (card ? CARD_DIVE_MS : 0) + ELDER_T0_MS + ELDER_LAND_MS });
+            break;
+          }
           this.fx.summon(e.square, piece.owner, card, impact, Math.min(1, cost / 5));
           this.tokenFx.set(piece.id, { kind: 'fx-rise', at: now + impact + (card ? CARD_DIVE_MS : 0) });
           break;
@@ -1514,6 +1531,14 @@ export class GameScreen {
           const old = pieceBefore.get(e.fromPieceId);
           const card = this.takeLanding(e.square, now) ? null : this.cardFace(piece.cardId, piece.owner, view);
           const force = evolveForce(piece.cardId ? view.cards[piece.cardId] : undefined);
+          // Becoming an elder is the same occasion as summoning one: the whole ceremony, not a bigger evolve.
+          if (this.isElder(piece.cardId, view)) {
+            this.fx.elderSummon(e.square, e.color, card, 0);
+            if (old) this.fx.vanish(e.square, this.pieceToken(old, prev), 'consume', (card ? CARD_DIVE_MS : 0) + ELDER_T0_MS);
+            this.board3d?.leave(e.fromPieceId, 'consume', (card ? CARD_DIVE_MS : 0) + ELDER_T0_MS, e.square);
+            this.tokenFx.set(piece.id, { kind: 'fx-rise', at: now + (card ? CARD_DIVE_MS : 0) + ELDER_T0_MS + ELDER_LAND_MS });
+            break;
+          }
           this.fx.evolve(e.square, e.color, old ? this.pieceToken(old, prev) : null, card, force);
           this.board3d?.leave(e.fromPieceId, 'consume', (card ? CARD_DIVE_MS : 0) + HATCH_T0_MS, e.square);
           this.tokenFx.set(piece.id, { kind: 'fx-rise', at: now + (card ? CARD_DIVE_MS : 0) + HATCH_RISE_DELAY });
@@ -3019,8 +3044,14 @@ export class GameScreen {
       if (!old) {
         if (this.placedAt === piece.square) {
           const force = Math.min(1, (piece.cardId ? (view.cards[piece.cardId]?.cost ?? 0) : 0) / 5);
-          if (fx) this.fx.summon(piece.square, piece.owner, null, 0, force);
-          sfx?.summon(piece.owner, false, force);
+          // An elder gets its ceremony here too: the Arena is where a card is most likely to be tried out.
+          if (this.isElder(piece.cardId, view)) {
+            if (fx) this.fx.elderSummon(piece.square, piece.owner, null, 0);
+            sfx?.elder(piece.owner, false);
+          } else {
+            if (fx) this.fx.summon(piece.square, piece.owner, null, 0, force);
+            sfx?.summon(piece.owner, false, force);
+          }
         } else {
           rose = true;
         }
@@ -3059,6 +3090,11 @@ export class GameScreen {
   }
 
   // -------------------------------------------------------------------- render
+
+  /** Whether this card is an elder: one that arrives with a ceremony of its own (see `fx.elderSummon`). */
+  private isElder(cardId: string | null, view: v2.PlayerView): boolean {
+    return !!cardId && view.cards[cardId]?.elder === true;
+  }
 
   private name(color: Color): string {
     return this.hooks.names()[color];

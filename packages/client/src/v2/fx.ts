@@ -29,6 +29,14 @@ export const SPELL_LANDS_MS = SPELL_HOLD_MS + SPELL_FLY_MS;
 export const SHIFT_GONE_MS = 300;
 export const SHIFT_LAND_MS = 1250;
 export const SHIFT_MS = 2300;
+/**
+ * An elder piece arriving (the Ancient Mystic Dragon): the world dims, its sigil turns above the square, and the piece
+ * comes down inside a column of light. `ELDER_T0_MS` is from the card's dive to the ritual starting, `ELDER_LAND_MS`
+ * from the start of the ritual to the piece setting down, and `ELDER_MS` how long the ritual runs in all.
+ */
+export const ELDER_T0_MS = 260;
+export const ELDER_LAND_MS = 1750;
+export const ELDER_MS = 3400;
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -100,6 +108,29 @@ export function strikeBurst(x: number, y: number, size: number, owner: Color): H
   }
   window.setTimeout(() => burst.remove(), 900);
   return burst;
+}
+
+/**
+ * An elder's sigil: a wide ritual circle with a second, counter-turning ring and long rays, drawn in the owner's
+ * colour. Only used for the pieces that bring a whole ceremony with them (`elderSummon`).
+ */
+const ELDER_SIGIL = (() => {
+  const rays = Array.from({ length: 24 }, (_, i) => `<path transform="rotate(${i * 15}) translate(0 -47)" d="M0 0 L0 -6"/>`).join('');
+  const ticks = Array.from({ length: 36 }, (_, i) => `<path transform="rotate(${i * 10}) translate(0 -28.5)" d="M0 0 L0 2.2"/>`).join('');
+  return (
+    '<svg viewBox="-50 -50 100 100" aria-hidden="true">' +
+    '<circle class="e1" r="49"/><circle class="e2" r="41"/><circle class="e3" r="24"/>' +
+    '<path class="e4" d="M0 -41 L35.5 20.5 L-35.5 20.5 Z M0 41 L35.5 -20.5 L-35.5 -20.5 Z"/>' +
+    '<path class="e5" d="M0 -24 L20.8 12 L-20.8 12 Z M0 24 L20.8 -12 L-20.8 -12 Z"/>' +
+    `<g class="e6">${ticks}</g><g class="e7">${rays}</g>` +
+    '</svg>'
+  );
+})();
+
+function elderSigil(cls = ''): HTMLElement {
+  const s = el('div', `g2-elder-sigil${cls ? ` ${cls}` : ''}`);
+  s.innerHTML = ELDER_SIGIL;
+  return s;
 }
 
 export class BoardFx {
@@ -190,7 +221,67 @@ export class BoardFx {
   }
 
   /**
-   * A piece arrives: `card` (a drawn card face, or null when the player already dropped it there) dives into
+   * An elder piece arrives: the Ancient Mystic Dragon, and anything else the cards mark as `elder`. The world dims to
+   * a cold blue, its sigil turns above the square, a column of light opens and the piece comes down inside it, in a
+   * burst that rings across the board twice. It takes `ELDER_MS` — a few seconds longer than any other summon, on
+   * purpose: this is meant to be watched.
+   *
+   * It is built as one stage in the overlay rather than a spot on the floor. The floor lies inside the board, and on
+   * the 3D board the board is a leaning, transformed box under a canvas holding the figures, so a floor child would be
+   * painted beneath the pieces and the dark would not read as the world dimming at all. The overlay sits over both, so
+   * the dark really does fall across the board and the dragon, and the ritual is drawn on top of it in turn.
+   */
+  elderSummon(square: v2.Square, owner: Color, card: HTMLElement | null, delay = 0): void {
+    const cell = this.cell(square);
+    if (!cell) return;
+    const box = this.overlay.getBoundingClientRect();
+    const at = cell.getBoundingClientRect();
+    const w = at.width || box.width / 8;
+    const h = at.height || box.height / 8;
+
+    const stage = el('div', `g2-elder ${owner}${card ? ' with-card' : ''}`);
+    stage.style.left = `${at.left - box.left}px`;
+    stage.style.top = `${at.top - box.top}px`;
+    stage.style.width = `${w}px`;
+    stage.style.height = `${h}px`;
+    stage.style.setProperty('--cell', `${w}px`);
+    stage.style.setProperty('--delay', `${delay}ms`);
+    /*
+     * The dark has to cover the whole board, so it is placed in board coordinates (not the square's) and its glow is
+     * centred on the square that is receiving the dragon.
+     */
+    const board = this.board.getBoundingClientRect();
+    stage.style.setProperty('--bx', `${board.left - at.left}px`);
+    stage.style.setProperty('--by', `${board.top - at.top}px`);
+    stage.style.setProperty('--bw', `${board.width}px`);
+    stage.style.setProperty('--bh', `${board.height}px`);
+    stage.style.setProperty('--hx', `${board.width / 2}px`);
+    stage.style.setProperty('--hy', `${w / 2 + (at.top - board.top)}px`);
+    // The board's own lean, so the beam rises square with it instead of straight up out of a tilted floor.
+    const tilt = getComputedStyle(this.board).getPropertyValue('--tilt').trim();
+    if (tilt) stage.style.setProperty('--tilt', tilt);
+
+    const dark = el('div', 'g2-elder-dark');
+    const ritual = el('div', 'g2-elder-ritual');
+    if (card) {
+      card.classList.add('g2-fx-card');
+      ritual.append(card);
+    }
+    ritual.append(rune(), elderSigil('outer'), elderSigil('inner'));
+    ritual.append(el('div', 'g2-elder-beam'), el('div', 'g2-elder-glow'), el('div', 'g2-fx-burst'));
+    ritual.append(el('div', 'g2-fx-shock'), el('div', 'g2-fx-shock late'));
+    ritual.append(sparks(26, 'gold'), sparks(14));
+
+    stage.append(dark, ritual);
+    this.overlay.append(stage);
+    this.removeAfter(stage, delay + ELDER_MS + 60);
+
+    const t0 = delay + (card ? CARD_DIVE_MS : 0) + ELDER_T0_MS;
+    this.quake(1, t0 + ELDER_LAND_MS);
+    this.quake(0.45, t0 + ELDER_LAND_MS + 620);
+  }
+
+  /** A piece arrives: `card` (a drawn card face, or null when the player already dropped it there) dives into
    * the square, then a summoning circle opens, a pillar of light rises and the piece lands in a burst that
    * shakes the board as hard as `force` (0 to 1).
    */

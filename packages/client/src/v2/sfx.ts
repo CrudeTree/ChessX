@@ -3,7 +3,7 @@
 // in fx.ts); this only makes the noise. White's magic rings in D major, Black's an octave lower in D minor.
 
 import type { v2 } from '@chessx/engine';
-import { BURST_MS, CARD_DIVE_MS, HATCH_T0_MS, LAVA_FLIGHT_MS } from './fx.js';
+import { BURST_MS, CARD_DIVE_MS, ELDER_LAND_MS, ELDER_T0_MS, HATCH_T0_MS, LAVA_FLIGHT_MS } from './fx.js';
 
 type Color = v2.Color;
 
@@ -217,6 +217,37 @@ export class Sfx {
     this.boom(land, force);
     this.bells(land, CHORDS[owner].map((n) => n + 12), 0, 0.03);
     if (force >= 0.75) this.braam(land, 2, 0.3 * force);
+  }
+
+  /**
+   * An elder arrives (the Ancient Mystic Dragon): a low, slow swell under the card's dive, a choir of bells climbing
+   * while the sigil opens, then a gong and a deep braam as it sets down, ringing on well after. It runs `ELDER_MS`, in
+   * time with the board (fx.ts elderSummon) rather than the shorter summon cue the other pieces get.
+   */
+  elder(owner: Color, dive: boolean, delayMs = 0): void {
+    let at = delayMs / 1000;
+    if (dive) {
+      this.whoosh(at, CARD_DIVE_MS / 1000, 2200, 500, 0.13);
+      at += CARD_DIVE_MS / 1000;
+    }
+    const open = at + ELDER_T0_MS / 1000;
+    const land = open + ELDER_LAND_MS / 1000;
+    // The air going still: a slow, dark swell under everything.
+    this.noise({ at: open, attack: 1.1, hold: 0.5, decay: 1.4, peak: 0.1, room: 0.7, filter: { type: 'lowpass', freq: 200, to: 900, time: 1.6, end: 300 } });
+    this.tone({ at: open, wave: 'triangle', freq: hz(26), to: hz(38), glide: 1.8, attack: 0.5, hold: 0.6, decay: 1.6, peak: 0.1, room: 0.6 });
+    // The sigil opening: bells climbing an octave, one after another.
+    const climb = owner === 'white' ? [62, 66, 69, 74, 78, 81, 86] : [50, 53, 57, 62, 65, 69, 74];
+    climb.forEach((note, i) => this.bells(open + 0.12 + i * 0.16, [note], 0, 0.045 + i * 0.004));
+    // It sets down: gong, braam, and a broad chord that rings on.
+    this.gong(land, 0.26);
+    this.braam(land, 2.6, 0.42);
+    this.boom(land, 0.75);
+    this.bells(land, CHORDS[owner].map((n) => n + 12), 0.03, 0.05);
+    this.bells(land + 0.45, CHORDS[owner].map((n) => n + 24), 0.02, 0.03);
+    this.cymbal(land, 0.05, 0.15);
+    for (const note of CHORDS[owner]) {
+      this.tone({ at: land + 0.05, wave: 'triangle', freq: hz(note), attack: 0.2, hold: 0.8, decay: 1.8, peak: 0.035, room: 0.7, wobble: { rate: 3.2, depth: 9 } });
+    }
   }
 
   /** A card falls face down onto a piece and seals it: a dark swirl, the piece sinking, an uneasy chord. */

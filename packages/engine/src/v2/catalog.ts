@@ -256,6 +256,8 @@ export const STARTER_CATALOG: Record<string, Card> = {
     level: 3,
     evolvesFrom: 'mystic_dragon',
     tribe: 'Dragon',
+    // The eldest thing in the deck: the board dims and its sigil opens when it arrives (Djabooty, 2026-10-29).
+    elder: true,
     ...pieceFaces('ancient_mystic_dragon'),
   },
 

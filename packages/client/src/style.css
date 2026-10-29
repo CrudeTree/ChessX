@@ -7749,6 +7749,298 @@ body.g2-grabbing * {
   }
 }
 
+/* ------------------------------------------------------------ an elder arrives */
+/*
+ * The Ancient Mystic Dragon's arrival (fx.ts elderSummon). Every other summon is over in about a second and a half;
+ * this one runs three and a half and dims the board for the middle of it, so it reads as an occasion rather than a
+ * louder version of the same animation.
+ *
+ * It is a stage in the overlay, not a spot on the floor: the floor lives inside the board, and on the 3D board the
+ * board is a transformed box under the canvas that holds the figures, so anything on the floor is painted underneath
+ * them. The overlay sits above both, so the dark really does fall over the board and the pieces, and the ritual is
+ * drawn on top of the dark in turn.
+ *
+ * --delay is the summon's delay. --t0 is when the ritual proper starts, after a diving card has landed.
+ */
+.g2-elder {
+  --t0: 580ms;
+  --fx: #fff2c6;
+  --fx-soft: rgba(255, 214, 120, 0.6);
+  --fx-beam: rgba(255, 226, 150, 0.85);
+  position: absolute;
+  pointer-events: none;
+  transform-style: preserve-3d;
+}
+
+/* Dark faces keep their own, colder light. */
+.g2-elder.black {
+  --fx: #e6dbff;
+  --fx-soft: rgba(170, 130, 255, 0.6);
+  --fx-beam: rgba(196, 160, 255, 0.85);
+}
+
+/*
+ * The world going dark: a cold vignette that closes in over the whole board, holds while the dragon comes down, then
+ * lifts as the ceremony ends. It is sized to the board rather than the square, and it never takes a click.
+ */
+.g2-elder-dark {
+  position: absolute;
+  /*
+   * Sized and placed against the board, not the square: the stage is one square small, so a layer centred on it would
+   * sit beside the board instead of over it. These are set from board coordinates in `elderSummon`.
+   */
+  left: var(--bx, 0px);
+  top: var(--by, 0px);
+  width: var(--bw, 100vw);
+  height: var(--bh, 100vh);
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 42% 42% at var(--hx, 50%) var(--hy, 50%), transparent 4%, rgba(8, 10, 22, 0.62) 52%, rgba(2, 3, 8, 0.94) 100%),
+    radial-gradient(ellipse 34% 34% at var(--hx, 50%) var(--hy, 50%), rgba(120, 150, 255, 0.14), transparent 70%);
+  opacity: 0;
+  animation: g2-elder-dark 2800ms ease-in-out calc(var(--delay, 0ms) + var(--t0)) both;
+}
+
+.g2-elder.black .g2-elder-dark {
+  background:
+    radial-gradient(ellipse 42% 42% at var(--hx, 50%) var(--hy, 50%), transparent 4%, rgba(14, 8, 26, 0.65) 52%, rgba(4, 2, 10, 0.95) 100%),
+    radial-gradient(ellipse 34% 34% at var(--hx, 50%) var(--hy, 50%), rgba(150, 110, 255, 0.16), transparent 70%);
+}
+
+/* In quickly, held through the descent, then back out as the piece settles. */
+@keyframes g2-elder-dark {
+  0% {
+    opacity: 0;
+  }
+  16% {
+    opacity: 1;
+  }
+  74% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Everything drawn on top of the dark, laid out from the middle of the square. */
+.g2-elder-ritual {
+  position: absolute;
+  inset: 0;
+}
+
+/* The sigil: a wide ritual circle with a counter-turning inner ring and long rays. */
+.g2-elder-sigil {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 300%;
+  height: 300%;
+  translate: -50% -50%;
+  color: var(--fx);
+  opacity: 0;
+  filter: drop-shadow(0 0 5px var(--fx-soft)) drop-shadow(0 0 18px var(--fx-soft));
+  animation: g2-elder-sigil 2500ms cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--delay, 0ms) + var(--t0)) both;
+}
+
+.g2-elder-sigil svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: none;
+  stroke: currentColor;
+}
+
+.g2-elder-sigil .e1 {
+  stroke-width: 1.6;
+}
+
+.g2-elder-sigil .e2 {
+  stroke-width: 1;
+  stroke-dasharray: 5 3;
+}
+
+.g2-elder-sigil .e3 {
+  stroke-width: 1.4;
+  stroke-dasharray: 2 5;
+}
+
+.g2-elder-sigil .e4 {
+  stroke-width: 1.1;
+}
+
+.g2-elder-sigil .e5 {
+  stroke-width: 0.8;
+  stroke-dasharray: 3 4;
+}
+
+.g2-elder-sigil .e6 path,
+.g2-elder-sigil .e7 path {
+  stroke-width: 0.7;
+}
+
+/* The inner ring turns against the outer one. */
+.g2-elder-sigil.inner {
+  width: 170%;
+  height: 170%;
+  animation-name: g2-elder-sigil-inner;
+}
+
+@keyframes g2-elder-sigil {
+  0% {
+    opacity: 0;
+    scale: 0.3;
+    rotate: 0deg;
+  }
+  20% {
+    opacity: 1;
+    scale: 1;
+  }
+  70% {
+    opacity: 0.95;
+    scale: 1.05;
+  }
+  100% {
+    opacity: 0;
+    scale: 1.16;
+    rotate: 50deg;
+  }
+}
+
+@keyframes g2-elder-sigil-inner {
+  0% {
+    opacity: 0;
+    scale: 0.45;
+    rotate: 0deg;
+  }
+  28% {
+    opacity: 1;
+    scale: 1;
+  }
+  72% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    scale: 1.2;
+    rotate: -80deg;
+  }
+}
+
+/* The column of light it comes down in: tall, narrow, and standing up off the leaning board. */
+.g2-elder-beam {
+  position: absolute;
+  left: 50%;
+  bottom: 46%;
+  width: 52%;
+  height: 820%;
+  translate: -50% 0;
+  transform-origin: 50% 100%;
+  border-radius: 50% 50% 0 0 / 5% 5% 0 0;
+  background: linear-gradient(to top, var(--fx) 0%, var(--fx-beam) 24%, transparent 90%);
+  filter: blur(2px) drop-shadow(0 0 calc(var(--cell) * 0.24) var(--fx-soft));
+  opacity: 0;
+  animation: g2-elder-beam 2700ms ease-out calc(var(--delay, 0ms) + var(--t0) + 240ms) both;
+}
+
+.g2-elder-beam::after {
+  content: '';
+  position: absolute;
+  inset: 0 34% 0;
+  border-radius: inherit;
+  background: linear-gradient(to top, #fff 0%, rgba(255, 255, 255, 0.92) 38%, transparent 100%);
+}
+
+@keyframes g2-elder-beam {
+  0% {
+    opacity: 0;
+    scale: 0.4 0;
+  }
+  16% {
+    opacity: 0.95;
+    scale: 1 1;
+  }
+  54% {
+    opacity: 0.8;
+    scale: 0.9 1;
+  }
+  80% {
+    opacity: 0.45;
+    scale: 0.3 1;
+  }
+  100% {
+    opacity: 0;
+    scale: 0.06 1.03;
+  }
+}
+
+/* The light gathering on the ground before it lands, then flaring out. */
+.g2-elder-glow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 380%;
+  height: 380%;
+  translate: -50% -50%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.92) 0%, var(--fx) 18%, var(--fx-soft) 42%, transparent 68%);
+  mix-blend-mode: screen;
+  opacity: 0;
+  animation: g2-elder-glow 2900ms ease-out calc(var(--delay, 0ms) + var(--t0)) both;
+}
+
+@keyframes g2-elder-glow {
+  0% {
+    opacity: 0;
+    scale: 0.12;
+  }
+  38% {
+    opacity: 0.42;
+    scale: 0.8;
+  }
+  56% {
+    opacity: 1;
+    scale: 1.05;
+  }
+  70% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0;
+    scale: 1.5;
+  }
+}
+
+/* The burst as it sets down, and the second, wider ring that follows it. */
+.g2-elder .g2-fx-burst {
+  animation-duration: 1100ms;
+  animation-delay: calc(var(--delay, 0ms) + var(--t0) + 1420ms);
+}
+
+.g2-elder .g2-fx-shock {
+  animation-duration: 1250ms;
+  animation-delay: calc(var(--delay, 0ms) + var(--t0) + 1420ms);
+}
+
+.g2-elder .g2-fx-shock.late {
+  animation-duration: 1600ms;
+  animation-delay: calc(var(--delay, 0ms) + var(--t0) + 1740ms);
+  opacity: 0;
+  border-width: calc(var(--cell) * 0.045);
+}
+
+.g2-elder .g2-fx-sparks i {
+  animation-duration: 1500ms;
+  animation-delay: calc(var(--delay, 0ms) + var(--t0) + 1430ms);
+}
+
+/* The second wave of sparks leaves later, so the embers keep rising rather than all going at once. */
+.g2-elder .g2-fx-sparks + .g2-fx-sparks i {
+  animation-delay: calc(var(--delay, 0ms) + var(--t0) + 1700ms);
+  animation-duration: 1900ms;
+}
+
 /* Mana won on a square (a capture's bounty), floating up from it. */
 .g2-fx-gain {
   position: absolute;
