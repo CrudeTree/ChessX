@@ -143,6 +143,11 @@ interface CardDrag {
   pointerType: string;
   startX: number;
   startY: number;
+  /**
+   * A finger on a hand that scrolls (`markHandScroll`), where the browser takes a swipe that starts sideways for a
+   * scroll of its own (`touch-action: pan-x`).
+   */
+  pans: boolean;
   scrollFrom: number | null;
   ghost: HTMLElement | null;
   /** The ball of static the card turns into over the board (`orbFor`). */
@@ -466,6 +471,8 @@ export class GameScreen {
     this.pilesEl.append(this.oppPileEl, this.mePileEl);
     boardWrap.append(this.oppEl, boardBox, this.meEl, this.pilesEl);
     main.append(boardWrap, this.handEl);
+    // A phone turned or a window resized can make the hand fit its row, or stop fitting it, without a render.
+    new ResizeObserver(() => this.markHandScroll()).observe(this.handEl);
     // The bars and piles are rebuilt every second for the clocks, so a discard pile is pointed at through what holds it.
     for (const bar of [this.oppEl, this.meEl, this.pilesEl]) {
       bar.addEventListener('pointerover', (e) => {
@@ -2121,6 +2128,7 @@ export class GameScreen {
       pointerType: e.pointerType,
       startX: e.clientX,
       startY: e.clientY,
+      pans: e.pointerType !== 'mouse' && !!tile.closest('.g2-handrow.scrolls'),
       scrollFrom: null,
       ghost: null,
       orb: null,
@@ -2149,10 +2157,13 @@ export class GameScreen {
        * begins by wandering sideways is still a drag towards the board, and dropping it there made the card seem to
        * ignore the press until it was tried again.
        *
-       * A sideways swipe over the hand scrolls it instead. On a finger the browser already does that: `.draggable`
-       * carries `touch-action: pan-x`, so a swipe along the hand scrolls natively and the browser cancels the pointer
-       * (this drag ends with it). Only a mouse needs asking, and only when the move is decisively along the hand.
+       * Except on a hand that scrolls, where a sideways swipe scrolls it. A finger's swipe the browser scrolls
+       * natively (`pans`): it takes one that starts more sideways than up or down, cancelling the pointer, which ends
+       * this press. It only decides a few pixels past DRAG_THRESHOLD, so the card waits until the finger heads more up
+       * or down than sideways; picked up any sooner, it would rebuild the hand under the scroll, and then fly back. A
+       * mouse is asked here, and only scrolls when the move is decisively along the hand.
        */
+      if (drag.pans && Math.abs(dx) > Math.abs(dy)) return;
       const sideways = Math.abs(dx) > Math.abs(dy) * SIDEWAYS_RATIO && Math.abs(dx) > SCROLL_SLOP;
       const canScroll = !!row && row.scrollWidth > row.clientWidth + 1;
       if (e.pointerType === 'mouse' && sideways && canScroll) {
@@ -2902,6 +2913,28 @@ export class GameScreen {
     if (!hand.length) row.appendChild(el('span', 'hint', 'No cards in hand.'));
     this.handEl.appendChild(row);
     row.scrollLeft = scroll;
+    this.markHandScroll();
+  }
+
+  /**
+   * Phones: a hand wider than its row scrolls (`.scrolls`), and a finger swiping sideways over its cards pans it
+   * (`touch-action: pan-x`); over a hand that fits, any press on a card is a drag. The browser reads this when a
+   * touch begins, so it is kept up to date ahead of one. Measured by where the cards are laid out rather than by the
+   * row's scroll width, which a card still sliding in from the deck stretches.
+   */
+  private markHandScroll(): void {
+    const row = this.handEl.querySelector<HTMLElement>('.g2-handrow');
+    if (!row) return;
+    const cards = row.querySelectorAll<HTMLElement>('.g2-card');
+    const first = cards[0];
+    const last = cards[cards.length - 1];
+    let wide = false;
+    if (this.narrow.matches && first && last) {
+      const style = getComputedStyle(row);
+      const span = last.offsetLeft + last.offsetWidth - first.offsetLeft;
+      wide = span + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) > row.clientWidth + 1;
+    }
+    row.classList.toggle('scrolls', wide);
   }
 
   // --------------------------------------------------------------------- arena

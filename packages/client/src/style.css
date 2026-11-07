@@ -6011,10 +6011,10 @@ body.g2-grabbing * {
   cursor: default;
 }
 
-/* Drag a card up onto the board. pan-x leaves sideways swipes to the browser, which scrolls the hand. */
+/* Drag a card up onto the board. A finger on one is always a drag, except on a phone's hand that scrolls (`.scrolls`). */
 .g2-card.draggable {
   cursor: grab;
-  touch-action: pan-x;
+  touch-action: none;
   user-select: none;
 }
 
@@ -8806,7 +8806,17 @@ body.g2-grabbing * {
     min-height: 0;
     padding: 12px 8px 4px 6px;
     overflow-x: auto;
+    /* A swipe past the end of the hand stops there, rather than going on to the page (Android: back a page). */
+    overscroll-behavior-x: contain;
     scrollbar-width: none;
+  }
+
+  /*
+   * A hand wider than the row (GameScreen's markHandScroll): a finger swiping sideways over a card scrolls it, which
+   * the browser decides by the first few pixels of the swipe; one that heads up or down drags the card.
+   */
+  .g2-handrow.scrolls .g2-card.draggable {
+    touch-action: pan-x;
   }
 
   /* The board fills the width, so a taller phone has height to spare: the cards take it, easier to read and grab. */
