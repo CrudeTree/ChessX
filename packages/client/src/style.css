@@ -5876,7 +5876,7 @@ body.g2-grabbing * {
   transition: opacity 0.2s ease;
 }
 
-.g2-card:hover .g2-frame-shine,
+.g2-card.hover .g2-frame-shine,
 .g2-inspect-card:hover .g2-frame-shine {
   opacity: 1;
 }
@@ -5941,6 +5941,8 @@ body.g2-grabbing * {
   --card-w: clamp(92px, 11.5vh, 128px);
   --spread: clamp(3deg, calc(var(--n, 1) * 1.25deg), 11deg);
   container-type: inline-size;
+  /* GameScreen's cardInFan finds the card under the mouse by where the cards lie in the row. */
+  position: relative;
   display: flex;
   justify-content: center;
   align-items: flex-start;
@@ -5949,9 +5951,11 @@ body.g2-grabbing * {
 }
 
 .g2-card {
+  /* How far each card lies over the one before it: as far as the row needs to fit, at most 70% of a card. */
+  --overlap: clamp(calc(var(--card-w) * -0.7), calc((100cqw - var(--n, 1) * var(--card-w)) / max(var(--n, 1) - 1, 1)), 8px);
   flex: none;
   font-size: calc(var(--card-w) / 10);
-  margin: 0 0 0 clamp(calc(var(--card-w) * -0.7), calc((100cqw - var(--n, 1) * var(--card-w)) / max(var(--n, 1) - 1, 1)), 8px);
+  margin: 0 0 0 var(--overlap);
   cursor: pointer;
   rotate: calc(var(--fan, 0) * var(--spread));
   translate: 0 calc(var(--arc, 0) * 0.9em);
@@ -5970,7 +5974,7 @@ body.g2-grabbing * {
   justify-content: flex-start;
 }
 
-.g2-card:hover {
+.g2-card.hover {
   filter: none;
 }
 
@@ -5979,12 +5983,31 @@ body.g2-grabbing * {
   box-shadow: 0 0 0 0.06em var(--edge), 0 0.35em 0.9em rgba(0, 0, 0, 0.55), 0 0 0.9em rgba(90, 225, 140, 0.55);
 }
 
-.g2-card:hover,
+.g2-card.hover,
 .g2-card.inspected {
   z-index: 30;
   translate: 0 calc(var(--card-w) * -0.17);
   rotate: 0deg;
   scale: 1.08;
+}
+
+/*
+ * The card under the mouse (GameScreen's hoverHand) rises out of the fan at --rise times its size, and the cards either
+ * side slide clear of it. GameScreen's riseGeometry works out where (--rise-x, --before, --after), and finds the card
+ * under the mouse from the same places.
+ */
+.g2-card.hover {
+  z-index: 40;
+  translate: var(--rise-x, 0px) calc(var(--card-w) * -0.2);
+  scale: var(--rise);
+}
+
+.g2-card:has(~ .g2-card.hover) {
+  translate: var(--before, 0px) calc(var(--arc, 0) * 0.9em);
+}
+
+.g2-card.hover ~ .g2-card {
+  translate: var(--after, 0px) calc(var(--arc, 0) * 0.9em);
 }
 
 /*
@@ -8795,8 +8818,14 @@ body.g2-grabbing * {
     bottom: 100%;
     z-index: 5;
   }
+}
 
-  /* A row of small cards that scrolls sideways: picture, name, cost and timer; tap one to read it all. */
+/*
+ * Touch screens: the hand is a row of small cards that scrolls sideways (picture, name, cost and timer; tap one to read
+ * it all). A mouse cannot swipe a row along, so with one the hand stays the fan in a narrow window too, and the card
+ * under the mouse rises to be read. GameScreen's SCROLL_HAND_QUERY is this query.
+ */
+@media (max-width: 899px) and (pointer: coarse) {
   .g2-handrow {
     --card-w: 64px;
     container-type: normal;
@@ -8855,7 +8884,7 @@ body.g2-grabbing * {
     margin-left: 0;
   }
 
-  .g2-card:hover,
+  .g2-card.hover,
   .g2-card.inspected {
     translate: none;
     rotate: none;
@@ -8931,7 +8960,9 @@ body.g2-grabbing * {
   .g2-card.g2-drag-ghost .g2-frame-name {
     min-height: 0;
   }
+}
 
+@media (max-width: 899px) {
   .g2-status {
     flex: 1;
     min-width: 0;

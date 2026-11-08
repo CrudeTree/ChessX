@@ -245,6 +245,13 @@ const SPELL_HIT_DELAY = SPELL_HOLD_MS;
 const DRAW_MS = 560;
 /** The card viewer sits beside the board from this width; narrower screens float it over the board. */
 const DOCKED_QUERY = '(min-width: 1200px)';
+/**
+ * Touch screens under 900px wide: the hand is a row of small cards that scrolls sideways (style.css uses the same
+ * query). Anywhere else, a mouse in a narrow window too, it is the fan, whose card under the mouse rises to be read.
+ */
+const SCROLL_HAND_QUERY = '(max-width: 899px) and (pointer: coarse)';
+/** The card under the mouse in the fan rises to this many times its size (style.css: --rise). */
+const HAND_RISE = 1.45;
 /** Arena mana buttons: held this long they start repeating, this often; a run of steps is sent once it rests this long. */
 const MANA_HOLD_MS = 400;
 const MANA_REPEAT_MS = 80;
@@ -319,8 +326,10 @@ export class GameScreen {
   private returning: { from: v2.Square; ghost: HTMLElement; timer: number } | null = null;
   private suppressClick = false;
   private inspected: Inspected | null = null;
-  /** Hand card under the mouse; it is shown in the card viewer until the mouse leaves. */
+  /** Hand card under the mouse; it rises out of the fan and is shown in the card viewer until the mouse leaves. */
   private hoverCard: string | null = null;
+  /** Where the mouse is over the hand, so a hand drawn again under a mouse that has not moved lifts the card under it. */
+  private handMouse: { x: number; y: number } | null = null;
   /** Piece or seal under the mouse while the viewer is docked beside the board. */
   private hoverBoard: Inspected | null = null;
   /** Discard pile under the mouse: its newest card is shown in the card viewer until the mouse leaves. */
@@ -452,6 +461,7 @@ export class GameScreen {
    * End turn sit under the hand, and the rest of the side column becomes a sheet behind the ☰ button.
    */
   private readonly narrow = window.matchMedia('(max-width: 899px)');
+  private readonly scrollHand = window.matchMedia(SCROLL_HAND_QUERY);
   private readonly wide = window.matchMedia(DOCKED_QUERY);
   /** Chat is moved in here: under the log on wide screens, a sheet of its own on phones. */
   readonly chatSlot = el('div', 'g2-chat-slot');
@@ -471,8 +481,14 @@ export class GameScreen {
     this.pilesEl.append(this.oppPileEl, this.mePileEl);
     boardWrap.append(this.oppEl, boardBox, this.meEl, this.pilesEl);
     main.append(boardWrap, this.handEl);
-    // A phone turned or a window resized can make the hand fit its row, or stop fitting it, without a render.
-    new ResizeObserver(() => this.markHandScroll()).observe(this.handEl);
+    // A phone turned or a window resized changes the hand's room without a render: whether it scrolls, where a risen card goes.
+    new ResizeObserver(() => {
+      this.markHandScroll();
+      this.placeRisen();
+    }).observe(this.handEl);
+    this.handEl.addEventListener('pointermove', (e) => this.hoverHand(e));
+    this.handEl.addEventListener('pointerleave', () => this.hoverHand(null));
+    this.handEl.addEventListener('wheel', (e) => this.wheelHand(e), { passive: false });
     // The bars and piles are rebuilt every second for the clocks, so a discard pile is pointed at through what holds it.
     for (const bar of [this.oppEl, this.meEl, this.pilesEl]) {
       bar.addEventListener('pointerover', (e) => {
@@ -1769,7 +1785,8 @@ export class GameScreen {
 
   /**
    * Shows, in order: the hand card, library card or discard pile under the mouse, the piece or seal under the mouse,
-   * the one tapped.
+   * the one tapped. A hand card under the mouse only shows in the viewer beside the board: where the viewer floats,
+   * it would cover the board for each card a sweep along the hand passes, and the card has risen to be read instead.
    */
   private renderInspect(view: v2.PlayerView): void {
     const box = this.inspectEl;
@@ -1778,8 +1795,9 @@ export class GameScreen {
     if (this.hoverPile && !view.discard[this.hoverPile].length) this.hoverPile = null;
     if (this.hoverBoard && !this.exists(view, this.hoverBoard)) this.hoverBoard = null;
     if (this.inspected && !this.exists(view, this.inspected)) this.inspected = null;
-    const shown: Inspected | null = this.hoverCard
-      ? { kind: 'card', id: this.hoverCard }
+    const hoverCard = this.docked ? this.hoverCard : null;
+    const shown: Inspected | null = hoverCard
+      ? { kind: 'card', id: hoverCard }
       : this.hoverLib
         ? { kind: 'library', id: this.hoverLib }
         : this.hoverPile
@@ -1906,7 +1924,7 @@ export class GameScreen {
       chips.append(timer);
     }
     head.append(title, chips);
-    const pinned = !this.hoverCard && !this.hoverLib && !this.hoverBoard && this.inspected !== null;
+    const pinned = !hoverCard && !this.hoverLib && !this.hoverBoard && this.inspected !== null;
     if (pinned || !this.docked) {
       const close = el('button', 'g2-inspect-close', '×');
       close.type = 'button';
@@ -2041,39 +2059,140 @@ export class GameScreen {
     const lifted = this.drag?.ghost && this.drag.uid === uid;
     const tile = el(
       'button',
-      `g2-card ${card?.type ?? ''}${playable ? ' playable' : ''}${liftable ? ' draggable' : ''}${lifted ? ' lifted' : ''}${this.inspected?.kind === 'card' && this.inspected.id === uid ? ' inspected' : ''}`,
+      `g2-card ${card?.type ?? ''}${playable ? ' playable' : ''}${liftable ? ' draggable' : ''}${lifted ? ' lifted' : ''}${this.inspected?.kind === 'card' && this.inspected.id === uid ? ' inspected' : ''}${this.hoverCard === uid ? ' hover' : ''}`,
     );
     tile.type = 'button';
     tile.dataset.uid = uid;
     // Not `disabled`: a card you cannot play right now can still be tapped to read it.
     if (!playable && !liftable) tile.setAttribute('aria-disabled', 'true');
     tile.addEventListener('pointerdown', (e) => {
-      if (liftable) this.pressCard(e, uid, tile);
+      const held = this.handTarget(e, uid);
+      const heldTile = held === uid ? tile : this.tileFor(held);
+      if (heldTile?.classList.contains('draggable')) this.pressCard(e, held, heldTile);
     });
     fillFrame(tile, this.frameFor(card, cardId, view.you));
     tile.setAttribute('aria-label', `${card?.name ?? cardId}: ${card?.text ?? ''}`);
     tiltWithPointer(tile);
-    tile.addEventListener('pointerenter', (e) => {
-      if (e.pointerType !== 'mouse' || this.drag || this.hoverCard === uid) return;
-      this.hoverCard = uid;
-      this.renderInspect(view);
-    });
-    tile.addEventListener('pointerleave', () => {
-      if (this.hoverCard !== uid) return;
-      this.hoverCard = null;
-      if (this.view) this.renderInspect(this.view);
-    });
     // A click or tap only opens the card (or closes it again); cards are played by dragging them.
-    tile.onclick = () => {
+    tile.onclick = (e) => {
       if (this.suppressClick) {
         this.suppressClick = false;
         return;
       }
-      const open = this.inspected?.kind === 'card' && this.inspected.id === uid;
-      this.inspected = open ? null : { kind: 'card', id: uid };
+      const id = this.handTarget(e, uid);
+      const open = this.inspected?.kind === 'card' && this.inspected.id === id;
+      this.inspected = open ? null : { kind: 'card', id };
       this.render();
     };
     return tile;
+  }
+
+  /** The mouse over the hand: the card under it in the fan rises out of it (`cardInFan`). */
+  private hoverHand(e: PointerEvent | null): void {
+    this.handMouse = e?.pointerType === 'mouse' ? { x: e.clientX, y: e.clientY } : null;
+    this.liftCard(this.handMouse ? this.cardInFan(this.handMouse.x, this.handMouse.y) : null);
+  }
+
+  /** `uid` rises out of the fan (null: none does), and the viewer beside the board shows it unless `show` is false. */
+  private liftCard(uid: string | null, show = true): void {
+    if (uid === this.hoverCard) return;
+    if (this.hoverCard) this.tileFor(this.hoverCard)?.classList.remove('hover');
+    if (uid) this.tileFor(uid)?.classList.add('hover');
+    this.hoverCard = uid;
+    this.placeRisen();
+    if (show && this.docked && this.view) this.renderInspect(this.view);
+  }
+
+  /**
+   * The card in the fan under (x, y) on the page, worked out from where the cards are laid out rather than from what is
+   * drawn there. The risen card grows over its neighbours and they slide clear of it (style.css), so going by what was
+   * drawn under the mouse, a sweep along the hand jumped over every other card. Here the risen card holds the width it
+   * is drawn at, and the cards either side start where they are drawn, so a sweep meets each card in turn; above the
+   * row, only the risen card goes on being under the mouse.
+   */
+  private cardInFan(x: number, y: number): string | null {
+    if (!this.view || this.drag || this.pieceDrag?.ghost || this.library.dragging || this.scrollHand.matches) return null;
+    const row = this.handEl.querySelector<HTMLElement>('.g2-handrow');
+    const cards = row ? [...row.querySelectorAll<HTMLElement>('.g2-card')] : [];
+    if (!row || !cards.length) return null;
+    const box = row.getBoundingClientRect();
+    const width = cards[0]!.offsetWidth;
+    const risen = cards.findIndex((card) => card.dataset.uid === this.hoverCard);
+    const rise = risen < 0 ? null : this.riseGeometry(row, cards, risen);
+    if (rise) {
+      const top = Math.min(box.top, cards[risen]!.getBoundingClientRect().top);
+      if (x >= rise.from && x < rise.to && y >= top && y < box.bottom) return this.hoverCard;
+    }
+    if (y < box.top || y >= box.bottom) return null;
+    // Each card lies over the one before it, so the card at x is the last one that starts at or before it.
+    for (let i = cards.length - 1; i >= 0; i--) {
+      if (i === risen) continue;
+      const start = box.left + row.clientLeft + cards[i]!.offsetLeft + (!rise ? 0 : i < risen ? rise.before : rise.after);
+      if (x >= start) return x < start + width ? (cards[i]!.dataset.uid ?? null) : null;
+    }
+    return null;
+  }
+
+  /**
+   * Where the risen card of the fan (index `risen`) is drawn across the page, from `from` to `to`, `x` from where it
+   * lies, and how far the cards before and after it slide to clear it. It is HAND_RISE times as wide, centred on the
+   * strip of it that showed in the fan (all of the last card), and moved in from the window's edges where it would go
+   * past one, but never off that strip: the mouse on the strip that lifted it must stay on it. The cards either side
+   * start right at its edges, to the pixel, as much of each showing as before: a gap there, however thin, let the fan
+   * fall back while the mouse crossed it, and the mouse then stood on a card further on.
+   */
+  private riseGeometry(row: HTMLElement, cards: HTMLElement[], risen: number): { from: number; to: number; x: number; before: number; after: number } {
+    const n = cards.length;
+    const width = cards[0]!.offsetWidth;
+    const origin = row.getBoundingClientRect().left + row.clientLeft;
+    const left = (i: number): number => origin + cards[i]!.offsetLeft;
+    const step = n > 1 ? (left(n - 1) - left(0)) / (n - 1) : width;
+    const start = left(risen);
+    const shown = risen === n - 1 ? width : step;
+    const grown = width * HAND_RISE;
+    const edge = 8;
+    const end = document.documentElement.clientWidth - edge;
+    let from = start + (shown - grown) / 2;
+    if (from < edge) from = Math.min(edge, start);
+    else if (from + grown > end) from = Math.max(end - grown, start + shown - grown);
+    const to = from + grown;
+    return {
+      from,
+      to,
+      x: from + grown / 2 - (start + width / 2),
+      before: from - start,
+      after: risen + 1 < n ? Math.max(0, to - left(risen + 1)) : 0,
+    };
+  }
+
+  /** Lays the fan out round its risen card (`riseGeometry`), through custom properties style.css moves the cards by. */
+  private placeRisen(): void {
+    const row = this.handEl.querySelector<HTMLElement>('.g2-handrow');
+    const cards = row ? [...row.querySelectorAll<HTMLElement>('.g2-card')] : [];
+    const risen = cards.findIndex((card) => card.dataset.uid === this.hoverCard);
+    if (!row || risen < 0) return;
+    const rise = this.riseGeometry(row, cards, risen);
+    row.style.setProperty('--rise-x', `${rise.x}px`);
+    row.style.setProperty('--before', `${rise.before}px`);
+    row.style.setProperty('--after', `${rise.after}px`);
+  }
+
+  /**
+   * The card a press or click on hand card `uid` is for: with a mouse, the card risen out of the fan, which while it
+   * rises can still lie under a neighbour.
+   */
+  private handTarget(e: MouseEvent, uid: string): string {
+    return (e as PointerEvent).pointerType === 'mouse' && this.hoverCard ? this.hoverCard : uid;
+  }
+
+  /** A mouse wheel over a hand that scrolls (a touch screen's row, with a mouse plugged in) scrolls it sideways. */
+  private wheelHand(e: WheelEvent): void {
+    const row = this.handEl.querySelector<HTMLElement>('.g2-handrow.scrolls');
+    if (!row || e.ctrlKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+    const unit = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? 40 : e.deltaMode === WheelEvent.DOM_DELTA_PAGE ? row.clientWidth : 1;
+    const before = row.scrollLeft;
+    row.scrollLeft += e.deltaY * unit;
+    if (row.scrollLeft !== before) e.preventDefault();
   }
 
   // ---------------------------------------------------------------------- drag
@@ -2165,15 +2284,14 @@ export class GameScreen {
        */
       if (drag.pans && Math.abs(dx) > Math.abs(dy)) return;
       const sideways = Math.abs(dx) > Math.abs(dy) * SIDEWAYS_RATIO && Math.abs(dx) > SCROLL_SLOP;
-      const canScroll = !!row && row.scrollWidth > row.clientWidth + 1;
-      if (e.pointerType === 'mouse' && sideways && canScroll) {
+      if (e.pointerType === 'mouse' && sideways && row?.classList.contains('scrolls')) {
         drag.scrollFrom = row.scrollLeft;
         return;
       }
       const tile = this.tileFor(drag.uid);
       if (!tile) return this.cancelDrag();
       const ghost = tile.cloneNode(true) as HTMLElement;
-      ghost.classList.remove('lifted', 'fresh', 'inspected');
+      ghost.classList.remove('lifted', 'fresh', 'inspected', 'hover');
       ghost.classList.add('g2-drag-ghost');
       if (drag.pointerType !== 'mouse') ghost.classList.add('touch');
       if (!this.dropTargets(drag.uid).size && !this.untargetedSpell(drag.uid) && !this.pitchAction(drag.uid)) ghost.classList.add('nowhere');
@@ -2892,6 +3010,7 @@ export class GameScreen {
 
     const row = el('div', 'g2-handrow');
     row.style.setProperty('--n', String(Math.max(hand.length, 1)));
+    row.style.setProperty('--rise', String(HAND_RISE));
     const mid = (hand.length - 1) / 2;
     hand.forEach((c, i) => {
       const tile = this.cardTile(c.uid, c.cardId, view);
@@ -2914,13 +3033,16 @@ export class GameScreen {
     this.handEl.appendChild(row);
     row.scrollLeft = scroll;
     this.markHandScroll();
+    // Drawn again under a mouse that has not moved, the card now under it rises; `render` shows it in the viewer next.
+    this.liftCard(this.handMouse ? this.cardInFan(this.handMouse.x, this.handMouse.y) : null, false);
+    this.placeRisen();
   }
 
   /**
-   * Phones: a hand wider than its row scrolls (`.scrolls`), and a finger swiping sideways over its cards pans it
-   * (`touch-action: pan-x`); over a hand that fits, any press on a card is a drag. The browser reads this when a
-   * touch begins, so it is kept up to date ahead of one. Measured by where the cards are laid out rather than by the
-   * row's scroll width, which a card still sliding in from the deck stretches.
+   * Touch screens (`SCROLL_HAND_QUERY`): a hand wider than its row scrolls (`.scrolls`), and a finger swiping sideways
+   * over its cards pans it (`touch-action: pan-x`); over a hand that fits, any press on a card is a drag. The browser
+   * reads this when a touch begins, so it is kept up to date ahead of one. Measured by where the cards are laid out
+   * rather than by the row's scroll width, which a card still sliding in from the deck stretches.
    */
   private markHandScroll(): void {
     const row = this.handEl.querySelector<HTMLElement>('.g2-handrow');
@@ -2929,7 +3051,7 @@ export class GameScreen {
     const first = cards[0];
     const last = cards[cards.length - 1];
     let wide = false;
-    if (this.narrow.matches && first && last) {
+    if (this.scrollHand.matches && first && last) {
       const style = getComputedStyle(row);
       const span = last.offsetLeft + last.offsetWidth - first.offsetLeft;
       wide = span + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) > row.clientWidth + 1;
