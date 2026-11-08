@@ -18,7 +18,8 @@ export const KING: PieceDef = {
 
 /**
  * The Initiate is the pawn and the Squire steps straight (Djabooty, 2026-10-17; they had it the other way round): it
- * moves forward, 2 squares on its first move, captures diagonally forward, and promotes on the far row.
+ * moves forward, 2 squares on its first move, captures diagonally forward, and on the far row becomes an Ancient Mystic
+ * Dragon, the queen (Djabooty, 2026-11-08).
  */
 const INITIATE: PieceDef = {
   kind: 'initiate',
@@ -121,11 +122,11 @@ export const STARTER_CATALOG: Record<string, Card> = {
     piece: INITIATE,
     tribe: 'Zealot',
     anyPath: true,
-    abilityText: 'Any path: evolves into any level 2.\nPromotes: on the far row.',
+    abilityText: 'Any path: evolves into any level 2.\nPromotes: to Ancient Mystic Dragon on the far row.',
     detail:
       'Moves like a chess pawn: 1 square forward, or 2 on its first move if both squares are empty, and captures 1 square diagonally forward. ' +
       'Any path: an Initiate counts as the first level of every line, so any level-2 card can be played onto it. It costs that card\'s mana plus the mana of the first level it skips. ' +
-      'Promotes: when it reaches the far row, pick any piece card in your hand and it becomes that piece, for free. Keep it as it is if you like, and drop a piece card on it on a later turn to promote it then.',
+      'Promotes: when it reaches the far row it becomes an Ancient Mystic Dragon, for free, like a chess pawn becoming a queen. It takes no card from your hand, and the Dragon moves from your next turn.',
     ...pieceFaces('initiate'),
   },
   // The Squire and the Recruit are the same first-level Warrior (Djabooty, 2026-10-29: a Squire could never become a
@@ -356,7 +357,8 @@ export const STARTER_CATALOG: Record<string, Card> = {
  * A saved game keeps the costs, moves and rules its cards had when it began, but shows today's pictures and type
  * lines. Which card a piece evolves from is a fact about the card rather than a number of the game's balance, so it is
  * taken from today too: a game begun before the Squire was put in the Warrior line (Djabooty, 2026-10-29) can evolve
- * one, where before it could not.
+ * one, where before it could not. What promoting does is the engine's, the same in every game, so a card that
+ * promotes says it as today's does (Djabooty, 2026-11-08: an Initiate becomes an Ancient Mystic Dragon).
  */
 export function withCurrentArt(catalog: Record<string, Card>): Record<string, Card> {
   const out: Record<string, Card> = {};
@@ -374,6 +376,7 @@ export function withCurrentArt(catalog: Record<string, Card>): Record<string, Ca
         ...(card.line === undefined ? { line: now.line } : {}),
         ...(card.level === undefined ? { level: now.level } : {}),
         ...(now.evolvesFromAlso ? { evolvesFromAlso: now.evolvesFromAlso } : {}),
+        ...(card.piece.promotes && now.piece.promotes ? { abilityText: now.abilityText, detail: now.detail } : {}),
       };
     } else if (card.type === 'spell' && now?.type === 'spell') {
       out[id] = { ...card, art: now.art, darkArt: now.darkArt };

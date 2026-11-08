@@ -270,12 +270,16 @@ export function canPromote(piece: Piece): boolean {
   return !!piece.def.promotes && rankOf(piece.square) === backRank(opposite(piece.owner));
 }
 
+/** What a piece that promotes becomes as it arrives on the far row, like a chess pawn its queen (Djabooty, 2026-11-08). */
+const PROMOTES_TO = 'ancient_mystic_dragon';
+
 /**
  * What playing evolution `card` onto `piece` costs, or null if it cannot go there. It goes onto the card it evolves
  * from for its printed cost, and onto any other first-level card of its line (`evolvesFromAlso`: the Squire and the
  * Recruit are both the Warrior's first level) for that too. A level-2 card also goes onto a piece whose card takes any
  * path (the Initiate), for its cost plus the cost of the first level it skips (Djabooty, 2026-10-11). Any piece card
- * goes onto a piece promoting on the far row, for free (Djabooty, 2026-10-17).
+ * goes onto an Initiate standing on the far row unpromoted, for free (Djabooty, 2026-10-17): one put there in the
+ * Arena, or left there by a game from before an Initiate promoted as it arrived.
  */
 export function evolveCost(state: GameState, card: PieceCard, piece: Piece): number | null {
   if (piece.def.king || !piece.cardId) return null;
@@ -441,10 +445,9 @@ function applyAction(state: GameState, action: Action, events: GameEvent[]): voi
       if (piece.def.rules.some((r) => r.firstRange)) piece.moved = true;
       state.actionTaken = true;
       events.push({ type: 'moved', pieceId: piece.id, from: action.from, to: action.to, name: piece.def.name, owner: piece.owner });
-      if (action.promote) {
-        const card = pieceCard(state, removeFromHand(state, color, action.promote).cardId);
-        transform(state, piece, card, 0, events);
-      }
+      // A game whose cards have no such piece leaves it as it is.
+      const promoted = canPromote(piece) ? state.catalog[PROMOTES_TO] : undefined;
+      if (promoted?.type === 'piece') transform(state, piece, promoted, 0, events);
       return;
     }
     case 'summon': {
@@ -699,15 +702,9 @@ function deployActions(state: GameState): Action[] {
   return out;
 }
 
-/**
- * A piece that promotes, arriving on the far row, may also become any piece card in the hand, as one action, or stay
- * as it is and promote on a later turn (see `evolveCost`).
- */
 function moveActions(state: GameState): Action[] {
   const color = state.active;
   const out: Action[] = [];
-  const farRank = backRank(opposite(color));
-  const promotions = handPieces(state, color).filter(({ card }) => !card.piece.promotes);
   for (const piece of state.pieces) {
     if (piece.owner !== color || piece.summonedOnTurn === state.turns[color] || isFrozen(state, piece)) continue;
     const sick = !isActive(state, piece);
@@ -720,12 +717,7 @@ function moveActions(state: GameState): Action[] {
       const canCapture = enemy && reach.mode !== 'move' && !sick;
       if (!canMove && !canCapture) continue;
       const action: Action = { type: 'move', from: piece.square, to: reach.to };
-      if (!safe(state, action)) continue;
-      out.push(action);
-      // The promoted piece stands where the plain move would, so it is just as safe.
-      if (piece.def.promotes && rankOf(reach.to) === farRank) {
-        for (const { instance } of promotions) out.push({ ...action, promote: instance.uid });
-      }
+      if (safe(state, action)) out.push(action);
     }
   }
   return out;
@@ -761,7 +753,7 @@ function sealActions(state: GameState): Action[] {
 
 /**
  * An evolution card goes onto one of your pieces of the card it evolves from, or, for a level-2 card, onto an
- * Initiate (see `evolveCost`); any piece card goes onto an Initiate waiting on the far row to promote. The piece must
+ * Initiate (see `evolveCost`); any piece card goes onto an Initiate standing on the far row unpromoted. The piece must
  * have been on the board since before this turn (no summoning sickness left), so each step of a line gives the
  * opponent a turn to answer (Djabooty, 2026-10-11).
  */
@@ -986,7 +978,10 @@ function settleSetup(state: GameState, events: GameEvent[], justDeployed = true)
   startTurn(state, 'white', events);
 }
 
-/** Field-by-field comparison, so the key order of an action that came over the wire does not matter. */
+/**
+ * Field-by-field comparison, so the key order of an action that came over the wire does not matter. `promote` is a
+ * card a move once turned its Initiate into: an old game's step that names one no longer matches any move.
+ */
 function sameAction(a: Action, b: Action): boolean {
   const x = a as Record<string, unknown>;
   const y = b as Record<string, unknown>;

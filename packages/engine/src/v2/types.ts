@@ -51,8 +51,8 @@ export interface PieceDef {
   rules: ReadonlyArray<MoveRule>;
   king?: boolean;
   /**
-   * Like a chess pawn (the Initiate, Djabooty 2026-10-17): on the other side's back row it becomes any piece card from
-   * its owner's hand, for free, as it arrives or on a later turn.
+   * Like a chess pawn (the Initiate): arriving on the other side's back row it becomes an Ancient Mystic Dragon, for
+   * free, with no card from the hand (Djabooty, 2026-11-08; from 2026-10-17 it became a piece card from the hand).
    */
   promotes?: boolean;
 }
@@ -253,8 +253,7 @@ export interface GameState {
 
 export type Action =
   | { type: 'deploy'; cardUid: string; to: Square }
-  /** `promote`: a piece that promotes, arriving on the far row, becomes this card from the hand (by uid). */
-  | { type: 'move'; from: Square; to: Square; promote?: string }
+  | { type: 'move'; from: Square; to: Square }
   | { type: 'summon'; cardUid: string; to: Square }
   | { type: 'seal'; cardUid: string; target: Square }
   /** Play an evolution card onto the piece it evolves from, which changes into it on its square. */

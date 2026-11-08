@@ -6707,13 +6707,6 @@ body.g2-grabbing * {
   font-size: 13px;
 }
 
-.g2-raise-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-}
-
 .g2-inspect-action {
   padding: 6px 12px;
   border-radius: 8px;

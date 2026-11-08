@@ -1624,31 +1624,22 @@ describe('endgame', () => {
     }
   });
 
-  it('an Initiate on the far rank with no piece card in hand stays an Initiate, and can still be sealed (msg-033)', () => {
+  it('an Initiate reaching the far rank with no piece card in hand still becomes an Ancient Mystic Dragon (Djabooty, 2026-11-08)', () => {
     let state = bare(5);
     state.pieces.find((p) => p.owner === 'black' && p.def.king)!.square = S('a8');
     piece(state, 'white', 'initiate', 'e7');
-    give(state, 'white', 'smite');
+    const smite = give(state, 'white', 'smite');
     expect(legalActions(state).filter((a) => a.type === 'move' && a.from === S('e7'))).toEqual([{ type: 'move', from: S('e7'), to: S('e8') }]);
     state = act(state, find(state, (a) => a.type === 'move' && a.from === S('e7') && a.to === S('e8')));
-    expect(pieceAt(state, S('e8'))).toMatchObject({ owner: 'white', cardId: 'initiate' });
-    state = act(state, find(state, (a) => a.type === 'move'));
-    expect(legalActions(state).some((a) => a.type === 'move' && a.from === S('e8'))).toBe(false);
-    expect(legalActions(state).some((a) => a.type === 'evolve')).toBe(false);
-    const wyrmling = give(state, 'white', 'wyrmling');
-    const mana = state.mana.white;
-    state = act(state, find(state, (a) => a.type === 'seal' && a.cardUid === wyrmling && a.target === S('e8')));
-    expect(pieceAt(state, S('e8'))).toBeUndefined();
-    expect(sealAt(state, S('e8'))).toMatchObject({ owner: 'white', timer: 1 });
-    expect(sealAt(state, S('e8'))!.card.id).toBe('wyrmling');
-    expect(state.mana.white).toBe(mana - 2);
+    expect(pieceAt(state, S('e8'))).toMatchObject({ owner: 'white', cardId: 'ancient_mystic_dragon' });
+    expect(state.hand.white.map((c) => c.uid)).toEqual([smite]);
   });
 });
 
 describe('the Initiate is the pawn (Djabooty, 2026-10-17)', () => {
   const movesFrom = (state: GameState, from: string) =>
     legalActions(state)
-      .filter((a): a is Extract<Action, { type: 'move' }> => a.type === 'move' && a.from === S(from) && !a.promote)
+      .filter((a): a is Extract<Action, { type: 'move' }> => a.type === 'move' && a.from === S(from))
       .map((a) => a.to)
       .sort((a, b) => a - b);
   const squares = (...names: string[]) => names.map(S).sort((a, b) => a - b);
@@ -1696,30 +1687,21 @@ describe('the Initiate is the pawn (Djabooty, 2026-10-17)', () => {
     expect(movesFrom(state, 'f4')).toEqual(squares('f3', 'e4', 'g4', 'f5'));
   });
 
-  it('reaching the far row it may become any piece card in hand, for free, as part of the move', () => {
+  it('reaching the far row it becomes an Ancient Mystic Dragon, free, whatever is in the hand (Djabooty, 2026-11-08)', () => {
     let state = bare(0);
     state.pieces.find((p) => p.owner === 'black' && p.def.king)!.square = S('a8');
     piece(state, 'white', 'initiate', 'e7');
-    const warlord = give(state, 'white', 'warlord');
-    const dragon = give(state, 'white', 'mystic_dragon');
-    const squire = give(state, 'white', 'squire');
-    give(state, 'white', 'initiate');
-    give(state, 'white', 'smite');
-    const arriving = legalActions(state).filter((a) => a.type === 'move' && a.from === S('e7'));
-    expect(arriving).toEqual([
-      { type: 'move', from: S('e7'), to: S('e8') },
-      { type: 'move', from: S('e7'), to: S('e8'), promote: warlord },
-      { type: 'move', from: S('e7'), to: S('e8'), promote: dragon },
-      { type: 'move', from: S('e7'), to: S('e8'), promote: squire },
-    ]);
-    const { state: next, events } = applyLegalAction(state, { type: 'move', from: S('e7'), to: S('e8'), promote: warlord });
-    expect(pieceAt(next, S('e8'))).toMatchObject({ owner: 'white', cardId: 'warlord' });
-    expect(next.hand.white.map((c) => c.uid)).not.toContain(warlord);
+    const hand = ['warlord', 'mystic_dragon', 'ancient_mystic_dragon', 'squire', 'smite'].map((id) => give(state, 'white', id));
+    expect(legalActions(state).filter((a) => a.type === 'move' && a.from === S('e7'))).toEqual([{ type: 'move', from: S('e7'), to: S('e8') }]);
+    const { state: next, events } = applyLegalAction(state, { type: 'move', from: S('e7'), to: S('e8') });
+    expect(pieceAt(next, S('e8'))).toMatchObject({ owner: 'white', cardId: 'ancient_mystic_dragon', def: { kind: 'ancient_mystic_dragon' } });
+    // No card from the hand, no mana: the Initiate's card goes on the discard pile.
+    expect(next.hand.white.map((c) => c.uid)).toEqual(hand);
     expect(next.mana.white).toBe(0);
     expect(next.discard.white.map((c) => c.cardId)).toEqual(['initiate']);
     expect(events.slice(0, 2)).toMatchObject([
       { type: 'moved', from: S('e7'), to: S('e8'), name: 'Initiate' },
-      { type: 'evolved', color: 'white', square: S('e8'), name: 'Warlord', fromName: 'Initiate', cardId: 'warlord', cost: 0, promoted: true },
+      { type: 'evolved', color: 'white', square: S('e8'), name: 'Ancient Mystic Dragon', fromName: 'Initiate', cardId: 'ancient_mystic_dragon', cost: 0, promoted: true },
     ]);
     expect(next.active).toBe('black');
     // It moves on its owner's next turn, like any piece that arrived on the last one.
@@ -1727,22 +1709,17 @@ describe('the Initiate is the pawn (Djabooty, 2026-10-17)', () => {
     expect(legalActions(after).some((a) => a.type === 'move' && a.from === S('e8') && a.to === S('e1'))).toBe(true);
   });
 
-  it('it can also promote by capturing onto the far row, and the plain move keeps it an Initiate', () => {
+  it('capturing onto the far row makes it an Ancient Mystic Dragon too', () => {
     const state = bare(5);
     state.pieces.find((p) => p.owner === 'black' && p.def.king)!.square = S('a8');
     piece(state, 'white', 'initiate', 'e7');
     piece(state, 'black', 'warrior', 'f8');
-    const paladin = give(state, 'white', 'paladin');
-    const capture = find(state, (a) => a.type === 'move' && a.to === S('f8') && a.promote === paladin);
-    const { state: next, events } = applyLegalAction(state, capture);
-    expect(pieceAt(next, S('f8'))).toMatchObject({ owner: 'white', cardId: 'paladin' });
+    const { state: next, events } = applyLegalAction(state, find(state, (a) => a.type === 'move' && a.from === S('e7') && a.to === S('f8')));
+    expect(pieceAt(next, S('f8'))).toMatchObject({ owner: 'white', cardId: 'ancient_mystic_dragon' });
     expect(events.map((e) => e.type).slice(0, 3)).toEqual(['captured', 'moved', 'evolved']);
-    const kept = act(state, find(state, (a) => a.type === 'move' && a.to === S('e8') && !a.promote));
-    expect(pieceAt(kept, S('e8'))).toMatchObject({ cardId: 'initiate' });
-    expect(kept.hand.white.map((c) => c.uid)).toContain(paladin);
   });
 
-  it('an Initiate waiting on the far row promotes on a later turn when a piece card is dropped on it, for free', () => {
+  it('an Initiate standing on the far row unpromoted (put there in the Arena) takes a piece card dropped on it, for free', () => {
     let state = bare(0);
     state.pieces.find((p) => p.owner === 'black' && p.def.king)!.square = S('a8');
     piece(state, 'white', 'initiate', 'e8');
@@ -1779,7 +1756,8 @@ describe('the Initiate is the pawn (Djabooty, 2026-10-17)', () => {
     state.pieces.push({ id: 'old', owner: 'white', def, cardId: 'initiate', square: S('e7'), activeFromTurn: 0 });
     give(state, 'white', 'warlord');
     expect(movesFrom(state, 'e7')).toEqual(squares('e6', 'd7', 'f7', 'e8'));
-    expect(legalActions(state).some((a) => a.type === 'move' && a.promote)).toBe(false);
+    const top = act(state, find(state, (a) => a.type === 'move' && a.to === S('e8')));
+    expect(pieceAt(top, S('e8'))).toMatchObject({ id: 'old', cardId: 'initiate' });
     const next = act(state, find(state, (a) => a.type === 'move' && a.to === S('d7')));
     expect(pieceAt(next, S('d7'))).not.toHaveProperty('moved');
   });
@@ -1882,10 +1860,10 @@ describe('port additions', () => {
       tribe: 'Zealot',
       anyPath: true,
       promotes: true,
-      abilityText: 'Any path: evolves into any level 2.\nPromotes: on the far row.',
+      abilityText: 'Any path: evolves into any level 2.\nPromotes: to Ancient Mystic Dragon on the far row.',
     });
     expect(cards.initiate!.detail).toContain('any level-2 card');
-    expect(cards.initiate!.detail).toContain('far row');
+    expect(cards.initiate!.detail).toContain('far row it becomes an Ancient Mystic Dragon');
     expect(cards.squire).not.toHaveProperty('promotes');
     expect(cards.warrior).toMatchObject({ tribe: 'Warrior' });
     expect(cards.warrior).not.toHaveProperty('anyPath');
@@ -1954,6 +1932,14 @@ describe('port additions', () => {
     expect(catalog.wyrmling).toEqual({ ...wyrmling, cost: 1 });
     expect(catalog.insight).toEqual(STARTER_CATALOG.insight);
     expect(catalog.custom).toBe(custom);
+  });
+
+  it('a saved game\'s Initiate says how it promotes now, unless it is one from before it promoted at all', () => {
+    const initiate = STARTER_CATALOG.initiate as PieceCard;
+    const saved: PieceCard = { ...initiate, detail: 'Promotes: pick any piece card in your hand.', abilityText: 'Promotes: on the far row.' };
+    expect(withCurrentArt({ initiate: saved }).initiate).toMatchObject({ detail: initiate.detail, abilityText: initiate.abilityText });
+    const straight: PieceCard = { ...initiate, piece: { ...initiate.piece, promotes: undefined }, detail: 'Steps straight.' };
+    expect(withCurrentArt({ initiate: straight }).initiate).toMatchObject({ detail: 'Steps straight.' });
   });
 
   it('a game saved before the Squire joined the Warrior line picks up the line, so its Squires can evolve', () => {

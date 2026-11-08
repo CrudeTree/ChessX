@@ -1138,7 +1138,7 @@ export class GameScreen {
 
   /**
    * Squares the picked piece can move to (or spit lava onto, while it takes aim), with the action for each. Cards
-   * are played by dragging them instead. A move that can promote is its plain form here; `act` offers the rest.
+   * are played by dragging them instead.
    */
   private targets(): Map<v2.Square, Action> {
     const from = this.selectedSquare;
@@ -1149,30 +1149,10 @@ export class GameScreen {
     if (held && held.from === from && held.targets) return held.targets;
     const kind = this.aimLava === this.selectedSquare ? 'lava' : 'move';
     for (const a of this.legal()) {
-      if (a.type === 'move' && a.promote) continue;
       if ((a.type === 'move' || a.type === 'lava') && a.type === kind && a.from === this.selectedSquare) out.set(a.to, a);
     }
     if (held && held.from === from) held.targets = out;
     return out;
-  }
-
-  /** The pieces a move onto the far row can promote into: one per card in your hand, by name. */
-  private promotions(move: Action): { action: Action; card: v2.ViewCard | undefined; cardId: string }[] {
-    const view = this.view;
-    if (!view || move.type !== 'move') return [];
-    const out: { action: Action; card: v2.ViewCard | undefined; cardId: string }[] = [];
-    for (const a of this.legal()) {
-      if (a.type !== 'move' || !a.promote || a.from !== move.from || a.to !== move.to) continue;
-      const cardId = view.hand?.find((c) => c.uid === a.promote)?.cardId;
-      if (cardId && !out.some((o) => o.cardId === cardId)) out.push({ action: a, card: view.cards[cardId], cardId });
-    }
-    return out;
-  }
-
-  /** Plays a picked target: a move onto the far row first asks what the piece becomes. */
-  private act(target: Action): void {
-    if (this.promotions(target).length) this.openPromote(target);
-    else this.hooks.act(target);
   }
 
   /** Whether the piece on `square` can spit lava now (Lava Breath). */
@@ -1210,7 +1190,7 @@ export class GameScreen {
     const playing = view.status.kind === 'playing';
     const target = playing ? this.targets().get(square) : undefined;
     if (target) {
-      this.act(target);
+      this.hooks.act(target);
       this.clearSelection();
       this.inspected = null;
       this.render();
@@ -2647,57 +2627,6 @@ export class GameScreen {
     window.addEventListener('keydown', this.onRaiseKey);
   }
 
-  /**
-   * A move takes an Initiate onto the far row: show the piece cards in hand it can become, for free, or let it stay
-   * as it is (it can still promote on a later turn).
-   */
-  private openPromote(move: Action): void {
-    const view = this.view;
-    const options = this.promotions(move);
-    if (!view || move.type !== 'move' || !options.length) return;
-    const me = view.active;
-    const name = view.pieces.find((p) => p.square === move.from)?.name ?? 'piece';
-    const panel = el('div', 'g2-raise-panel');
-    const head = el('div', 'g2-raise-head');
-    const whose = this.solo ? `${sideName(me)}'s hand` : 'your hand';
-    head.append(
-      el('b', '', `Promote on ${v2.squareName(move.to)}`),
-      el('span', '', `Your ${name} reached the far row. Pick a piece from ${whose} for it to become, free.`),
-    );
-    const row = el('div', 'g2-raise-row');
-    for (const option of options) {
-      const pick = el('button', 'g2-raise-card');
-      pick.type = 'button';
-      fillFrame(pick, this.frameFor(option.card, option.cardId, me));
-      pick.title = `Promote into ${option.card?.name ?? option.cardId} on ${v2.squareName(move.to)}`;
-      pick.onclick = () => {
-        this.closeRaise();
-        this.hooks.act(option.action);
-      };
-      row.append(pick);
-    }
-    panel.append(head, row);
-    const actions = el('div', 'g2-raise-actions');
-    const stay = el('button', 'g2-raise-cancel', `Stay ${/^[aeiou]/i.test(name) ? 'an' : 'a'} ${name}`);
-    stay.type = 'button';
-    stay.title = 'Move without promoting; drop a piece card on it on a later turn to promote it then.';
-    stay.onclick = () => {
-      this.closeRaise();
-      this.hooks.act(move);
-    };
-    const cancel = el('button', 'g2-raise-cancel', 'Cancel');
-    cancel.type = 'button';
-    cancel.onclick = () => this.closeRaise();
-    actions.append(stay, cancel);
-    panel.append(actions);
-    this.raiseEl.replaceChildren(panel);
-    this.raiseEl.classList.remove('hidden');
-    this.raiseEl.onclick = (e) => {
-      if (e.target === this.raiseEl) this.closeRaise();
-    };
-    window.addEventListener('keydown', this.onRaiseKey);
-  }
-
   private readonly onRaiseKey = (e: KeyboardEvent): void => {
     if (e.key === 'Escape') this.closeRaise();
   };
@@ -2877,12 +2806,7 @@ export class GameScreen {
     const from = drag.from;
     const square = up ? this.squareAt(e.clientX, e.clientY, (sq) => targets.has(sq) || this.canRelocate(from, sq), true) : null;
     const move = square === null ? undefined : targets.get(square);
-    if (move && this.promotions(move).length) {
-      this.returnPiece(from, ghost);
-      this.clearSelection();
-      this.render();
-      this.openPromote(move);
-    } else if (move && square !== null) this.dropPiece(from, square, () => this.hooks.act(move), ghost);
+    if (move && square !== null) this.dropPiece(from, square, () => this.hooks.act(move), ghost);
     else if (square !== null && this.canRelocate(from, square)) this.dropPiece(from, square, () => this.hooks.arena({ type: 'relocate', from, to: square }), ghost);
     else if (up && square === null && this.canTakeOff(from, e.clientX, e.clientY)) this.takeOff(from, ghost);
     else this.returnPiece(from, ghost);
